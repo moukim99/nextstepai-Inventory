@@ -13,6 +13,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import com.nextstepai.inventory.ui.BomScreen
 import com.nextstepai.inventory.ui.BomViewModel
+import com.nextstepai.inventory.ui.CompanyScreen
+import com.nextstepai.inventory.ui.CompanyViewModel
 import com.nextstepai.inventory.ui.LoginScreen
 import com.nextstepai.inventory.ui.LoginViewModel
 import com.nextstepai.inventory.ui.MainDashboardScreen
@@ -23,6 +25,7 @@ import com.nextstepai.inventory.ui.StockViewModel
 
 private enum class Screen {
     DASHBOARD,
+    COMPANIES,
     STOCK,
     PARTS,
     BOM
@@ -44,11 +47,18 @@ fun App() {
                 val partViewModel = remember { PartViewModel() }
                 val bomViewModel = remember { BomViewModel() }
                 val stockViewModel = remember { StockViewModel() }
+                val companyViewModel = remember { CompanyViewModel() }
                 val loginUiState by loginViewModel.uiState.collectAsState()
                 var currentScreen by remember { mutableStateOf(Screen.DASHBOARD) }
 
                 if (loginUiState.isLoggedIn) {
                     when (currentScreen) {
+                        Screen.COMPANIES -> {
+                            CompanyScreen(
+                                viewModel = companyViewModel,
+                                onBackClick = { currentScreen = Screen.DASHBOARD }
+                            )
+                        }
                         Screen.STOCK -> {
                             StockScreen(
                                 viewModel = stockViewModel,
@@ -76,7 +86,8 @@ fun App() {
                                 },
                                 onOpenPartsClick = { currentScreen = Screen.PARTS },
                                 onOpenBomClick = { currentScreen = Screen.BOM },
-                                onOpenStockClick = { currentScreen = Screen.STOCK }
+                                onOpenStockClick = { currentScreen = Screen.STOCK },
+                                onOpenCompaniesClick = { currentScreen = Screen.COMPANIES }
                             )
                         }
                     }
