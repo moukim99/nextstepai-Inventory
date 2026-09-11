@@ -22,6 +22,7 @@ fun MainDashboardScreen(
     onOpenBomClick: () -> Unit,
     onOpenStockClick: () -> Unit,
     onOpenCompaniesClick: () -> Unit,
+    onOpenOrdersClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -70,6 +71,43 @@ fun MainDashboardScreen(
                         text = "تم التحقق وتسجيل الدخول بنجاح.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // زر الانتقال المباشر إلى جدول أوامر الشراء وبنودها (PurchaseOrder)
+            ElevatedCard(
+                onClick = onOpenOrdersClick,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "📄 جدول أوامر الشراء وبنودها (PurchaseOrder)",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "إدارة طلبات الموردين وبنود الشراء والأسعار والاعتماد والاستلام.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Text(
+                        text = "فتح الطلبات ⬅",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 }
             }
