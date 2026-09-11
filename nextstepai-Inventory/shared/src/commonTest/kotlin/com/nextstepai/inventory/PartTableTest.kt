@@ -2,7 +2,14 @@ package com.nextstepai.inventory
 
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.PartTable
+import com.nextstepai.inventory.data.db.PartDao
+import com.nextstepai.inventory.data.db.PartEntity
+import com.nextstepai.inventory.media.ImageProcessor
 import com.nextstepai.inventory.repository.PartRepository
+import com.nextstepai.inventory.sync.BatchSyncService
+import com.nextstepai.inventory.sync.SyncPayload
+import com.nextstepai.inventory.sync.SyncStatus
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -22,9 +29,7 @@ class PartTableTest {
             allocatedToSalesOrders = 2.0
         )
 
-        // الصافي = 25 - 5 - 2 = 18.0
         assertEquals(18.0, part.availableStock)
-        // 18.0 < 20.0 => تنبيه انخفاض المخزون
         assertTrue(part.isLowStock)
     }
 
@@ -55,7 +60,6 @@ class PartTableTest {
     fun testTemplateVariantValidation() {
         val partTable = PartTable()
 
-        // إنشاء قطعة ليست قالباً (isTemplate = false)
         val regularPart = partTable.insertPart(
             Part(
                 name = "عنصر عادي",
@@ -63,7 +67,6 @@ class PartTableTest {
             )
         )
 
-        // محاولة ربط قطعة مشتقة بقطعة ليست قالباً يجب أن يرمي استثناء (IllegalArgumentException)
         assertFailsWith<IllegalArgumentException> {
             partTable.insertPart(
                 Part(
@@ -72,6 +75,68 @@ class PartTableTest {
                 )
             )
         }
+    }
+
+    @Test
+    fun testExplicitLimitOffsetPaging() {
+        val dao = PartDao()
+        for (i in 1..25) {
+            dao.insertOrUpdate(
+                PartEntity(
+                    uuid = "part-uuid-$i",
+                    name = "قطعة اختباري #$i",
+                    syncStatus = SyncStatus.PENDING_PUSH,
+                    updatedAt = System.currentTimeMillis() + i
+                )
+            )
+        }
+
+        // اختبار الصفحة الأولى مع LIMIT 10 OFFSET 0
+        val page1 = dao.getPartsPaged(limit = 10, offset = 0)
+        assertEquals(10, page1.size)
+
+        // اختبار الصفحة الثانية مع LIMIT 10 OFFSET 10
+        val page2 = dao.getPartsPaged(limit = 10, offset = 10)
+        assertEquals(10, page2.size)
+
+        // اختبار الصفحة الأخيرة مع LIMIT 10 OFFSET 20
+        val page3 = dao.getPartsPaged(limit = 10, offset = 20)
+        assertEquals(5, page3.size)
+    }
+
+    @Test
+    fun testBatchSyncSingleNetworkRequest() = runBlocking {
+        val batchSyncService = BatchSyncService()
+        val pendingPayloads = listOf(
+            SyncPayload("uuid-1", "Part", "{}", false, 1000L),
+            SyncPayload("uuid-2", "Part", "{}", false, 1001L)
+        )
+
+        val response = batchSyncService.performBatchSync(
+            pendingPushes = pendingPayloads,
+            lastSyncTimestamp = 500L
+        )
+
+        assertEquals(2, response.acceptedUuids.size)
+        assertTrue(response.acceptedUuids.contains("uuid-1"))
+        assertTrue(response.acceptedUuids.contains("uuid-2"))
+    }
+
+    @Test
+    fun testImageResizingAndCompression() {
+        val processor = ImageProcessor(maxDimension = 1024, compressionQuality = 80)
+        val mockCameraImageBytes = ByteArray(5_000_000) { 1 } // صورة دقة كاميرا خام كبيرة (5MB)
+
+        // تصغير أبعاد 4000x3000 إلى حد أقصى 1024
+        val processed = processor.processAndCompressProductImage(
+            rawImageBytes = mockCameraImageBytes,
+            rawWidth = 4000,
+            rawHeight = 3000
+        )
+
+        assertTrue(processed.width <= 1024)
+        assertTrue(processed.height <= 1024)
+        assertTrue(processed.bytes.size < mockCameraImageBytes.size)
     }
 
     @Test

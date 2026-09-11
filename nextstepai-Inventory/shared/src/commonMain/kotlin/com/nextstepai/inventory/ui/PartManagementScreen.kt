@@ -115,7 +115,7 @@ fun PartManagementScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
-                    items(uiState.parts, key = { it.id }) { part ->
+                    items(uiState.parts, key = { "part-${it.id}" }) { part ->
                         PartItemCard(
                             part = part,
                             onClick = { viewModel.selectPart(part) }
@@ -261,7 +261,7 @@ private fun FilterChipsRow(
                 label = { Text("⚙️ تجميعة (Assembly)") }
             )
         }
-        items(categories) { category ->
+        items(categories, key = { "category-${it.id}" }) { category ->
             FilterChip(
                 selected = selectedCategoryId == category.id,
                 onClick = { onCategorySelect(if (selectedCategoryId == category.id) null else category.id) },
