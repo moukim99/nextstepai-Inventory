@@ -23,6 +23,7 @@ fun MainDashboardScreen(
     onOpenStockClick: () -> Unit,
     onOpenCompaniesClick: () -> Unit,
     onOpenOrdersClick: () -> Unit,
+    onOpenBuildsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -71,6 +72,43 @@ fun MainDashboardScreen(
                         text = "تم التحقق وتسجيل الدخول بنجاح.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // زر الانتقال المباشر إلى جدول أوامر الإنتاج والتصنيع (Build)
+            ElevatedCard(
+                onClick = onOpenBuildsClick,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "🏭 جدول أوامر الإنتاج والتصنيع (Build)",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "إدارة وتتبع دورة تصنيع المكونات وتحويل الـ BOM إلى منتجات مكتملة.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Text(
+                        text = "فتح الإنتاج ⬅",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 }
             }

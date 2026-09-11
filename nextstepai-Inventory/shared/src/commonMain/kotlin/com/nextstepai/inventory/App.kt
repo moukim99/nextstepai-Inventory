@@ -13,6 +13,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import com.nextstepai.inventory.ui.BomScreen
 import com.nextstepai.inventory.ui.BomViewModel
+import com.nextstepai.inventory.ui.BuildOrderScreen
+import com.nextstepai.inventory.ui.BuildOrderViewModel
 import com.nextstepai.inventory.ui.CompanyScreen
 import com.nextstepai.inventory.ui.CompanyViewModel
 import com.nextstepai.inventory.ui.LoginScreen
@@ -27,6 +29,7 @@ import com.nextstepai.inventory.ui.StockViewModel
 
 private enum class Screen {
     DASHBOARD,
+    BUILDS,
     PURCHASE_ORDERS,
     COMPANIES,
     STOCK,
@@ -52,11 +55,18 @@ fun App() {
                 val stockViewModel = remember { StockViewModel() }
                 val companyViewModel = remember { CompanyViewModel() }
                 val poViewModel = remember { PurchaseOrderViewModel() }
+                val buildViewModel = remember { BuildOrderViewModel() }
                 val loginUiState by loginViewModel.uiState.collectAsState()
                 var currentScreen by remember { mutableStateOf(Screen.DASHBOARD) }
 
                 if (loginUiState.isLoggedIn) {
                     when (currentScreen) {
+                        Screen.BUILDS -> {
+                            BuildOrderScreen(
+                                viewModel = buildViewModel,
+                                onBackClick = { currentScreen = Screen.DASHBOARD }
+                            )
+                        }
                         Screen.PURCHASE_ORDERS -> {
                             PurchaseOrderScreen(
                                 viewModel = poViewModel,
@@ -98,7 +108,8 @@ fun App() {
                                 onOpenBomClick = { currentScreen = Screen.BOM },
                                 onOpenStockClick = { currentScreen = Screen.STOCK },
                                 onOpenCompaniesClick = { currentScreen = Screen.COMPANIES },
-                                onOpenOrdersClick = { currentScreen = Screen.PURCHASE_ORDERS }
+                                onOpenOrdersClick = { currentScreen = Screen.PURCHASE_ORDERS },
+                                onOpenBuildsClick = { currentScreen = Screen.BUILDS }
                             )
                         }
                     }
