@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 fun MainDashboardScreen(
     loginUiState: LoginUiState,
     onLogoutClick: () -> Unit,
+    onOpenPartsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -70,7 +71,44 @@ fun MainDashboardScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // زر الانتقال المباشر إلى تحليل وتصفح جدول إدارة القطع والمكونات (Part)
+            ElevatedCard(
+                onClick = onOpenPartsClick,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "⚙️ جدول إدارة القطع والمكونات (Part)",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "عرض وتصفية وبحث وحفظ بيانات جدول Part المستوحي من نظام InvenTree.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Text(
+                        text = "فتح الجدول ⬅",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // تفاصيل بيانات سجل الجلسة من جدول الدخول (Login Table)
             val session = loginUiState.currentSession
