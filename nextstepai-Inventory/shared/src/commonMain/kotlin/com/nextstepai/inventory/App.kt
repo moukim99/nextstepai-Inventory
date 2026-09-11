@@ -11,11 +11,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import org.jetbrains.compose.ui.tooling.preview.Preview
+import com.nextstepai.inventory.ui.BomScreen
+import com.nextstepai.inventory.ui.BomViewModel
 import com.nextstepai.inventory.ui.LoginScreen
 import com.nextstepai.inventory.ui.LoginViewModel
 import com.nextstepai.inventory.ui.MainDashboardScreen
 import com.nextstepai.inventory.ui.PartManagementScreen
 import com.nextstepai.inventory.ui.PartViewModel
+
+private enum class Screen {
+    DASHBOARD,
+    PARTS,
+    BOM
+}
 
 @Composable
 @Preview
@@ -31,24 +39,35 @@ fun App() {
             ) {
                 val loginViewModel = remember { LoginViewModel() }
                 val partViewModel = remember { PartViewModel() }
+                val bomViewModel = remember { BomViewModel() }
                 val loginUiState by loginViewModel.uiState.collectAsState()
-                var isPartsScreenOpen by remember { mutableStateOf(false) }
+                var currentScreen by remember { mutableStateOf(Screen.DASHBOARD) }
 
                 if (loginUiState.isLoggedIn) {
-                    if (isPartsScreenOpen) {
-                        PartManagementScreen(
-                            viewModel = partViewModel,
-                            onBackClick = { isPartsScreenOpen = false }
-                        )
-                    } else {
-                        MainDashboardScreen(
-                            loginUiState = loginUiState,
-                            onLogoutClick = {
-                                isPartsScreenOpen = false
-                                loginViewModel.performLogout()
-                            },
-                            onOpenPartsClick = { isPartsScreenOpen = true }
-                        )
+                    when (currentScreen) {
+                        Screen.PARTS -> {
+                            PartManagementScreen(
+                                viewModel = partViewModel,
+                                onBackClick = { currentScreen = Screen.DASHBOARD }
+                            )
+                        }
+                        Screen.BOM -> {
+                            BomScreen(
+                                viewModel = bomViewModel,
+                                onBackClick = { currentScreen = Screen.DASHBOARD }
+                            )
+                        }
+                        Screen.DASHBOARD -> {
+                            MainDashboardScreen(
+                                loginUiState = loginUiState,
+                                onLogoutClick = {
+                                    currentScreen = Screen.DASHBOARD
+                                    loginViewModel.performLogout()
+                                },
+                                onOpenPartsClick = { currentScreen = Screen.PARTS },
+                                onOpenBomClick = { currentScreen = Screen.BOM }
+                            )
+                        }
                     }
                 } else {
                     LoginScreen(

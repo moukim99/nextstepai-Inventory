@@ -19,6 +19,7 @@ fun MainDashboardScreen(
     loginUiState: LoginUiState,
     onLogoutClick: () -> Unit,
     onOpenPartsClick: () -> Unit,
+    onOpenBomClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -73,7 +74,7 @@ fun MainDashboardScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // زر الانتقال المباشر إلى تحليل وتصفح جدول إدارة القطع والمكونات (Part)
+            // زر الانتقال المباشر إلى جدول إدارة القطع والمكونات (Part)
             ElevatedCard(
                 onClick = onOpenPartsClick,
                 modifier = Modifier.fillMaxWidth(),
@@ -86,7 +87,7 @@ fun MainDashboardScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp),
+                        .padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -103,6 +104,43 @@ fun MainDashboardScreen(
                     }
                     Text(
                         text = "فتح الجدول ⬅",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // زر الانتقال المباشر إلى جدول بنود قائمة المواد والتجميع (BomItem)
+            ElevatedCard(
+                onClick = onOpenBomClick,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "🛠️ جدول بنود قائمة المواد والتجميع (BomItem)",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "إدارة العلاقة التركيبية والكميات والشروط الفنية للقطع المجمعة.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Text(
+                        text = "فتح BOM ⬅",
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 }
