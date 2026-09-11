@@ -51,6 +51,71 @@ class BomItemTest {
     }
 
     @Test
+    fun testPositiveQuantityConstraint() {
+        val bomTable = BomItemTable()
+
+        // كمية صفر أو سالبة يجب أن تطلق استثناء
+        assertFailsWith<IllegalArgumentException> {
+            bomTable.insertBomItem(
+                BomItem(
+                    partId = 10L,
+                    subPartId = 30L,
+                    quantity = 0.0
+                )
+            )
+        }
+    }
+
+    @Test
+    fun testBomSubstituteConstraintsAndCascadeDelete() {
+        val bomTable = BomItemTable()
+
+        val item = bomTable.insertBomItem(
+            BomItem(
+                partId = 100L,
+                subPartId = 200L,
+                quantity = 1.0
+            )
+        )
+
+        // 1. إضافة قطعة بديلة أولى صحيحة (300L)
+        val sub1 = bomTable.insertSubstitute(
+            bomItemId = item.id,
+            substitutePartId = 300L
+        )
+        assertTrue(sub1.id > 0)
+
+        // 2. محاولة إضافة نفس البديل لنفس البند يجب أن تفشل لقيد التفرد (unique_together)
+        assertFailsWith<IllegalArgumentException> {
+            bomTable.insertSubstitute(
+                bomItemId = item.id,
+                substitutePartId = 300L
+            )
+        }
+
+        // 3. محاولة إضافة المكون الأساسي كبديل لنفسه يجب أن تفشل (Self-Substitution Prevention)
+        assertFailsWith<IllegalArgumentException> {
+            bomTable.insertSubstitute(
+                bomItemId = item.id,
+                substitutePartId = 200L
+            )
+        }
+
+        // 4. محاولة إضافة القطعة التجميعية الأصل كبديل يجب أن تفشل
+        assertFailsWith<IllegalArgumentException> {
+            bomTable.insertSubstitute(
+                bomItemId = item.id,
+                substitutePartId = 100L
+            )
+        }
+
+        // 5. الحذف المتتابع CASCADE عند مسح بند قائمة المواد الأصلي
+        bomTable.deleteBomItem(item.id)
+        val substitutesAfterDelete = bomTable.getSubstitutesForBomItem(item.id)
+        assertTrue(substitutesAfterDelete.isEmpty())
+    }
+
+    @Test
     fun testBomBatchSyncWithCloudflare() = runBlocking {
         val repository = BomRepository()
         repository.addBomItem(

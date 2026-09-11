@@ -10,6 +10,10 @@ import com.nextstepai.inventory.media.ProcessedImage
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
+import kotlinx.coroutines.runBlocking
+import kotlin.time.Clock
+
+import com.nextstepai.inventory.data.db.getRoomDatabase
 
 /**
  * المستودع (Repository) المسؤول عن إدارة المخزون الفعلي (Stock Management) وتجزئة الكميات
@@ -24,7 +28,7 @@ class StockRepository(
     /**
      * جلب سجلات المخزون الفعلي مقسمة صفحات (LIMIT & OFFSET) لمنع التحميل الكامل في الذاكرة.
      */
-    fun getStockItemsPaged(
+    suspend fun getStockItemsPaged(
         partId: Long? = null,
         locationId: Long? = null,
         limit: Int = 20,
@@ -48,21 +52,23 @@ class StockRepository(
      */
     fun addStockItem(item: StockItem): StockItem {
         val inserted = stockTable.insertStockItem(item)
-        stockDao.insertOrUpdate(
-            StockItemEntity(
-                uuid = "stock-${inserted.id}",
-                partId = inserted.partId,
-                locationId = inserted.locationId,
-                quantity = inserted.quantity,
-                serial = inserted.serial,
-                batch = inserted.batch,
-                statusCode = inserted.status.code,
-                packaging = inserted.packaging,
-                expiryDate = inserted.expiryDate,
-                notes = inserted.notes,
-                syncStatus = SyncStatus.PENDING_PUSH
+        runBlocking {
+            stockDao.insertOrUpdate(
+                StockItemEntity(
+                    uuid = "stock-${inserted.id}",
+                    partId = inserted.partId,
+                    locationId = inserted.locationId,
+                    quantity = inserted.quantity,
+                    serial = inserted.serial,
+                    batch = inserted.batch,
+                    statusCode = inserted.status.code,
+                    packaging = inserted.packaging,
+                    expiryDate = inserted.expiryDate,
+                    notes = inserted.notes,
+                    syncStatus = SyncStatus.PENDING
+                )
             )
-        )
+        }
         return inserted
     }
 
@@ -71,17 +77,19 @@ class StockRepository(
      */
     fun splitStockItem(parentId: Long, splitQuantity: Double): StockItem {
         val child = stockTable.splitStockItem(parentId, splitQuantity)
-        stockDao.insertOrUpdate(
-            StockItemEntity(
-                uuid = "stock-${child.id}",
-                partId = child.partId,
-                locationId = child.locationId,
-                quantity = child.quantity,
-                serial = child.serial,
-                batch = child.batch,
-                syncStatus = SyncStatus.PENDING_PUSH
+        runBlocking {
+            stockDao.insertOrUpdate(
+                StockItemEntity(
+                    uuid = "stock-${child.id}",
+                    partId = child.partId,
+                    locationId = child.locationId,
+                    quantity = child.quantity,
+                    serial = child.serial,
+                    batch = child.batch,
+                    syncStatus = SyncStatus.PENDING
+                )
             )
-        )
+        }
         return child
     }
 
@@ -109,7 +117,7 @@ class StockRepository(
             )
         }
 
-        val response = batchSyncService.performBatchSync(payloads, System.currentTimeMillis() - 86400000)
+        val response = batchSyncService.performBatchSync(payloads, Clock.System.now().toEpochMilliseconds() - 86400000)
         stockDao.updateSyncStatusForUuids(response.acceptedUuids, SyncStatus.SYNCED)
         return response.acceptedUuids.size
     }

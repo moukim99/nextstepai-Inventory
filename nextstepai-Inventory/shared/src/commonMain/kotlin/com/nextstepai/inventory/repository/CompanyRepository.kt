@@ -9,6 +9,10 @@ import com.nextstepai.inventory.media.ProcessedImage
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
+import kotlinx.coroutines.runBlocking
+import kotlin.time.Clock
+
+import com.nextstepai.inventory.data.db.getRoomDatabase
 
 /**
  * المستودع (Repository) المسؤول عن إدارة الشركات والعلاقات التجارية (الموردين، المصنعين، العملاء)،
@@ -23,7 +27,7 @@ class CompanyRepository(
     /**
      * جلب سجلات الشركات مجزأة صفحات (LIMIT & OFFSET) لمنع التحميل الكامل في الذاكرة.
      */
-    fun getCompaniesPaged(
+    suspend fun getCompaniesPaged(
         supplierOnly: Boolean = false,
         manufacturerOnly: Boolean = false,
         customerOnly: Boolean = false,
@@ -63,20 +67,22 @@ class CompanyRepository(
      */
     fun addCompany(company: Company): Company {
         val inserted = companyTable.insertCompany(company)
-        companyDao.insertOrUpdate(
-            CompanyEntity(
-                uuid = "company-${inserted.id}",
-                name = inserted.name,
-                description = inserted.description,
-                phone = inserted.phone,
-                email = inserted.email,
-                isSupplier = inserted.isSupplier,
-                isManufacturer = inserted.isManufacturer,
-                isCustomer = inserted.isCustomer,
-                currency = inserted.currency,
-                syncStatus = SyncStatus.PENDING_PUSH
+        runBlocking {
+            companyDao.insertOrUpdate(
+                CompanyEntity(
+                    uuid = "company-${inserted.id}",
+                    name = inserted.name,
+                    description = inserted.description,
+                    phone = inserted.phone,
+                    email = inserted.email,
+                    isSupplier = inserted.isSupplier,
+                    isManufacturer = inserted.isManufacturer,
+                    isCustomer = inserted.isCustomer,
+                    currency = inserted.currency,
+                    syncStatus = SyncStatus.PENDING
+                )
             )
-        )
+        }
         return inserted
     }
 
@@ -104,7 +110,7 @@ class CompanyRepository(
             )
         }
 
-        val response = batchSyncService.performBatchSync(payloads, System.currentTimeMillis() - 86400000)
+        val response = batchSyncService.performBatchSync(payloads, Clock.System.now().toEpochMilliseconds() - 86400000)
         companyDao.updateSyncStatusForUuids(response.acceptedUuids, SyncStatus.SYNCED)
         return response.acceptedUuids.size
     }

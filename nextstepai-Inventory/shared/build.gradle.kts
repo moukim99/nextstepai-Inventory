@@ -35,6 +35,8 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.compose.uiTooling)
+            implementation("com.google.crypto.tink:tink-android:1.23.0")
+            implementation("androidx.datastore:datastore-preferences:1.1.3")
         }
         commonMain.dependencies {
             implementation(compose.runtime)
@@ -45,6 +47,14 @@ kotlin {
             implementation(compose.components.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.androidx.room.runtime)
+            implementation(libs.androidx.sqlite.bundled)
+            implementation(libs.kotlinx.datetime)
+            implementation(libs.androidx.datastore.preferences)
+            implementation(libs.jetbrains.adaptive)
+            implementation(libs.jetbrains.adaptive.layout)
+            implementation(libs.jetbrains.adaptive.navigation)
+            implementation(libs.jetbrains.adaptive.navigation.suite)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

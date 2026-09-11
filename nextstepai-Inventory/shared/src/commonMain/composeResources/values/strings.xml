@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NextStep AI Inventory</string>
+    <string name="dashboard_title">Inventory Management System</string>
+    <string name="welcome_message">Welcome!</string>
+    <string name="login_success_subtitle">Session verified and logged in successfully.</string>
+    <string name="logout">Logout</string>
+    <string name="login">Login</string>
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="guest_login">Guest Login</string>
+
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_builds">Build Orders</string>
+    <string name="nav_orders">Purchase Orders</string>
+    <string name="nav_companies">Companies</string>
+    <string name="nav_stock">Physical Stock</string>
+    <string name="nav_parts">Part Management</string>
+    <string name="nav_bom">Bill of Materials</string>
+    <string name="nav_theme">Theme</string>
+
+    <string name="card_builds_title">Build Orders (Build)</string>
+    <string name="card_builds_subtitle">Track manufacturing cycles and convert BOM into finished goods.</string>
+    <string name="open_builds">Open Production</string>
+
+    <string name="card_orders_title">Purchase Orders (PurchaseOrder)</string>
+    <string name="card_orders_subtitle">Manage supplier purchase orders, line items, pricing, and receipts.</string>
+    <string name="open_orders">Open Orders</string>
+
+    <string name="card_companies_title">Companies &amp; Relations (Company)</string>
+    <string name="card_companies_subtitle">Manage suppliers, manufacturers, customers, and commercial currencies.</string>
+    <string name="open_companies">Open Companies</string>
+
+    <string name="card_stock_title">Physical Stock Items (StockItem)</string>
+    <string name="card_stock_subtitle">Track physical shelf units, serial numbers, batches, and locations.</string>
+    <string name="open_stock">Open Stock</string>
+
+    <string name="card_parts_title">Parts &amp; Components (Part)</string>
+    <string name="card_parts_subtitle">Browse, filter, search, and manage InvenTree-inspired part records.</string>
+    <string name="open_parts">Open Parts</string>
+
+    <string name="card_bom_title">Bill of Materials (BomItem)</string>
+    <string name="card_bom_subtitle">Manage structural relationships, quantities, and variants for assemblies.</string>
+    <string name="open_bom">Open BOM</string>
+
+    <string name="session_info_header">Active Session Record:</string>
+    <string name="session_id">Record ID: #%1$d</string>
+    <string name="session_user">Username: %1$s</string>
+    <string name="session_status">Verification Status: %1$s</string>
+    <string name="session_active">Status: Active Session</string>
+
+    <string name="search_placeholder">Search records...</string>
+    <string name="filter_low_stock">Low Stock Only</string>
+    <string name="filter_assembly">Assemblies Only</string>
+    <string name="filter_starred">Starred Only</string>
+
+    <string name="add_new_part">Add New Part</string>
+    <string name="add_new_stock">Add Stock Unit</string>
+    <string name="add_new_company">Add Company</string>
+    <string name="add_new_order">Add Purchase Order</string>
+    <string name="add_new_build">Add Build Order</string>
+    <string name="add_bom_item">Add Component to BOM</string>
+
+    <string name="back">Back</string>
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="theme_system">System Default Theme</string>
+    <string name="theme_light">Light Mode</string>
+    <string name="theme_dark">Dark Mode</string>
+</resources>

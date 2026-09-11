@@ -1,5 +1,7 @@
 package com.nextstepai.inventory.data
 
+import kotlin.time.Clock
+
 /**
  * تمثيل سجل الدخول في جدول تسجيل الدخول (Login Table).
  *
@@ -32,7 +34,7 @@ class LoginTable {
             id = (records.size + 1).toLong(),
             username = username,
             isLoggedIn = true,
-            loginTime = System.currentTimeMillis(),
+            loginTime = Clock.System.now().toEpochMilliseconds(),
             authStatus = authStatus
         )
         records.add(newRecord)

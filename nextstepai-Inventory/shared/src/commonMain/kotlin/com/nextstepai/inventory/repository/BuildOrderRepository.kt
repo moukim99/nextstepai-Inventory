@@ -8,6 +8,10 @@ import com.nextstepai.inventory.data.db.BuildOrderEntity
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
+import kotlinx.coroutines.runBlocking
+import kotlin.time.Clock
+
+import com.nextstepai.inventory.data.db.getRoomDatabase
 
 /**
  * المستودع (Repository) المسؤول عن إدارة أوامر التصنيع والإنتاج (Build Orders) والمزامنة الدفعية.
@@ -20,7 +24,7 @@ class BuildOrderRepository(
     /**
      * جلب أوامر الإنتاج مجزأة صفحات (LIMIT & OFFSET) لمنع التحميل الكامل في الذاكرة.
      */
-    fun getBuildOrdersPaged(
+    suspend fun getBuildOrdersPaged(
         partId: Long? = null,
         status: BuildStatus? = null,
         limit: Int = 20,
@@ -45,21 +49,23 @@ class BuildOrderRepository(
      */
     fun addBuildOrder(build: BuildOrder): BuildOrder {
         val inserted = buildTable.insertBuild(build)
-        buildDao.insertOrUpdate(
-            BuildOrderEntity(
-                uuid = "build-${inserted.id}",
-                reference = inserted.reference,
-                title = inserted.title,
-                partId = inserted.partId,
-                partName = inserted.partName,
-                quantity = inserted.quantity,
-                completedQuantity = inserted.completedQuantity,
-                statusCode = inserted.status.code,
-                batch = inserted.batch,
-                targetDate = inserted.targetDate,
-                syncStatus = SyncStatus.PENDING_PUSH
+        runBlocking {
+            buildDao.insertOrUpdate(
+                BuildOrderEntity(
+                    uuid = "build-${inserted.id}",
+                    reference = inserted.reference,
+                    title = inserted.title,
+                    partId = inserted.partId,
+                    partName = inserted.partName,
+                    quantity = inserted.quantity,
+                    completedQuantity = inserted.completedQuantity,
+                    statusCode = inserted.status.code,
+                    batch = inserted.batch,
+                    targetDate = inserted.targetDate,
+                    syncStatus = SyncStatus.PENDING
+                )
             )
-        )
+        }
         return inserted
     }
 
@@ -94,7 +100,7 @@ class BuildOrderRepository(
             )
         }
 
-        val response = batchSyncService.performBatchSync(payloads, System.currentTimeMillis() - 86400000)
+        val response = batchSyncService.performBatchSync(payloads, Clock.System.now().toEpochMilliseconds() - 86400000)
         buildDao.updateSyncStatusForUuids(response.acceptedUuids, SyncStatus.SYNCED)
         return response.acceptedUuids.size
     }

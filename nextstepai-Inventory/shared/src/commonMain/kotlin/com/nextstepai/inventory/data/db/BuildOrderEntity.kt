@@ -1,13 +1,17 @@
 package com.nextstepai.inventory.data.db
 
+import androidx.room.Entity
+import androidx.room.PrimaryKey
 import com.nextstepai.inventory.sync.SyncStatus
 import com.nextstepai.inventory.sync.SyncableEntity
+import kotlin.time.Clock
 
 /**
  * تمثيل كيان أمر التصنيع والإنتاج (BuildOrderEntity) في قاعدة بيانات Room المحلية.
- * يحتوي على الفهارس التلقائية `@Index` على `syncStatus`, `isDeleted`, `updatedAt` لسرعة الاستعلام والمزامنة.
  */
+@Entity(tableName = "build_orders")
 data class BuildOrderEntity(
+    @PrimaryKey
     override val uuid: String,
     val reference: String,
     val title: String = "",
@@ -18,7 +22,7 @@ data class BuildOrderEntity(
     val statusCode: Int = 10,
     val batch: String = "",
     val targetDate: String = "",
-    override val syncStatus: SyncStatus = SyncStatus.PENDING_PUSH,
+    override val syncStatus: SyncStatus = SyncStatus.PENDING,
     override val isDeleted: Boolean = false,
-    override val updatedAt: Long = System.currentTimeMillis()
+    override val updatedAt: Long = Clock.System.now().toEpochMilliseconds(),
 ) : SyncableEntity

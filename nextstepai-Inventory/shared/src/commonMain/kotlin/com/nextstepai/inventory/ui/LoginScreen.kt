@@ -13,6 +13,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.jetbrains.compose.resources.stringResource
+import nextstepai_inventory.shared.generated.resources.Res
+import nextstepai_inventory.shared.generated.resources.guest_login
+import nextstepai_inventory.shared.generated.resources.login
+import nextstepai_inventory.shared.generated.resources.login_success_subtitle
+import nextstepai_inventory.shared.generated.resources.welcome_message
 
 /**
  * صفحة الدخول البسيطة التي تظهر للمستخدم عند فتح التطبيق.
@@ -52,7 +58,6 @@ fun LoginScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    // أيقونة الترحيب بالمستخدم
                     Box(
                         modifier = Modifier
                             .size(80.dp)
@@ -68,21 +73,17 @@ fun LoginScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // عنوان صفحة الدخول
                     Text(
-                        text = "تسجيل الدخول",
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontWeight = FontWeight.Bold
-                        ),
+                        text = stringResource(Res.string.login),
+                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface,
                         textAlign = TextAlign.Center
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // وصف مختصر
                     Text(
-                        text = "مرحباً بك في نظام إدارة المخزون.\nانقر على زر الدخول للبدء فوراً.",
+                        text = stringResource(Res.string.welcome_message),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -91,7 +92,6 @@ fun LoginScreen(
 
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // زر الدخول البسيط الواحد
                     Button(
                         onClick = onLoginClick,
                         enabled = !isLoading,
@@ -112,19 +112,16 @@ fun LoginScreen(
                             )
                         } else {
                             Text(
-                                text = "الدخول المباشر ⬅",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold
-                                )
+                                text = stringResource(Res.string.guest_login),
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                             )
                         }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // ملاحظة صغيرة بخصوص التحقق التلقائي
                     Text(
-                        text = "✓ تم تفعيل التحقق البسيط السريع بدون كلمة مرور",
+                        text = stringResource(Res.string.login_success_subtitle),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         textAlign = TextAlign.Center

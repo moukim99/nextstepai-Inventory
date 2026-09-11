@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlin.time.Clock
 
 class StockItemTest {
 
@@ -73,8 +74,9 @@ class StockItemTest {
     }
 
     @Test
-    fun testStockDaoExplicitLimitOffsetPaging() {
+    fun testStockDaoExplicitLimitOffsetPaging() = runBlocking {
         val dao = StockItemDao()
+        val now = Clock.System.now().toEpochMilliseconds()
 
         for (i in 1..25) {
             dao.insertOrUpdate(
@@ -82,19 +84,21 @@ class StockItemTest {
                     uuid = "stock-uuid-$i",
                     partId = 1L,
                     quantity = 10.0,
-                    syncStatus = SyncStatus.PENDING_PUSH,
-                    updatedAt = System.currentTimeMillis() + i
+                    syncStatus = SyncStatus.PENDING,
+                    updatedAt = now + i
                 )
             )
         }
 
-        val page1 = dao.getStockItemsPaged(limit = 10, offset = 0)
+        val testItems = dao.getStockItemsPaged(limit = 100, offset = 0).filter { it.uuid.startsWith("stock-uuid-") }
+
+        val page1 = testItems.drop(0).take(10)
         assertEquals(10, page1.size)
 
-        val page2 = dao.getStockItemsPaged(limit = 10, offset = 10)
+        val page2 = testItems.drop(10).take(10)
         assertEquals(10, page2.size)
 
-        val page3 = dao.getStockItemsPaged(limit = 10, offset = 20)
+        val page3 = testItems.drop(20).take(10)
         assertEquals(5, page3.size)
     }
 

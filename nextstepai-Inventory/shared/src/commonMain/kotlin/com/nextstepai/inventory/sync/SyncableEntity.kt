@@ -2,11 +2,11 @@ package com.nextstepai.inventory.sync
 
 /**
  * حالة المزامنة لكل سجل قابل للمزامنة السحابية.
+ * تقتصر القيم حصرياً على PENDING و SYNCED.
  */
 enum class SyncStatus {
-    SYNCED,
-    PENDING_PUSH,
-    FAILED
+    PENDING,
+    SYNCED
 }
 
 /**

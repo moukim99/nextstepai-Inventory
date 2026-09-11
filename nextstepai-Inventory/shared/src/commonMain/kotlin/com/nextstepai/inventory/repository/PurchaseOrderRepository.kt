@@ -10,6 +10,10 @@ import com.nextstepai.inventory.data.db.PurchaseOrderLineEntity
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
+import kotlinx.coroutines.runBlocking
+import kotlin.time.Clock
+
+import com.nextstepai.inventory.data.db.getRoomDatabase
 
 /**
  * المستودع (Repository) المسؤول عن إدارة أوامر الشراء (Purchase Order) وبنودها والمزامنة الدفعية.
@@ -22,7 +26,7 @@ class PurchaseOrderRepository(
     /**
      * جلب قائمة أوامر الشراء المتاحة مجزأة صفحات (LIMIT & OFFSET) لمنع التحميل الكامل في الذاكرة.
      */
-    fun getOrdersPaged(
+    suspend fun getOrdersPaged(
         supplierId: Long? = null,
         status: POStatus? = null,
         limit: Int = 20,
@@ -47,20 +51,22 @@ class PurchaseOrderRepository(
      */
     fun addOrder(order: PurchaseOrder): PurchaseOrder {
         val inserted = orderTable.insertOrder(order)
-        orderDao.insertOrUpdateOrder(
-            PurchaseOrderEntity(
-                uuid = "po-${inserted.id}",
-                reference = inserted.reference,
-                supplierId = inserted.supplierId,
-                supplierName = inserted.supplierName,
-                statusCode = inserted.status.code,
-                description = inserted.description,
-                orderCurrency = inserted.orderCurrency,
-                targetDate = inserted.targetDate,
-                totalCost = inserted.totalCost,
-                syncStatus = SyncStatus.PENDING_PUSH
+        runBlocking {
+            orderDao.insertOrUpdateOrder(
+                PurchaseOrderEntity(
+                    uuid = "po-${inserted.id}",
+                    reference = inserted.reference,
+                    supplierId = inserted.supplierId,
+                    supplierName = inserted.supplierName,
+                    statusCode = inserted.status.code,
+                    description = inserted.description,
+                    orderCurrency = inserted.orderCurrency,
+                    targetDate = inserted.targetDate,
+                    totalCost = inserted.totalCost,
+                    syncStatus = SyncStatus.PENDING
+                )
             )
-        )
+        }
         return inserted
     }
 
@@ -69,17 +75,19 @@ class PurchaseOrderRepository(
      */
     fun addLineItem(item: PurchaseOrderLineItem): PurchaseOrderLineItem {
         val inserted = orderTable.insertLineItem(item)
-        orderDao.insertOrUpdateLine(
-            PurchaseOrderLineEntity(
-                uuid = "po-line-${inserted.id}",
-                orderUuid = "po-${inserted.orderId}",
-                supplierPartId = inserted.supplierPartId,
-                quantity = inserted.quantity,
-                receivedQuantity = inserted.receivedQuantity,
-                purchasePrice = inserted.purchasePrice,
-                syncStatus = SyncStatus.PENDING_PUSH
+        runBlocking {
+            orderDao.insertOrUpdateLine(
+                PurchaseOrderLineEntity(
+                    uuid = "po-line-${inserted.id}",
+                    orderUuid = "po-${inserted.orderId}",
+                    supplierPartId = inserted.supplierPartId,
+                    quantity = inserted.quantity,
+                    receivedQuantity = inserted.receivedQuantity,
+                    purchasePrice = inserted.purchasePrice,
+                    syncStatus = SyncStatus.PENDING
+                )
             )
-        )
+        }
         return inserted
     }
 
@@ -114,7 +122,7 @@ class PurchaseOrderRepository(
             )
         }
 
-        val response = batchSyncService.performBatchSync(payloads, System.currentTimeMillis() - 86400000)
+        val response = batchSyncService.performBatchSync(payloads, Clock.System.now().toEpochMilliseconds() - 86400000)
         orderDao.updateSyncStatusForUuids(response.acceptedUuids, SyncStatus.SYNCED)
         return response.acceptedUuids.size
     }

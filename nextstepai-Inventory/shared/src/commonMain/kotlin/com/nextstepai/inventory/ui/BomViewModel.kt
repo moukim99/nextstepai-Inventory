@@ -2,6 +2,7 @@ package com.nextstepai.inventory.ui
 
 import androidx.lifecycle.ViewModel
 import com.nextstepai.inventory.data.BomItem
+import com.nextstepai.inventory.data.BomItemSubstituteView
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.repository.BomRepository
 import com.nextstepai.inventory.repository.PartRepository
@@ -11,14 +12,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /**
- * حالة واجهة شاشة إدارة قائمة مواد التصنيع (BOM UI State).
+ * حالة واجهة شاشة إدارة قائمة مواد التصنيع والقطع البديلة (BOM UI State).
  */
 data class BomUiState(
     val selectedPartId: Long? = 3L, // افتراضياً قطعة الماكينة المصنعة
     val parentParts: List<Part> = emptyList(),
     val availableComponents: List<Part> = emptyList(),
     val bomItems: List<BomItem> = emptyList(),
+    val substitutesMap: Map<Long, List<BomItemSubstituteView>> = emptyMap(),
+    val selectedBomItemForSubstitute: BomItem? = null,
     val isAddBomDialogOpen: Boolean = false,
+    val isAddSubstituteDialogOpen: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null
 )
@@ -46,13 +50,59 @@ class BomViewModel(
         val currentPartId = _uiState.value.selectedPartId ?: assemblies.firstOrNull()?.id ?: 3L
         val bomList = bomRepository.getBomItemsForPart(currentPartId)
 
+        val substitutes = bomList.associate { item ->
+            item.id to bomRepository.getSubstitutesForBomItem(item.id, allParts)
+        }
+
         _uiState.update {
             it.copy(
                 selectedPartId = currentPartId,
                 parentParts = assemblies,
                 availableComponents = components,
-                bomItems = bomList
+                bomItems = bomList,
+                substitutesMap = substitutes
             )
+        }
+    }
+
+    fun openAddSubstituteDialog(bomItem: BomItem) {
+        _uiState.update {
+            it.copy(
+                selectedBomItemForSubstitute = bomItem,
+                isAddSubstituteDialogOpen = true,
+                errorMessage = null
+            )
+        }
+    }
+
+    fun closeAddSubstituteDialog() {
+        _uiState.update {
+            it.copy(
+                selectedBomItemForSubstitute = null,
+                isAddSubstituteDialogOpen = false
+            )
+        }
+    }
+
+    fun addSubstitute(partId: Long) {
+        val selectedBomItem = _uiState.value.selectedBomItemForSubstitute ?: return
+        val allParts = partRepository.getParts()
+        try {
+            bomRepository.addSubstitute(
+                bomItemId = selectedBomItem.id,
+                partId = partId,
+                partsList = allParts
+            )
+            _uiState.update {
+                it.copy(
+                    isAddSubstituteDialogOpen = false,
+                    selectedBomItemForSubstitute = null,
+                    successMessage = "تمت إضافة القطعة البديلة المعتمدة بنجاح"
+                )
+            }
+            loadData()
+        } catch (e: IllegalArgumentException) {
+            _uiState.update { it.copy(errorMessage = e.message) }
         }
     }
 

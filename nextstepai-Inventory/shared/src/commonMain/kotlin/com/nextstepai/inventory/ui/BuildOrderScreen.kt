@@ -16,9 +16,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.pluralStringResource
+import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.BuildOrder
 import com.nextstepai.inventory.data.BuildStatus
 import com.nextstepai.inventory.data.Part
+import com.nextstepai.inventory.ui.theme.AppIcons
+import nextstepai_inventory.shared.generated.resources.Res
+import nextstepai_inventory.shared.generated.resources.add_new_build
+import nextstepai_inventory.shared.generated.resources.back
+import nextstepai_inventory.shared.generated.resources.builds_count
+import nextstepai_inventory.shared.generated.resources.cancel
+import nextstepai_inventory.shared.generated.resources.card_builds_title
+import nextstepai_inventory.shared.generated.resources.save
+import nextstepai_inventory.shared.generated.resources.search_placeholder
 
 /**
  * شاشة إدارة أوامر التصنيع والإنتاج (BuildOrder Screen).
@@ -35,10 +47,16 @@ fun BuildOrderScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("أوامر التصنيع والإنتاج (Build)") },
+                title = { Text(stringResource(Res.string.card_builds_title)) },
                 navigationIcon = {
                     TextButton(onClick = onBackClick) {
-                        Text("➔ العودة", fontSize = 14.sp)
+                        Icon(
+                            painter = painterResource(AppIcons.Back),
+                            contentDescription = stringResource(Res.string.back),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(Res.string.back))
                     }
                 },
                 actions = {
@@ -46,91 +64,103 @@ fun BuildOrderScreen(
                         onClick = { viewModel.setAddDialogOpen(true) },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        Text("+ أمر إنتاج جديد")
+                        Icon(
+                            painter = painterResource(AppIcons.Add),
+                            contentDescription = stringResource(Res.string.add_new_build),
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(Res.string.add_new_build))
                     }
                 }
             )
         },
         modifier = modifier
     ) { paddingValues ->
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            // شريط البحث المطور
-            OutlinedTextField(
-                value = uiState.searchQuery,
-                onValueChange = { viewModel.onSearchQueryChanged(it) },
-                placeholder = { Text("البحث بالرمز المرجعي، العنوان، المنتج، أو رقم التشغيلة...") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // شريط تصفية حالات أوامر الإنتاج
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            val isWide = this@BoxWithConstraints.maxWidth > 600.dp
+            Column(
+                modifier = Modifier.fillMaxSize()
             ) {
-                item(key = "build-status-all") {
-                    FilterChip(
-                        selected = uiState.statusFilter == null,
-                        onClick = { viewModel.setStatusFilter(null) },
-                        label = { Text("كافة الحالات") }
-                    )
-                }
-                items(BuildStatus.entries.toTypedArray(), key = { "build-status-${it.code}" }) { status ->
-                    FilterChip(
-                        selected = uiState.statusFilter == status,
-                        onClick = { viewModel.setStatusFilter(if (uiState.statusFilter == status) null else status) },
-                        label = { Text(status.label) }
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            if (uiState.errorMessage != null) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
-                ) {
-                    Text(
-                        text = "⚠️ ${uiState.errorMessage}",
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(10.dp),
-                        fontSize = 12.sp
-                    )
-                }
-            }
-
-            // قائمة أوامر الإنتاج مع المفاتيح المستقرة key()
-            if (uiState.builds.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "لا توجد أوامر إنتاج مطابقة لشروط البحث.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 16.dp)
-                ) {
-                    items(uiState.builds, key = { "build-${it.id}" }) { build ->
-                        BuildOrderCard(
-                            build = build,
-                            onClick = { viewModel.selectBuild(build) }
+                // شريط البحث المطور
+                OutlinedTextField(
+                    value = uiState.searchQuery,
+                    onValueChange = { viewModel.onSearchQueryChanged(it) },
+                    placeholder = { Text(stringResource(Res.string.search_placeholder)) },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(AppIcons.Search),
+                            contentDescription = stringResource(Res.string.search_placeholder),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // شريط تصفية حالات أوامر الإنتاج
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    item(key = "build-status-all") {
+                        FilterChip(
+                            selected = uiState.statusFilter == null,
+                            onClick = { viewModel.setStatusFilter(null) },
+                            label = { Text("الكل") }
+                        )
+                    }
+                    items(BuildStatus.entries, key = { "build-status-${it.code}" }) { status ->
+                        FilterChip(
+                            selected = uiState.statusFilter == status,
+                            onClick = { viewModel.setStatusFilter(if (uiState.statusFilter == status) null else status) },
+                            label = { Text(status.label) }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (uiState.builds.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = pluralStringResource(Res.plurals.builds_count, 0, 0),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    Text(
+                        text = pluralStringResource(Res.plurals.builds_count, uiState.builds.size, uiState.builds.size),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(bottom = 16.dp)
+                    ) {
+                        items(uiState.builds, key = { "build-${it.id}" }) { build ->
+                            BuildOrderCard(
+                                build = build,
+                                onClick = { viewModel.selectBuild(build) }
+                            )
+                        }
                     }
                 }
             }
@@ -140,9 +170,9 @@ fun BuildOrderScreen(
     if (uiState.selectedBuild != null) {
         BuildDetailsDialog(
             build = uiState.selectedBuild!!,
-            onDismiss = { viewModel.selectBuild(null) },
-            onStartProduction = { viewModel.startProduction(uiState.selectedBuild!!.id) },
-            onCompleteOutput = { qty -> viewModel.completeBuildOutput(uiState.selectedBuild!!.id, qty) }
+            onStartProduction = { viewModel.startProduction(it) },
+            onCompleteOutput = { buildId, qty -> viewModel.completeBuildOutput(buildId, qty) },
+            onDismiss = { viewModel.selectBuild(null) }
         )
     }
 
@@ -150,8 +180,8 @@ fun BuildOrderScreen(
         AddBuildDialog(
             assemblyParts = uiState.assemblyParts,
             onDismiss = { viewModel.setAddDialogOpen(false) },
-            onConfirm = { ref, title, partId, qty, batch, targetDate, notes ->
-                viewModel.addBuildOrder(ref, title, partId, qty, batch, targetDate, notes)
+            onConfirm = { ref, title, partId, qty, batch, date, notes ->
+                viewModel.addBuildOrder(ref, title, partId, qty, batch, date, notes)
             }
         )
     }
@@ -163,31 +193,51 @@ private fun BuildOrderCard(
     onClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+        Column(
+            modifier = Modifier.padding(14.dp)
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = build.reference,
+                    text = "المرجع: ${build.reference}",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                 )
-                BuildStatusBadge(status = build.status)
+
+                Surface(
+                    color = when (build.status) {
+                        BuildStatus.COMPLETE -> MaterialTheme.colorScheme.primaryContainer
+                        BuildStatus.IN_PRODUCTION -> MaterialTheme.colorScheme.tertiaryContainer
+                        BuildStatus.CANCELLED -> MaterialTheme.colorScheme.errorContainer
+                        else -> MaterialTheme.colorScheme.surfaceVariant
+                    },
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = build.status.label,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = "المنتج: ${build.partName}",
+                text = "المنتج الأب: ${build.partName}",
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary
+                fontWeight = FontWeight.SemiBold
             )
 
             if (build.title.isNotBlank()) {
@@ -196,67 +246,53 @@ private fun BuildOrderCard(
                     text = build.title,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // مؤشر شريط التقدم للإنتاج المكتمل
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "الإنجاز: ${build.completedQuantity} / ${build.quantity} (${build.completionPercentage.toInt()}%)",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
+                    text = "الكمية: ${build.completedQuantity} / ${build.quantity}",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
                 )
-                if (build.batch.isNotBlank()) {
-                    Text(text = "التشغيلة: ${build.batch}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+
+                Text(
+                    text = "الإنجاز: ${build.completionPercentage}%",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.secondary
+                )
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             LinearProgressIndicator(
                 progress = { build.completionPercentage / 100f },
                 modifier = Modifier.fillMaxWidth().height(6.dp),
-                color = if (build.canComplete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
             )
         }
     }
 }
 
 @Composable
-private fun BuildStatusBadge(status: BuildStatus) {
-    val (color, label) = when (status) {
-        BuildStatus.PENDING -> MaterialTheme.colorScheme.surfaceVariant to "مسودة (Pending)"
-        BuildStatus.IN_PRODUCTION -> MaterialTheme.colorScheme.primaryContainer to "قيد التصنيع (Production)"
-        BuildStatus.COMPLETE -> MaterialTheme.colorScheme.secondaryContainer to "مكتمل (Complete)"
-        BuildStatus.CANCELLED -> MaterialTheme.colorScheme.errorContainer to "ملغي (Cancelled)"
-    }
-
-    Surface(color = color, shape = RoundedCornerShape(6.dp)) {
-        Text(
-            text = label,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-        )
-    }
-}
-
-@Composable
 private fun BuildDetailsDialog(
     build: BuildOrder,
-    onDismiss: () -> Unit,
-    onStartProduction: () -> Unit,
-    onCompleteOutput: (Double) -> Unit
+    onStartProduction: (buildId: Long) -> Unit,
+    onCompleteOutput: (buildId: Long, qty: Double) -> Unit,
+    onDismiss: () -> Unit
 ) {
-    var outputQtyText by remember { mutableStateOf("10.0") }
+    var outputQtyText by remember { mutableStateOf("1.0") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -264,31 +300,39 @@ private fun BuildDetailsDialog(
             TextButton(onClick = onDismiss) { Text("إغلاق") }
         },
         title = {
-            Text("أمر الإنتاج: ${build.reference}", fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("أمر تصنيع: ${build.reference}", fontWeight = FontWeight.Bold)
+
+                if (build.status == BuildStatus.PENDING) {
+                    Button(onClick = { onStartProduction(build.id) }) {
+                        Text("بدء التصنيع 🏭", fontSize = 11.sp)
+                    }
+                }
+            }
         },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("المنتج الأب: ${build.partName}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                if (build.title.isNotBlank()) Text("العنوان: ${build.title}", fontSize = 12.sp)
-                Text("حجم الإنتاج المطلوب: ${build.quantity}", fontSize = 12.sp)
-                Text("الكمية المنجزة فعلياً: ${build.completedQuantity}", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                Text("تاريخ الإنشاء: ${build.creationDate}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (build.targetDate.isNotBlank()) Text("تاريخ التسليم المستهدف: ${build.targetDate}", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                DetailRow("رقم الأمر:", "#${build.id}")
+                DetailRow("العنوان:", build.title.ifBlank { "-" })
+                DetailRow("المنتج الأب Target Part:", build.partName)
+                DetailRow("الحالة:", build.status.label)
+                DetailRow("تشغيلة الدفعة Batch:", build.batch.ifBlank { "-" })
+                DetailRow("تاريخ الإنجاز المستهدف Target Date:", build.targetDate.ifBlank { "-" })
+                DetailRow("الكمية المطلوبة Total Qty:", "${build.quantity}")
+                DetailRow("الكمية المكتملة Completed Qty:", "${build.completedQuantity}")
+                DetailRow("نسبة الإنجاز:", "${build.completionPercentage}%")
 
-                HorizontalDivider()
+                if (build.status == BuildStatus.IN_PRODUCTION && build.completedQuantity < build.quantity) {
+                    HorizontalDivider()
+                    Text("توريد مخرجات تصنيع جديدة (Build Output):", fontWeight = FontWeight.Bold, fontSize = 12.sp)
 
-                if (build.status == BuildStatus.PENDING) {
-                    Button(
-                        onClick = onStartProduction,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("بدء عملية التصنيع والإنتاج الفعلي ➔")
-                    }
-                } else if (build.status == BuildStatus.IN_PRODUCTION) {
-                    Text("توريد كمية منتجة جديدة (Complete Build Output):", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -297,17 +341,21 @@ private fun BuildDetailsDialog(
                         OutlinedTextField(
                             value = outputQtyText,
                             onValueChange = { outputQtyText = it },
-                            label = { Text("الكمية") },
+                            label = { Text("الكمية المخرجة") },
                             modifier = Modifier.weight(1f),
                             singleLine = true
                         )
+
                         Button(
                             onClick = {
-                                val q = outputQtyText.toDoubleOrNull() ?: 0.0
-                                if (q > 0) onCompleteOutput(q)
-                            }
+                                val qty = outputQtyText.toDoubleOrNull() ?: 0.0
+                                if (qty > 0.0) {
+                                    onCompleteOutput(build.id, qty)
+                                }
+                            },
+                            enabled = (outputQtyText.toDoubleOrNull() ?: 0.0) > 0.0
                         ) {
-                            Text("تأكيد الإنهاء")
+                            Text("توريد 📦", fontSize = 11.sp)
                         }
                     }
                 }
@@ -317,43 +365,58 @@ private fun BuildDetailsDialog(
 }
 
 @Composable
+private fun DetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text = label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text = value, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
 private fun AddBuildDialog(
     assemblyParts: List<Part>,
     onDismiss: () -> Unit,
-    onConfirm: (reference: String, title: String, partId: Long, qty: Double, batch: String, targetDate: String, notes: String) -> Unit
+    onConfirm: (
+        reference: String,
+        title: String,
+        partId: Long,
+        quantity: Double,
+        batch: String,
+        targetDate: String,
+        notes: String
+    ) -> Unit
 ) {
-    var reference by remember { mutableStateOf("BO-2025-002") }
+    var reference by remember { mutableStateOf("BO-2025-001") }
     var title by remember { mutableStateOf("") }
     var selectedPartId by remember { mutableStateOf<Long?>(assemblyParts.firstOrNull()?.id) }
-    var qtyText by remember { mutableStateOf("10.0") }
-    var batch by remember { mutableStateOf("BATCH-2025-02") }
-    var targetDate by remember { mutableStateOf("2025-03-15") }
+    var quantityText by remember { mutableStateOf("10.0") }
+    var batch by remember { mutableStateOf("") }
+    var targetDate by remember { mutableStateOf("2025-04-15") }
     var notes by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("إنشاء أمر إنتاج جديد (Build)", fontWeight = FontWeight.Bold) },
+        title = { Text(stringResource(Res.string.add_new_build), fontWeight = FontWeight.Bold) },
         confirmButton = {
             Button(
                 onClick = {
-                    if (reference.isNotBlank() && selectedPartId != null) {
-                        onConfirm(
-                            reference,
-                            title,
-                            selectedPartId!!,
-                            qtyText.toDoubleOrNull() ?: 1.0,
-                            batch,
-                            targetDate,
-                            notes
-                        )
+                    val pId = selectedPartId
+                    val qty = quantityText.toDoubleOrNull() ?: 1.0
+                    if (reference.isNotBlank() && pId != null && qty > 0.0) {
+                        onConfirm(reference, title, pId, qty, batch, targetDate, notes)
                     }
                 },
-                enabled = reference.isNotBlank() && selectedPartId != null
+                enabled = reference.isNotBlank() && selectedPartId != null && (quantityText.toDoubleOrNull() ?: 0.0) > 0.0
             ) {
-                Text("حفظ الأمر")
+                Text(stringResource(Res.string.save))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
+        },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
@@ -362,7 +425,7 @@ private fun AddBuildDialog(
                 OutlinedTextField(
                     value = reference,
                     onValueChange = { reference = it },
-                    label = { Text("الكود المرجعي (reference) *") },
+                    label = { Text("الرمز المرجعي لأمر الإنتاج (Reference) *") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -370,13 +433,15 @@ private fun AddBuildDialog(
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("عنوان أود وصف الهدف (title)") },
+                    label = { Text("عنوان أمر التصنيع") },
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Text("اختر المنتج الأب المجمع (assembly = true):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("اختر المنتج المجمع الأب (Assembly Target):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(assemblyParts, key = { "add-build-part-${it.id}" }) { p ->
+                    items(assemblyParts, key = { "build-assembly-${it.id}" }) { p ->
                         FilterChip(
                             selected = selectedPartId == p.id,
                             onClick = { selectedPartId = p.id },
@@ -385,28 +450,34 @@ private fun AddBuildDialog(
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = qtyText,
-                        onValueChange = { qtyText = it },
-                        label = { Text("كمية الإنتاج (quantity)") },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = batch,
-                        onValueChange = { batch = it },
-                        label = { Text("رقم التشغيلة (batch)") },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
-                    )
-                }
+                OutlinedTextField(
+                    value = quantityText,
+                    onValueChange = { quantityText = it },
+                    label = { Text("الكمية المطلوب تصنيعها (Quantity)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = batch,
+                    onValueChange = { batch = it },
+                    label = { Text("رقم التشغيلة/الدفعة (Batch Code)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 OutlinedTextField(
                     value = targetDate,
                     onValueChange = { targetDate = it },
-                    label = { Text("التاريخ المستهدف لإنهاء الإنتاج") },
+                    label = { Text("تاريخ الإنجاز المستهدف (YYYY-MM-DD)") },
                     singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("ملاحظات التصنيع") },
                     modifier = Modifier.fillMaxWidth()
                 )
             }

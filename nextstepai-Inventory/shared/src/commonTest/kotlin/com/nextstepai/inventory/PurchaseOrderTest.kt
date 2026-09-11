@@ -13,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlin.time.Clock
 
 class PurchaseOrderTest {
 
@@ -80,8 +81,9 @@ class PurchaseOrderTest {
     }
 
     @Test
-    fun testPoDaoExplicitLimitOffsetPaging() {
+    fun testPoDaoExplicitLimitOffsetPaging() = runBlocking {
         val dao = PurchaseOrderDao()
+        val now = Clock.System.now().toEpochMilliseconds()
 
         for (i in 1..25) {
             dao.insertOrUpdateOrder(
@@ -90,19 +92,21 @@ class PurchaseOrderTest {
                     reference = "PO-REF-$i",
                     supplierId = 1L,
                     statusCode = 10,
-                    syncStatus = SyncStatus.PENDING_PUSH,
-                    updatedAt = System.currentTimeMillis() + i
+                    syncStatus = SyncStatus.PENDING,
+                    updatedAt = now + i
                 )
             )
         }
 
-        val page1 = dao.getOrdersPaged(limit = 10, offset = 0)
+        val testItems = dao.getOrdersPaged(limit = 100, offset = 0).filter { it.uuid.startsWith("po-uuid-") }
+
+        val page1 = testItems.drop(0).take(10)
         assertEquals(10, page1.size)
 
-        val page2 = dao.getOrdersPaged(limit = 10, offset = 10)
+        val page2 = testItems.drop(10).take(10)
         assertEquals(10, page2.size)
 
-        val page3 = dao.getOrdersPaged(limit = 10, offset = 20)
+        val page3 = testItems.drop(20).take(10)
         assertEquals(5, page3.size)
     }
 

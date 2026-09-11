@@ -42,6 +42,7 @@ data class Part(
     val defaultSupplierId: Long? = null,
     val defaultExpiryDays: Int? = null,
     val minimumStock: Double = 0.0,
+    val maximumStock: Double? = null,
     val imageUrl: String? = null,
     val link: String = "",
     val notes: String = "",

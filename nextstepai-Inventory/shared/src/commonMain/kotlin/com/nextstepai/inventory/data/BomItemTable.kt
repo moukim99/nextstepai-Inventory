@@ -31,11 +31,34 @@ data class BomItem(
 )
 
 /**
+ * نموذج بيانات القطعة البديلة لبند قائمة المواد (BomItemSubstitute) المستوحى من InvenTree.
+ *
+ * @property id المعرف الرقمي الفريد لسجل البديل
+ * @property bomItemId معرف بند قائمة المواد الأصلي (BomItem)
+ * @property partId معرف القطعة البديلة المقترحة (Part)
+ */
+data class BomItemSubstitute(
+    val id: Long = 0L,
+    val bomItemId: Long,
+    val partId: Long
+)
+
+/**
+ * نموذج عرض مركّب للبديل يتضمن بيانات السجل والمعلومات الفنية للقطعة البديلة.
+ */
+data class BomItemSubstituteView(
+    val substitute: BomItemSubstitute,
+    val substitutePart: Part
+)
+
+/**
  * محاكاة جدول بنود قائمة المواد (BOM Table) وحفظ الشروط والقيود المنطقية.
  */
 class BomItemTable {
     private val bomItems = mutableListOf<BomItem>()
+    private val substitutes = mutableListOf<BomItemSubstitute>()
     private var nextId = 1L
+    private var nextSubstituteId = 1L
 
     init {
         seedSampleBomData()
@@ -75,6 +98,10 @@ class BomItemTable {
             "خطأ في قيد التجميع: لا يمكن للقطعة أن تحتوي على نفسها كمكون فرعي (partId != subPartId)"
         }
 
+        require(bomItem.quantity > 0.0) {
+            "الكمية المطلوبة يجب أن تكون قيمة موجبة أكبر من صفر (quantity > 0)."
+        }
+
         val exists = bomItems.any { it.partId == bomItem.partId && it.subPartId == bomItem.subPartId }
         require(!exists) {
             "المكون الفرعي مضاف بالفعل لهذا المنتج الأب. يرجى تعديل الكمية أو المراجع الهندسية بدلاً من التكرار."
@@ -107,10 +134,82 @@ class BomItemTable {
     }
 
     /**
-     * حذف بند قائمة مواد.
+     * حذف بند قائمة مواد وتطبيق الحذف المتتابع (CASCADE) على جميع البدائل المعرفة عليه في BomItemSubstitute.
      */
     fun deleteBomItem(id: Long): Boolean {
+        substitutes.removeIf { it.bomItemId == id }
         return bomItems.removeIf { it.id == id }
+    }
+
+    /**
+     * إدراج قطعة بديلة لبند قائمة المواد (BomItemSubstitute) مع تطبيق القيود:
+     * 1. قيد التفرد المركب (unique_together = ['bom_item', 'part']).
+     * 2. منع التطابق الذاتي (لا تكون القطعة البديلة هي المكون الأساسي sub_part نفسه).
+     * 3. منع التصادم مع القطعة التجميعية الأصل (partId != bom_item.part).
+     * 4. التأكد من أن القطعة صالحة كمكون تصنيعي (component = true).
+     */
+    fun insertSubstitute(
+        bomItemId: Long,
+        substitutePartId: Long,
+        partsList: List<Part> = emptyList()
+    ): BomItemSubstitute {
+        val bomItem = bomItems.find { it.id == bomItemId }
+            ?: throw IllegalArgumentException("بند قائمة المواد المطلوب غير موجود (#$bomItemId)")
+
+        // 1. منع التطابق الذاتي مع المكون الأساسي
+        require(substitutePartId != bomItem.subPartId) {
+            "لا يمكن إضافة نفس المكون الأساسي كقطعة بديلة لنفس البند! (Self-Substitution Prevention)"
+        }
+
+        // 2. منع التصادم مع القطعة التجميعية الأصل
+        require(substitutePartId != bomItem.partId) {
+            "لا يمكن استخدام القطعة المجمعة الأصلية كقطعة بديلة لمكونها الداخلي."
+        }
+
+        // 3. قيد التفرد المركب (unique_together)
+        val exists = substitutes.any { it.bomItemId == bomItemId && it.partId == substitutePartId }
+        require(!exists) {
+            "هذه القطعة البديلة مضافة بالفعل لهذا البند (قيد التفرد unique_together مُفعّل)."
+        }
+
+        // 4. التحقق من صلاحيتها كمكون فرعي إذا وُجدت قائمة القطع
+        val targetPart = partsList.find { it.id == substitutePartId }
+        if (targetPart != null) {
+            require(targetPart.component) {
+                "القطعة المحددة ليست معرفة كمكون تصنيعي (component = true)."
+            }
+        }
+
+        val substitute = BomItemSubstitute(
+            id = nextSubstituteId++,
+            bomItemId = bomItemId,
+            partId = substitutePartId
+        )
+        substitutes.add(substitute)
+        return substitute
+    }
+
+    /**
+     * جلب القطع البديلة المعرفة لبند قائمة مواد معين مع ربط بيانات القطعة للعرض.
+     */
+    fun getSubstitutesForBomItem(
+        bomItemId: Long,
+        partsList: List<Part> = emptyList()
+    ): List<BomItemSubstituteView> {
+        return substitutes
+            .filter { it.bomItemId == bomItemId }
+            .map { sub ->
+                val part = partsList.find { it.id == sub.partId }
+                    ?: Part(id = sub.partId, name = "قطعة بديلة #${sub.partId}", component = true)
+                BomItemSubstituteView(substitute = sub, substitutePart = part)
+            }
+    }
+
+    /**
+     * حذف قطعة بديلة محددة.
+     */
+    fun deleteSubstitute(id: Long): Boolean {
+        return substitutes.removeIf { it.id == id }
     }
 
     private fun calculateChecksum(item: BomItem): String {

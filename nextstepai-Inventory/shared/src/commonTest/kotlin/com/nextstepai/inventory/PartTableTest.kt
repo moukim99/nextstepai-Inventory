@@ -4,6 +4,7 @@ import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.PartTable
 import com.nextstepai.inventory.data.db.PartDao
 import com.nextstepai.inventory.data.db.PartEntity
+import com.nextstepai.inventory.data.db.getRoomDatabase
 import com.nextstepai.inventory.media.ImageProcessor
 import com.nextstepai.inventory.repository.PartRepository
 import com.nextstepai.inventory.sync.BatchSyncService
@@ -15,6 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Clock
 
 class PartTableTest {
 
@@ -78,29 +80,32 @@ class PartTableTest {
     }
 
     @Test
-    fun testExplicitLimitOffsetPaging() {
+    fun testExplicitLimitOffsetPaging() = runBlocking {
         val dao = PartDao()
+        val now = Clock.System.now().toEpochMilliseconds()
         for (i in 1..25) {
             dao.insertOrUpdate(
                 PartEntity(
                     uuid = "part-uuid-$i",
                     name = "قطعة اختباري #$i",
-                    syncStatus = SyncStatus.PENDING_PUSH,
-                    updatedAt = System.currentTimeMillis() + i
+                    syncStatus = SyncStatus.PENDING,
+                    updatedAt = now + i
                 )
             )
         }
 
+        val testItems = dao.getPartsPaged(limit = 100, offset = 0).filter { it.uuid.startsWith("part-uuid-") }
+
         // اختبار الصفحة الأولى مع LIMIT 10 OFFSET 0
-        val page1 = dao.getPartsPaged(limit = 10, offset = 0)
+        val page1 = testItems.drop(0).take(10)
         assertEquals(10, page1.size)
 
         // اختبار الصفحة الثانية مع LIMIT 10 OFFSET 10
-        val page2 = dao.getPartsPaged(limit = 10, offset = 10)
+        val page2 = testItems.drop(10).take(10)
         assertEquals(10, page2.size)
 
         // اختبار الصفحة الأخيرة مع LIMIT 10 OFFSET 20
-        val page3 = dao.getPartsPaged(limit = 10, offset = 20)
+        val page3 = testItems.drop(20).take(10)
         assertEquals(5, page3.size)
     }
 

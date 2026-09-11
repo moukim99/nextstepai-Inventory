@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="parts_count">
+        <item quantity="zero">No parts</item>
+        <item quantity="one">1 part</item>
+        <item quantity="two">2 parts</item>
+        <item quantity="few">%d parts</item>
+        <item quantity="many">%d parts</item>
+        <item quantity="other">%d parts</item>
+    </plurals>
+    <plurals name="stock_items_count">
+        <item quantity="zero">No stock items</item>
+        <item quantity="one">1 stock item</item>
+        <item quantity="two">2 stock items</item>
+        <item quantity="few">%d stock items</item>
+        <item quantity="many">%d stock items</item>
+        <item quantity="other">%d stock items</item>
+    </plurals>
+    <plurals name="companies_count">
+        <item quantity="zero">No companies</item>
+        <item quantity="one">1 company</item>
+        <item quantity="two">2 companies</item>
+        <item quantity="few">%d companies</item>
+        <item quantity="many">%d companies</item>
+        <item quantity="other">%d companies</item>
+    </plurals>
+    <plurals name="orders_count">
+        <item quantity="zero">No purchase orders</item>
+        <item quantity="one">1 purchase order</item>
+        <item quantity="two">2 purchase orders</item>
+        <item quantity="few">%d purchase orders</item>
+        <item quantity="many">%d purchase orders</item>
+        <item quantity="other">%d purchase orders</item>
+    </plurals>
+    <plurals name="builds_count">
+        <item quantity="zero">No build orders</item>
+        <item quantity="one">1 build order</item>
+        <item quantity="two">2 build orders</item>
+        <item quantity="few">%d build orders</item>
+        <item quantity="many">%d build orders</item>
+        <item quantity="other">%d build orders</item>
+    </plurals>
+    <plurals name="bom_items_count">
+        <item quantity="zero">No BOM components</item>
+        <item quantity="one">1 BOM component</item>
+        <item quantity="two">2 BOM components</item>
+        <item quantity="few">%d BOM components</item>
+        <item quantity="many">%d BOM components</item>
+        <item quantity="other">%d BOM components</item>
+    </plurals>
+</resources>
