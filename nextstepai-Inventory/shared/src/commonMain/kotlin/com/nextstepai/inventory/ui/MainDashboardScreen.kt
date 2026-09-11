@@ -20,6 +20,7 @@ fun MainDashboardScreen(
     onLogoutClick: () -> Unit,
     onOpenPartsClick: () -> Unit,
     onOpenBomClick: () -> Unit,
+    onOpenStockClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -72,7 +73,44 @@ fun MainDashboardScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // زر الانتقال المباشر إلى جدول إدارة المخزون الفعلي (StockItem)
+            ElevatedCard(
+                onClick = onOpenStockClick,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "📦 جدول إدارة المخزون الفعلي (StockItem)",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "تتبع الوحدات المادية على الرفوف والأرقام التسلسلية والشحنات والمواقع.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Text(
+                        text = "فتح المخزون ⬅",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             // زر الانتقال المباشر إلى جدول إدارة القطع والمكونات (Part)
             ElevatedCard(

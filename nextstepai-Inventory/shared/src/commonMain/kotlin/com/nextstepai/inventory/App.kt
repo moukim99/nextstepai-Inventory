@@ -18,9 +18,12 @@ import com.nextstepai.inventory.ui.LoginViewModel
 import com.nextstepai.inventory.ui.MainDashboardScreen
 import com.nextstepai.inventory.ui.PartManagementScreen
 import com.nextstepai.inventory.ui.PartViewModel
+import com.nextstepai.inventory.ui.StockScreen
+import com.nextstepai.inventory.ui.StockViewModel
 
 private enum class Screen {
     DASHBOARD,
+    STOCK,
     PARTS,
     BOM
 }
@@ -40,11 +43,18 @@ fun App() {
                 val loginViewModel = remember { LoginViewModel() }
                 val partViewModel = remember { PartViewModel() }
                 val bomViewModel = remember { BomViewModel() }
+                val stockViewModel = remember { StockViewModel() }
                 val loginUiState by loginViewModel.uiState.collectAsState()
                 var currentScreen by remember { mutableStateOf(Screen.DASHBOARD) }
 
                 if (loginUiState.isLoggedIn) {
                     when (currentScreen) {
+                        Screen.STOCK -> {
+                            StockScreen(
+                                viewModel = stockViewModel,
+                                onBackClick = { currentScreen = Screen.DASHBOARD }
+                            )
+                        }
                         Screen.PARTS -> {
                             PartManagementScreen(
                                 viewModel = partViewModel,
@@ -65,7 +75,8 @@ fun App() {
                                     loginViewModel.performLogout()
                                 },
                                 onOpenPartsClick = { currentScreen = Screen.PARTS },
-                                onOpenBomClick = { currentScreen = Screen.BOM }
+                                onOpenBomClick = { currentScreen = Screen.BOM },
+                                onOpenStockClick = { currentScreen = Screen.STOCK }
                             )
                         }
                     }
