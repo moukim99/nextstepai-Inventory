@@ -20,6 +20,8 @@ import androidx.room.TypeConverters
         PurchaseOrderEntity::class,
         PurchaseOrderLineEntity::class,
         BuildOrderEntity::class,
+        BuildOrderLineItemEntity::class,
+        BuildItemEntity::class,
         PartParameterTemplateEntity::class,
         PartCategoryParameterTemplateEntity::class,
         PartParameterEntity::class,
@@ -48,4 +50,6 @@ abstract class AppRoomDatabase : RoomDatabase() {
     abstract fun companyDao(): CompanyDao
     abstract fun purchaseOrderDao(): PurchaseOrderDao
     abstract fun buildOrderDao(): BuildOrderDao
+    abstract fun buildOrderLineItemDao(): BuildOrderLineItemDao
+    abstract fun buildItemDao(): BuildItemDao
 }

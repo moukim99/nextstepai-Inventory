@@ -34,14 +34,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
+import com.nextstepai.inventory.data.BuildItem
 import com.nextstepai.inventory.data.BuildOrder
+import com.nextstepai.inventory.data.BuildOrderLineItem
 import com.nextstepai.inventory.data.BuildStatus
 import com.nextstepai.inventory.data.Part
-import nextstepai_inventory.shared.generated.resources.Res
-import nextstepai_inventory.shared.generated.resources.add_new_build
-import nextstepai_inventory.shared.generated.resources.builds_count
-import nextstepai_inventory.shared.generated.resources.cancel
-import nextstepai_inventory.shared.generated.resources.save
+import com.nextstepai.inventory.data.StockLocation
+import nextstepai_inventory.shared.generated.resources.*
 
 /**
  * شاشة أوامر التصنيع والإنتاج (BuildOrder Screen).
@@ -82,7 +81,7 @@ fun BuildOrderScreen(
                     onValueChange = { viewModel.onSearchQueryChanged(it) },
                     placeholder = {
                         Text(
-                            text = "البحث بالرمز المرجعي، العنوان، المنتج، أو رقم التشغيلة...",
+                            text = stringResource(Res.string.search_build_hint),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -105,7 +104,7 @@ fun BuildOrderScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.QrCodeScanner,
-                                contentDescription = "مسح الباركود",
+                                contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -139,7 +138,7 @@ fun BuildOrderScreen(
                                     Text("كافة الحالات")
                                     Surface(
                                         shape = RoundedCornerShape(50),
-                                        color = if (uiState.statusFilter == null) Color.White.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant
+                                        color = if (uiState.statusFilter == null) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                                     ) {
                                         Text(
                                             text = "${uiState.builds.size}",
@@ -165,7 +164,7 @@ fun BuildOrderScreen(
                                 ) {
                                     val statusDotColor = when (status) {
                                         BuildStatus.IN_PRODUCTION -> MaterialTheme.colorScheme.primary
-                                        BuildStatus.COMPLETE -> Color(0xFF10B981)
+                                        BuildStatus.COMPLETE -> MaterialTheme.colorScheme.secondary
                                         BuildStatus.CANCELLED -> MaterialTheme.colorScheme.error
                                         else -> MaterialTheme.colorScheme.outline
                                     }
@@ -178,7 +177,7 @@ fun BuildOrderScreen(
                                     Text(status.label)
                                     Surface(
                                         shape = RoundedCornerShape(50),
-                                        color = if (uiState.statusFilter == status) Color.White.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant
+                                        color = if (uiState.statusFilter == status) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                                     ) {
                                         Text(
                                             text = "$count",
@@ -217,7 +216,7 @@ fun BuildOrderScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "build order ${uiState.builds.size}",
+                            text = pluralStringResource(Res.plurals.builds_count, uiState.builds.size, uiState.builds.size),
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 12.sp
@@ -247,8 +246,15 @@ fun BuildOrderScreen(
     if (uiState.selectedBuild != null) {
         BuildDetailsDialog(
             build = uiState.selectedBuild!!,
+            stockLocations = uiState.stockLocations,
+            lineItems = uiState.selectedLineItems,
+            allocatedBuildItems = uiState.allocatedBuildItems,
             onStartProduction = { viewModel.startProduction(it) },
+            onCancelBuild = { viewModel.cancelBuildOrder(it) },
+            onAutoAllocate = { viewModel.autoAllocateBuildOrder(it) },
             onCompleteOutput = { buildId, qty -> viewModel.completeBuildOutput(buildId, qty) },
+            onAllocateStock = { id, qty -> viewModel.allocateLineItemStock(id, qty) },
+            onConsumeStock = { id, qty -> viewModel.consumeLineItemStock(id, qty) },
             onDismiss = { viewModel.selectBuild(null) }
         )
     }
@@ -256,9 +262,26 @@ fun BuildOrderScreen(
     if (uiState.isAddBuildDialogOpen) {
         AddBuildSheetDialog(
             assemblyParts = uiState.assemblyParts,
+            stockLocations = uiState.stockLocations,
+            existingBuilds = uiState.builds,
             onDismiss = { viewModel.setAddDialogOpen(false) },
-            onConfirm = { ref, title, partId, qty, batch, date, notes ->
-                viewModel.addBuildOrder(ref, title, partId, qty, batch, date, notes)
+            onConfirm = { ref, title, partId, qty, batch, date, takeFromLoc, destLoc, parentId, salesOrderId, issuedBy, resp, notes, link ->
+                viewModel.addBuildOrder(
+                    reference = ref,
+                    title = title,
+                    partId = partId,
+                    quantity = qty,
+                    batch = batch,
+                    targetDate = date,
+                    takeFromLocationId = takeFromLoc,
+                    destinationLocationId = destLoc,
+                    parentId = parentId,
+                    salesOrderId = salesOrderId,
+                    issuedBy = issuedBy,
+                    responsible = resp,
+                    notes = notes,
+                    link = link
+                )
             }
         )
     }
@@ -298,19 +321,19 @@ private fun BuildOrdersTopBar(
                     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = "رجوع",
+                        contentDescription = stringResource(Res.string.back),
                         tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.scale(if (isRtl) -1f else 1f, 1f)
                     )
                 }
 
                 Text(
-                    text = "أوامر التصنيع والإنتاج (Build)",
+                    text = stringResource(Res.string.build_orders_title),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 17.sp
                     ),
-                    color = Color(0xFF1E1B4B)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
@@ -334,7 +357,7 @@ private fun BuildOrdersTopBar(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "أمر إنتاج جديد",
+                        text = stringResource(Res.string.add_new_build),
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                     )
                 }
@@ -375,14 +398,14 @@ private fun BuildOrderRichCard(
                 Surface(
                     shape = RoundedCornerShape(50),
                     color = when (build.status) {
-                        BuildStatus.IN_PRODUCTION -> Color(0xFFEEF2FF)
-                        BuildStatus.COMPLETE -> Color(0xFFECFDF5)
+                        BuildStatus.IN_PRODUCTION -> MaterialTheme.colorScheme.primaryContainer
+                        BuildStatus.COMPLETE -> MaterialTheme.colorScheme.secondaryContainer
                         BuildStatus.CANCELLED -> MaterialTheme.colorScheme.errorContainer
                         else -> MaterialTheme.colorScheme.surfaceVariant
                     },
                     border = BorderStroke(1.dp, when (build.status) {
-                        BuildStatus.IN_PRODUCTION -> Color(0xFFE0E7FF)
-                        BuildStatus.COMPLETE -> Color(0xFFA7F3D0)
+                        BuildStatus.IN_PRODUCTION -> MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                        BuildStatus.COMPLETE -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f)
                         else -> Color.Transparent
                     })
                 ) {
@@ -395,7 +418,7 @@ private fun BuildOrderRichCard(
                             PulsingDot(color = MaterialTheme.colorScheme.primary)
                         } else {
                             val dotColor = when (build.status) {
-                                BuildStatus.COMPLETE -> Color(0xFF10B981)
+                                BuildStatus.COMPLETE -> MaterialTheme.colorScheme.secondary
                                 BuildStatus.CANCELLED -> MaterialTheme.colorScheme.error
                                 else -> MaterialTheme.colorScheme.outline
                             }
@@ -407,11 +430,11 @@ private fun BuildOrderRichCard(
                             )
                         }
                         Text(
-                            text = "${build.status.label} (${if (build.status == BuildStatus.IN_PRODUCTION) "In Production" else if (build.status == BuildStatus.COMPLETE) "Complete" else "Pending"})",
+                            text = build.status.label,
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                             color = when (build.status) {
                                 BuildStatus.IN_PRODUCTION -> MaterialTheme.colorScheme.primary
-                                BuildStatus.COMPLETE -> Color(0xFF059669)
+                                BuildStatus.COMPLETE -> MaterialTheme.colorScheme.secondary
                                 BuildStatus.CANCELLED -> MaterialTheme.colorScheme.error
                                 else -> MaterialTheme.colorScheme.onSurfaceVariant
                             }
@@ -426,12 +449,12 @@ private fun BuildOrderRichCard(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFFE0F2FE)
+                        color = MaterialTheme.colorScheme.tertiaryContainer
                     ) {
                         Text(
-                            text = if (build.reference.contains("001")) "عاجل" else "عادي",
+                            text = if (build.reference.contains("001")) stringResource(Res.string.urgent) else stringResource(Res.string.normal),
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = Color(0xFF0369A1),
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
@@ -480,7 +503,7 @@ private fun BuildOrderRichCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // صندوق تفاصيل رقم التشغيلة والموعد (التاريخ على اليمين | رقم التشغيلة على اليسار)
+            // صندوق تفاصيل رقم التشغيلة والموعد
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -491,10 +514,9 @@ private fun BuildOrderRichCard(
                     modifier = Modifier.padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // اليمين: التاريخ المستهدف
                     Column {
                         Text(
-                            text = "التاريخ المستهدف:",
+                            text = stringResource(Res.string.target_date),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -505,10 +527,9 @@ private fun BuildOrderRichCard(
                         )
                     }
 
-                    // اليسار: رقم التشغيلة
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            text = "رقم التشغيلة:",
+                            text = stringResource(Res.string.batch_number),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -527,8 +548,8 @@ private fun BuildOrderRichCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f) else Color(0xFFECFDF5),
-                border = BorderStroke(1.dp, if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.error.copy(alpha = 0.2f) else Color(0xFFA7F3D0))
+                color = if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f) else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                border = BorderStroke(1.dp, if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.error.copy(alpha = 0.2f) else MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f))
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -542,18 +563,18 @@ private fun BuildOrderRichCard(
                         Icon(
                             imageVector = if (build.status == BuildStatus.CANCELLED) Icons.Default.Warning else Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.error else Color(0xFF065F46),
+                            tint = if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = if (build.status == BuildStatus.CANCELLED) "نقص في المكونات (مطلوبة)" else "المكونات متوفرة بالكامل (100%)",
+                            text = if (build.status == BuildStatus.CANCELLED) stringResource(Res.string.bom_shortage) else stringResource(Res.string.bom_available_full),
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.error else Color(0xFF065F46)
+                            color = if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
 
                     Text(
-                        text = "12/12 عنصر BOM",
+                        text = pluralStringResource(Res.plurals.bom_items_count, 12, 12),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -627,7 +648,7 @@ private fun BuildOrderRichCard(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = if (build.status == BuildStatus.IN_PRODUCTION) "تحديث الإنجاز" else "بدء / تفاصيل",
+                            text = if (build.status == BuildStatus.IN_PRODUCTION) stringResource(Res.string.btn_update_progress) else stringResource(Res.string.btn_start_details),
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                         )
                     }
@@ -650,7 +671,7 @@ private fun BuildOrderRichCard(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "قائمة القطع (BOM)",
+                            text = stringResource(Res.string.btn_bom_list),
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -667,18 +688,27 @@ private fun BuildOrderRichCard(
 @Composable
 private fun BuildDetailsDialog(
     build: BuildOrder,
+    stockLocations: List<StockLocation> = emptyList(),
+    lineItems: List<BuildOrderLineItem> = emptyList(),
+    allocatedBuildItems: List<BuildItem> = emptyList(),
     onStartProduction: (buildId: Long) -> Unit,
+    onCancelBuild: (buildId: Long) -> Unit,
+    onAutoAllocate: (buildId: Long) -> Unit = {},
     onCompleteOutput: (buildId: Long, qty: Double) -> Unit,
+    onAllocateStock: (lineItemId: Long, qty: Double) -> Unit = { _, _ -> },
+    onConsumeStock: (lineItemId: Long, qty: Double) -> Unit = { _, _ -> },
     onDismiss: () -> Unit
 ) {
     var outputQtyText by remember { mutableStateOf("1.0") }
+    val takeFromLocName = stockLocations.find { it.id == build.takeFromLocationId }?.name ?: (if (build.takeFromLocationId != null) "موقع #${build.takeFromLocationId}" else "المستودع الرئيسي (افتراضي)")
+    val destLocName = stockLocations.find { it.id == build.destinationLocationId }?.name ?: (if (build.destinationLocationId != null) "موقع #${build.destinationLocationId}" else "مخزن المنتجات النهائية (افتراضي)")
 
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(24.dp),
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("إغلاق", fontWeight = FontWeight.Bold)
+                Text(stringResource(Res.string.dialog_close), fontWeight = FontWeight.Bold)
             }
         },
         title = {
@@ -687,14 +717,26 @@ private fun BuildDetailsDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("أمر تصنيع: ${build.reference}", fontWeight = FontWeight.Bold)
+                Text(stringResource(Res.string.build_order_ref_label, build.reference), fontWeight = FontWeight.Bold)
 
-                if (build.status == BuildStatus.PENDING) {
-                    Button(
-                        onClick = { onStartProduction(build.id) },
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("بدء التصنيع 🏭", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (build.status == BuildStatus.PENDING) {
+                        Button(
+                            onClick = { onStartProduction(build.id) },
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(stringResource(Res.string.btn_start_production), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    if (build.status != BuildStatus.COMPLETE && build.status != BuildStatus.CANCELLED) {
+                        OutlinedButton(
+                            onClick = { onCancelBuild(build.id) },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text(stringResource(Res.string.btn_cancel_build), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -710,15 +752,120 @@ private fun BuildDetailsDialog(
                 DetailRow("العنوان:", build.title.ifBlank { "-" })
                 DetailRow("المنتج الأب Target Part:", build.partName)
                 DetailRow("الحالة:", build.status.label)
+                DetailRow("مستودع سحب المكونات (Take From):", takeFromLocName)
+                DetailRow("مستودع الاستلام (Destination):", destLocName)
+                if (build.parentId != null) DetailRow("الأمر الأب (Parent Build):", "#${build.parentId}")
+                if (build.salesOrderId != null) DetailRow("طلب المبيعات المرتبط (Sales Order):", "#${build.salesOrderId}")
+                DetailRow("المُصدر (Issued By):", build.issuedBy.ifBlank { "مدير النظام" })
+                DetailRow("المسؤول (Responsible):", build.responsible.ifBlank { "فريق الإنتاج والتجميع" })
                 DetailRow("تشغيلة الدفعة Batch:", build.batch.ifBlank { "-" })
+                DetailRow("تاريخ الإنشاء Creation Date:", build.creationDate.ifBlank { "-" })
+                DetailRow("تاريخ بدء الإنتاج Start Date:", build.startDate.ifBlank { "-" })
                 DetailRow("تاريخ الإنجاز المستهدف Target Date:", build.targetDate.ifBlank { "-" })
+                if (build.completionDate.isNotBlank()) DetailRow("تاريخ الإكمال الفعلي Completion Date:", build.completionDate)
                 DetailRow("الكمية المطلوبة Total Qty:", "${build.quantity}")
                 DetailRow("الكمية المكتملة Completed Qty:", "${build.completedQuantity}")
                 DetailRow("نسبة الإنجاز:", "${build.completionPercentage}%")
+                if (build.link.isNotBlank()) DetailRow("رابط الوثائق الخارجي Link:", build.link)
+                if (build.notes.isNotBlank()) DetailRow("الملاحظات والتعليمات Notes:", build.notes)
+
+                // زر التخصيص التلقائي للمخزون Auto-Allocate
+                if (build.status != BuildStatus.CANCELLED && build.status != BuildStatus.COMPLETE) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Button(
+                        onClick = { onAutoAllocate(build.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                    ) {
+                        Text(stringResource(Res.string.btn_auto_allocate), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // قسم سجلات التخصيص المحجوزة من المخزون (BuildItems Stock Allocations)
+                if (allocatedBuildItems.isNotEmpty()) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Text(stringResource(Res.string.allocated_stock_title), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+
+                    allocatedBuildItems.forEach { alloc ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f))
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(alloc.stockItemName, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("الكمية المحجوزة: ${alloc.quantity}", fontSize = 10.sp)
+                                    if (alloc.installIntoStockItemId != null) Text("مركّبة في الوحدة: #${alloc.installIntoStockItemId}", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+                                }
+                                if (alloc.notes.isNotBlank()) Text(alloc.notes, fontSize = 10.sp, color = MaterialTheme.colorScheme.outline)
+                            }
+                        }
+                    }
+                }
+
+                // قسم بنود ومكونات الـ BOM لأمر التصنيع (BuildOrderLineItems)
+                if (lineItems.isNotEmpty()) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Text(stringResource(Res.string.line_items_title), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+
+                    lineItems.forEach { line ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(line.subPartName.ifBlank { "مكون BOM #${line.bomItemId}" }, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("مطلوب: ${line.quantity}", fontSize = 11.sp)
+                                    Text("محجوز: ${line.allocatedQuantity}", fontSize = 11.sp, color = if (line.isFullyAllocated) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary)
+                                    Text("مستهلك: ${line.consumedQuantity}", fontSize = 11.sp)
+                                }
+
+                                LinearProgressIndicator(
+                                    progress = { (line.allocationPercentage / 100f).coerceIn(0f, 1f) },
+                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)),
+                                    color = if (line.isFullyAllocated) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+                                )
+
+                                if (build.status != BuildStatus.CANCELLED && build.status != BuildStatus.COMPLETE) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(
+                                            onClick = { onAllocateStock(line.id, 10.0) },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(stringResource(Res.string.btn_allocate_plus), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+
+                                        if (line.allocatedQuantity > 0) {
+                                            TextButton(
+                                                onClick = { onConsumeStock(line.id, 10.0) },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(stringResource(Res.string.btn_consume_plus), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 if (build.status == BuildStatus.IN_PRODUCTION && (build.completedQuantity < build.quantity)) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                    Text("توريد مخرجات تصنيع جديدة (Build Output):", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text(stringResource(Res.string.build_output_title), fontWeight = FontWeight.Bold, fontSize = 12.sp)
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -728,7 +875,7 @@ private fun BuildDetailsDialog(
                         OutlinedTextField(
                             value = outputQtyText,
                             onValueChange = { outputQtyText = it },
-                            label = { Text("الكمية المخرجة") },
+                            label = { Text(stringResource(Res.string.output_qty_label)) },
                             modifier = Modifier.weight(1f),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
@@ -744,7 +891,7 @@ private fun BuildDetailsDialog(
                             enabled = (outputQtyText.toDoubleOrNull() ?: 0.0) > 0.0,
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("توريد 📦", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(stringResource(Res.string.btn_supply_output), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -770,6 +917,8 @@ private fun DetailRow(label: String, value: String) {
 @Composable
 private fun AddBuildSheetDialog(
     assemblyParts: List<Part>,
+    stockLocations: List<StockLocation> = emptyList(),
+    existingBuilds: List<BuildOrder> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (
         reference: String,
@@ -778,7 +927,14 @@ private fun AddBuildSheetDialog(
         quantity: Double,
         batch: String,
         targetDate: String,
-        notes: String
+        takeFromLocationId: Long?,
+        destinationLocationId: Long?,
+        parentId: Long?,
+        salesOrderId: Long?,
+        issuedBy: String,
+        responsible: String,
+        notes: String,
+        link: String
     ) -> Unit
 ) {
     var reference by remember { mutableStateOf("BO-2025-003") }
@@ -786,7 +942,14 @@ private fun AddBuildSheetDialog(
     var selectedPartId by remember { mutableStateOf<Long?>(assemblyParts.firstOrNull()?.id) }
     var quantityText by remember { mutableStateOf("10.0") }
     var batch by remember { mutableStateOf("BATCH-2025-03") }
-    var targetDate by remember { mutableStateOf("03/25/2025") }
+    var targetDate by remember { mutableStateOf("2025-03-25") }
+    var selectedTakeFromLocationId by remember { mutableStateOf<Long?>(stockLocations.firstOrNull()?.id) }
+    var selectedDestinationLocationId by remember { mutableStateOf<Long?>(stockLocations.lastOrNull()?.id) }
+    var selectedParentId by remember { mutableStateOf<Long?>(null) }
+    var salesOrderIdText by remember { mutableStateOf("") }
+    var issuedBy by remember { mutableStateOf("مدير الإنتاج") }
+    var responsible by remember { mutableStateOf("فريق التشغيل والتجميع") }
+    var link by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -818,7 +981,12 @@ private fun AddBuildSheetDialog(
                     val pId = selectedPartId
                     val qty = quantityText.toDoubleOrNull() ?: 1.0
                     if (reference.isNotBlank() && pId != null && qty > 0.0) {
-                        onConfirm(reference, title, pId, qty, batch, targetDate, notes)
+                        onConfirm(
+                            reference, title, pId, qty, batch, targetDate,
+                            selectedTakeFromLocationId, selectedDestinationLocationId,
+                            selectedParentId, salesOrderIdText.toLongOrNull(),
+                            issuedBy, responsible, notes, link
+                        )
                     }
                 },
                 enabled = reference.isNotBlank() && selectedPartId != null && (quantityText.toDoubleOrNull() ?: 0.0) > 0.0,
@@ -881,7 +1049,7 @@ private fun AddBuildSheetDialog(
                 )
 
                 // اختيار المنتج الأب المجمع
-                Text("اختر المنتج الأب المجمع (assembly = true):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text("اختر المنتج الأب المجمع (assembly = true) *:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(assemblyParts, key = { "build-assembly-${it.id}" }) { p ->
                         FilterChip(
@@ -910,7 +1078,7 @@ private fun AddBuildSheetDialog(
                     }
 
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("الكمية (quantity)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text("الكمية (quantity) *", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         OutlinedTextField(
                             value = quantityText,
                             onValueChange = { quantityText = it },
@@ -922,8 +1090,63 @@ private fun AddBuildSheetDialog(
                     }
                 }
 
+                // مستودع سحب المكونات
+                if (stockLocations.isNotEmpty()) {
+                    Text("مستودع سحب المكونات (take_from):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(stockLocations, key = { "take-loc-${it.id}" }) { loc ->
+                            FilterChip(
+                                selected = selectedTakeFromLocationId == loc.id,
+                                onClick = { selectedTakeFromLocationId = loc.id },
+                                label = { Text(loc.name) },
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+                    }
+
+                    Text("مستودع استلام المنتج النهائي (destination):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(stockLocations, key = { "dest-loc-${it.id}" }) { loc ->
+                            FilterChip(
+                                selected = selectedDestinationLocationId == loc.id,
+                                onClick = { selectedDestinationLocationId = loc.id },
+                                label = { Text(loc.name) },
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+                    }
+                }
+
+                // المستخدم المنشئ والمسؤول
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("المُصدر (issued_by)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        OutlinedTextField(
+                            value = issuedBy,
+                            onValueChange = { issuedBy = it },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("المسؤول (responsible)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        OutlinedTextField(
+                            value = responsible,
+                            onValueChange = { responsible = it },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                }
+
                 // التاريخ المستهدف
-                Text("التاريخ المستهدف لإنهاء الإنتاج", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text("التاريخ المستهدف لإنهاء الإنتاج (target_date)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = targetDate,
                     onValueChange = { targetDate = it },
@@ -938,10 +1161,43 @@ private fun AddBuildSheetDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
+
+                // ربط بأمر بيع رقم
+                Text("رقم أمر البيع المرتبط (sales_order)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                OutlinedTextField(
+                    value = salesOrderIdText,
+                    onValueChange = { salesOrderIdText = it },
+                    placeholder = { Text("مثال: 101") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                // رابط خارجي وملاحظات
+                Text("رابط الوثائق الخارجي (link)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                OutlinedTextField(
+                    value = link,
+                    onValueChange = { link = it },
+                    placeholder = { Text("https://...") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Text("ملاحظات وتشغيلات إضافية (notes)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    placeholder = { Text("أدخل تعليمات التجميع...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
             }
         }
     )
 }
+
 
 /**
  * نقطة نابضة تفاعلية مخصصة Pulsing Dot

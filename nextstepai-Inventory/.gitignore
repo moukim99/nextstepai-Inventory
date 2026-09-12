@@ -1,19 +1,78 @@
-*.iml
-.kotlin
-.gradle
+# ============================================
+# Gradle / Kotlin
+# ============================================
+.gradle/
+build/
 **/build/
-xcuserdata
-!src/**/build/
+out/
+.kotlin/
+*.class
+*.log
+hs_err_pid*
+.attach_pid*
+
+# ============================================
+# Android
+# ============================================
+*.apk
+*.aab
+*.ap_
+*.dex
 local.properties
-.idea
-.DS_Store
-captures
-.externalNativeBuild
-.cxx
-*.xcodeproj/*
-!*.xcodeproj/project.pbxproj
-!*.xcodeproj/xcshareddata/
-!*.xcodeproj/project.xcworkspace/
-!*.xcworkspace/contents.xcworkspacedata
-**/xcshareddata/WorkspaceSettings.xcsettings
+captures/
+.externalNativeBuild/
+.cxx/
+release/
+
+# Signing (never commit these)
+*.jks
+*.keystore
+key.properties
+
+# ============================================
+# Android Studio / IntelliJ
+# ============================================
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# ============================================
+# Compose Multiplatform (Desktop target)
+# ============================================
+# Packaged binaries (dmg/msi/deb) land under build/, already ignored above.
+# Add these only if you later enable a Web/Wasm target:
+# kotlin-js-store/
+
+# ============================================
+# Room
+# ============================================
+# NOTE: Do NOT ignore the Room schema export folder (commonly "schemas/").
+# Those JSON files are needed for migration testing/history and must be
+# committed. This section is intentionally empty as a reminder.
+
+# ============================================
+# Cloudflare Workers (Wrangler) — if the backend lives in this repo
+# ============================================
+.wrangler/
+.dev.vars
+.dev.vars.*
+wrangler.toml.bak
 node_modules/
+dist/
+
+# ============================================
+# Secrets / environment files (any toolchain)
+# ============================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.p12
+
+# ============================================
+# OS-specific junk
+# ============================================
+.DS_Store
+Thumbs.db
+Desktop.ini
