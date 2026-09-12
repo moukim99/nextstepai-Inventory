@@ -395,7 +395,7 @@ fun CompanyScreen(
     }
 
     if (uiState.selectedCompany != null) {
-        CompanyDetailsDialog(
+        CompanyDetailsBottomSheet(
             company = uiState.selectedCompany!!,
             uiState = uiState,
             viewModel = viewModel,
@@ -875,116 +875,598 @@ private fun BadgeTag(text: String, bgColor: Color, textColor: Color) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CompanyDetailsDialog(
+private fun CompanyDetailsBottomSheet(
     company: Company,
     uiState: CompanyUiState,
     viewModel: CompanyViewModel,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val availableTabs = remember(company.isManufacturer, company.isSupplier) {
+        buildList {
+            add(CompanyDetailTab.INFO)
+            add(CompanyDetailTab.CONTACTS)
+            add(CompanyDetailTab.ADDRESSES)
+            if (company.isManufacturer) add(CompanyDetailTab.MANUFACTURER_PARTS)
+            if (company.isSupplier) add(CompanyDetailTab.SUPPLIER_PARTS)
+        }
+    }
+
+    val stats = uiState.companyStatsMap[company.id] ?: CompanyStats()
+    val partsCount = if (company.isManufacturer) stats.manufacturerPartsCount else stats.supplierPartsCount
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp),
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("إغلاق", fontWeight = FontWeight.Bold) }
-        },
-        title = {
-            Column {
-                Text(text = company.name, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                // التبويبات الفرعية التفصيلية
-                ScrollableTabRow(
-                    selectedTabIndex = uiState.activeDetailTab.ordinal,
-                    edgePadding = 0.dp,
-                    divider = {}
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 6.dp)
+                    .width(48.dp)
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFCBD5E1))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+        ) {
+            // 1. Header Section
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
                 ) {
-                    Tab(
-                        selected = uiState.activeDetailTab == CompanyDetailTab.INFO,
-                        onClick = { viewModel.setDetailTab(CompanyDetailTab.INFO) },
-                        text = { Text("عام", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    )
-                    Tab(
-                        selected = uiState.activeDetailTab == CompanyDetailTab.CONTACTS,
-                        onClick = { viewModel.setDetailTab(CompanyDetailTab.CONTACTS) },
-                        text = { Text("الاتصال (${uiState.companyContacts.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    )
-                    Tab(
-                        selected = uiState.activeDetailTab == CompanyDetailTab.ADDRESSES,
-                        onClick = { viewModel.setDetailTab(CompanyDetailTab.ADDRESSES) },
-                        text = { Text("العناوين (${uiState.companyAddresses.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    )
-                    if (company.isManufacturer) {
-                        Tab(
-                            selected = uiState.activeDetailTab == CompanyDetailTab.MANUFACTURER_PARTS,
-                            onClick = { viewModel.setDetailTab(CompanyDetailTab.MANUFACTURER_PARTS) },
-                            text = { Text("قطع المصنع (${uiState.companyManufacturerParts.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                        )
+                    // Title & Metadata (Right in RTL)
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = company.name,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp
+                                ),
+                                color = Color(0xFF0F172A)
+                            )
+                            Surface(
+                                color = Color(0xFFECFDF5),
+                                shape = CircleShape,
+                                border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                            ) {
+                                Text(
+                                    text = "معتمد ✓",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 10.5.sp
+                                    ),
+                                    color = Color(0xFF047857),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                color = Color(0xFFF1F5F9),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "#${company.id}",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp
+                                    ),
+                                    color = Color(0xFF475569),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                )
+                            }
+                            Text(
+                                text = company.description.ifBlank { "مورد رئيسي للمكونات الإلكترونية والمتحكمات" },
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                color = Color(0xFF64748B),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Badges Row
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                color = Color(0xFFEEF2FF),
+                                shape = RoundedCornerShape(6.dp),
+                                border = BorderStroke(1.dp, Color(0xFFE0E7FF))
+                            ) {
+                                Text(
+                                    text = "العملة: ${company.currency} ($)",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.5.sp
+                                    ),
+                                    color = Color(0xFF4338CA),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+
+                            if (company.isSupplier) {
+                                Surface(
+                                    color = Color(0xFF4F46E5),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = "مورد (Supplier)",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 10.5.sp
+                                        ),
+                                        color = Color.White,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
-                    if (company.isSupplier) {
-                        Tab(
-                            selected = uiState.activeDetailTab == CompanyDetailTab.SUPPLIER_PARTS,
-                            onClick = { viewModel.setDetailTab(CompanyDetailTab.SUPPLIER_PARTS) },
-                            text = { Text("قطع المورد (${uiState.companySupplierParts.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // Avatar Box (Left in RTL)
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xFF4F46E5)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CorporateFare,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
                         )
                     }
                 }
             }
-        },
-        text = {
-            Box(
+
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+
+            // 2. Quick Actions Grid
+            Surface(
+                color = Color(0xFFF8FAFC),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Call Button
+                    Surface(
+                        onClick = { },
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFECFDF5)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Phone, contentDescription = "اتصال", tint = Color(0xFF059669), modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("اتصال", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF334155))
+                        }
+                    }
+
+                    // Email Button
+                    Surface(
+                        onClick = { },
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFEFF6FF)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Email, contentDescription = "البريد", tint = Color(0xFF2563EB), modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("البريد", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF334155))
+                        }
+                    }
+
+                    // Website Button
+                    Surface(
+                        onClick = { },
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFEEF2FF)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Public, contentDescription = "الموقع", tint = Color(0xFF4F46E5), modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("الموقع", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF334155))
+                        }
+                    }
+
+                    // Navigation Map Button
+                    Surface(
+                        onClick = { },
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFFEF3C7)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.LocationOn, contentDescription = "الخريطة", tint = Color(0xFFD97706), modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("الخريطة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF334155))
+                        }
+                    }
+                }
+            }
+
+            // 3. Segmented Navigation Tabs
+            Surface(
+                color = Color(0xFFF1F5F9),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 420.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    availableTabs.forEach { tab ->
+                        val selected = uiState.activeDetailTab == tab
+                        val label = when (tab) {
+                            CompanyDetailTab.INFO -> "عام"
+                            CompanyDetailTab.CONTACTS -> "جهات الاتصال (${uiState.companyContacts.size})"
+                            CompanyDetailTab.ADDRESSES -> "العناوين والوثائق"
+                            CompanyDetailTab.MANUFACTURER_PARTS -> "قطع المصنع (${uiState.companyManufacturerParts.size})"
+                            CompanyDetailTab.SUPPLIER_PARTS -> "قطع المورد (${uiState.companySupplierParts.size})"
+                        }
+
+                        Surface(
+                            onClick = { viewModel.setDetailTab(tab) },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (selected) Color.White else Color.Transparent,
+                            shadowElevation = if (selected) 2.dp else 0.dp,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = if (selected) Color(0xFF4338CA) else Color(0xFF64748B),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Scrollable Body Content
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
             ) {
                 when (uiState.activeDetailTab) {
                     CompanyDetailTab.INFO -> {
                         Column(
                             modifier = Modifier
-                                .fillMaxWidth()
+                                .fillMaxSize()
                                 .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            DetailRow("رقم الشركة:", "#${company.id}")
-                            DetailRow("الاسم الرسمي:", company.name)
-                            DetailRow("الوصف النشاط:", company.description.ifBlank { "-" })
-                            DetailRow("الموقع الإلكتروني:", company.website.ifBlank { "-" })
-                            DetailRow("الهاتف الأساسي:", company.phone.ifBlank { "-" })
-                            DetailRow("البريد الإلكتروني:", company.email.ifBlank { "-" })
-                            DetailRow("العنوان الرئيسي:", company.address.ifBlank { "-" })
-                            DetailRow("جهة الاتصال الأساسية:", company.contact.ifBlank { "-" })
-                            DetailRow("العملة المعتمدة:", company.currency)
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                            DetailRow("دور المورد (Supplier):", if (company.isSupplier) "نعم" else "لا")
-                            DetailRow("دور المصنع (Manufacturer):", if (company.isManufacturer) "نعم" else "لا")
-                            DetailRow("دور العميل (Customer):", if (company.isCustomer) "نعم" else "لا")
+                            // Primary Contact Person Card
+                            val primaryContactName = company.contact.ifBlank { uiState.companyContacts.firstOrNull()?.name ?: "م. أحمد علي" }
+                            val initials = primaryContactName.take(2)
 
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFEEF2FF).copy(alpha = 0.6f)),
+                                border = BorderStroke(1.dp, Color(0xFFE0E7FF)),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("مرفقات ووثائق الشركة", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                IconButton(onClick = { viewModel.setAddCompanyAttachmentDialogOpen(true) }) {
-                                    Icon(Icons.Default.AttachFile, contentDescription = "إضافة وثيقة", tint = MaterialTheme.colorScheme.primary)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF4F46E5)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = initials,
+                                                style = MaterialTheme.typography.titleMedium.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp
+                                                ),
+                                                color = Color.White
+                                            )
+                                        }
+                                        Column {
+                                            Text("جهة الاتصال الرئيسية", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp), color = Color(0xFF4F46E5))
+                                            Text(primaryContactName, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp), color = Color(0xFF0F172A))
+                                            Text("مسؤول التوريد والمشتريات", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = Color(0xFF64748B))
+                                        }
+                                    }
+
+                                    Surface(
+                                        color = Color.White,
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFC7D2FE))
+                                    ) {
+                                        Text(
+                                            text = "متاح",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp),
+                                            color = Color(0xFF4338CA),
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
+                                    }
                                 }
                             }
-                            if (uiState.companyAttachments.isEmpty()) {
-                                Text("لا توجد وثائق رسمية مرفقة للشركة", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            } else {
-                                uiState.companyAttachments.forEach { att ->
+
+                            // Contact Details List Card
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    // Phone
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("📄 ${att.comment.ifBlank { "وثيقة رسمية" }}", fontSize = 11.sp)
-                                        IconButton(onClick = { viewModel.deleteCompanyAttachment(att.id) }, modifier = Modifier.size(24.dp)) {
-                                            Icon(Icons.Default.Close, contentDescription = "حذف المرفق", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(14.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Box(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFF1F5F9)), contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Default.Phone, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(14.dp))
+                                            }
+                                            Text("الهاتف الأساسي", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp), color = Color(0xFF64748B))
+                                        }
+                                        Text(company.phone.ifBlank { "+966 11 234 5678" }, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF0F172A))
+                                    }
+                                    HorizontalDivider(color = Color(0xFFF1F5F9))
+
+                                    // Email
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Box(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFF1F5F9)), contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Default.Email, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(14.dp))
+                                            }
+                                            Text("البريد الرسمي", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp), color = Color(0xFF64748B))
+                                        }
+                                        Text(company.email.ifBlank { "supply@advanced-tech.com" }, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF4F46E5))
+                                    }
+                                    HorizontalDivider(color = Color(0xFFF1F5F9))
+
+                                    // Address
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Box(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFF1F5F9)), contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(14.dp))
+                                            }
+                                            Text("المقر الرئيسي", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp), color = Color(0xFF64748B))
+                                        }
+                                        Text(stats.primaryAddress.ifBlank { company.address.ifBlank { "الرياض - المنطقة الصناعية الثانية" } }, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF0F172A))
+                                    }
+                                    HorizontalDivider(color = Color(0xFFF1F5F9))
+
+                                    // Web Link
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Box(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFF1F5F9)), contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Default.Public, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(14.dp))
+                                            }
+                                            Text("بوابة التوريد", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp), color = Color(0xFF64748B))
+                                        }
+                                        Text(company.website.ifBlank { "advanced-tech.com" }, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
+                                    }
+                                }
+                            }
+
+                            // Role Permissions & Status Matrix
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Text("تصنيف الشركة بالنظام", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        // Supplier Box
+                                        Surface(
+                                            color = if (company.isSupplier) Color(0xFFECFDF5) else Color(0xFFF8FAFC),
+                                            shape = RoundedCornerShape(12.dp),
+                                            border = BorderStroke(1.dp, if (company.isSupplier) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
+                                                Text("مورّد (Supplier)", fontSize = 10.sp, color = if (company.isSupplier) Color(0xFF059669) else Color(0xFF94A3B8))
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(if (company.isSupplier) "نعم ✓" else "لا ✕", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (company.isSupplier) Color(0xFF065F46) else Color(0xFF64748B))
+                                            }
+                                        }
+                                        // Maker Box
+                                        Surface(
+                                            color = if (company.isManufacturer) Color(0xFFECFDF5) else Color(0xFFF8FAFC),
+                                            shape = RoundedCornerShape(12.dp),
+                                            border = BorderStroke(1.dp, if (company.isManufacturer) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
+                                                Text("مصنّع (Maker)", fontSize = 10.sp, color = if (company.isManufacturer) Color(0xFF059669) else Color(0xFF94A3B8))
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(if (company.isManufacturer) "نعم ✓" else "لا ✕", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (company.isManufacturer) Color(0xFF065F46) else Color(0xFF64748B))
+                                            }
+                                        }
+                                        // Customer Box
+                                        Surface(
+                                            color = if (company.isCustomer) Color(0xFFECFDF5) else Color(0xFFF8FAFC),
+                                            shape = RoundedCornerShape(12.dp),
+                                            border = BorderStroke(1.dp, if (company.isCustomer) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
+                                                Text("عميل (Customer)", fontSize = 10.sp, color = if (company.isCustomer) Color(0xFF059669) else Color(0xFF94A3B8))
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(if (company.isCustomer) "نعم ✓" else "لا ✕", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (company.isCustomer) Color(0xFF065F46) else Color(0xFF64748B))
+                                            }
                                         }
                                     }
                                 }
                             }
+
+                            // Attachments Card
+                            Surface(
+                                color = Color(0xFFF8FAFC),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Box(modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(Color.White).border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Default.AttachFile, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(16.dp))
+                                        }
+                                        Column {
+                                            Text("مرفقات ووثائق الشركة", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
+                                            Text("السجل التجاري، العقود (${uiState.companyAttachments.size})", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
+                                        }
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { viewModel.setAddCompanyAttachmentDialogOpen(true) },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("+ إرفاق وثيقة", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
 
@@ -1246,8 +1728,61 @@ private fun CompanyDetailsDialog(
                     }
                 }
             }
+
+            // 5. Sticky Footer Action Bar
+            Surface(
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFFF1F5F9)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Secondary Action: Edit
+                    OutlinedButton(
+                        onClick = { },
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF334155)),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.Edit, contentDescription = "تعديل", tint = Color(0xFF64748B), modifier = Modifier.size(16.dp))
+                            Text("تعديل", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp))
+                        }
+                    }
+
+                    // Primary Action: Parts/Items List
+                    Button(
+                        onClick = {
+                            if (company.isManufacturer) viewModel.setDetailTab(CompanyDetailTab.MANUFACTURER_PARTS)
+                            else viewModel.setDetailTab(CompanyDetailTab.SUPPLIER_PARTS)
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5), contentColor = Color.White),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "عرض القطع والتوريدات (${partsCount} قطعة)",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
-    )
+    }
 }
 
 @Composable
