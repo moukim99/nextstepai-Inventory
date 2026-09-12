@@ -435,7 +435,7 @@ fun CompanyScreen(
     }
 
     if (uiState.isAddCompanyAttachmentDialogOpen) {
-        AddCompanyAttachmentDialog(
+        AddCompanyAttachmentBottomSheet(
             errorMessage = uiState.errorMessage,
             onDismiss = { viewModel.setAddCompanyAttachmentDialogOpen(false) },
             onConfirm = { path, link, comment ->
@@ -2971,37 +2971,346 @@ private fun AddCompanyBottomSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddCompanyAttachmentDialog(
+private fun AddCompanyAttachmentBottomSheet(
     errorMessage: String?,
     onDismiss: () -> Unit,
     onConfirm: (attachmentPath: String, link: String, comment: String) -> Unit
 ) {
-    var path by remember { mutableStateOf("") }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    var path by remember { mutableStateOf("Contract.pdf") }
     var link by remember { mutableStateOf("") }
     var comment by remember { mutableStateOf("عقد توريد / سجل تجاري") }
+    var isOfficialValid by remember { mutableStateOf(true) }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("إضافة وثيقة / مرفق للشركة", fontWeight = FontWeight.Bold) },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (path.isNotBlank() || link.isNotBlank()) onConfirm(path, link, comment)
-                },
-                enabled = path.isNotBlank() || link.isNotBlank()
-            ) { Text("حفظ المرفق") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (errorMessage != null) Text(errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                OutlinedTextField(value = comment, onValueChange = { comment = it }, label = { Text("وصف الوثيقة (سجل تجاري/عقد)") }, singleLine = true)
-                OutlinedTextField(value = path, onValueChange = { path = it }, label = { Text("مسار الملف (Contract.pdf)") }, singleLine = true)
-                OutlinedTextField(value = link, onValueChange = { link = it }, label = { Text("أو رابط المستند الإلكتروني") }, singleLine = true)
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 6.dp)
+                    .width(48.dp)
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFCBD5E1))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+        ) {
+            // 1. Header Section
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFEEF2FF))
+                            .border(1.dp, Color(0xFFE0E7FF), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.AttachFile, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(20.dp))
+                    }
+                    Column {
+                        Text("إضافة وثيقة / مرفق للشركة", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp), color = Color(0xFF0F172A))
+                        Text("إرفاق العقود، السجلات التجارية، والشهادات المعتمدة", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = Color(0xFF64748B))
+                    }
+                }
+
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color(0xFF64748B))
+                }
+            }
+
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+
+            // 2. Scrollable Form Content
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                if (errorMessage != null) {
+                    Text(text = errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+
+                // Supported Formats Info Banner
+                Surface(
+                    color = Color(0xFFEEF2FF).copy(alpha = 0.7f),
+                    border = BorderStroke(1.dp, Color(0xFFE0E7FF)),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(18.dp))
+                        Text(
+                            text = "الصيغ المدعومة: ملفات PDF، ومستندات Word (DOCX)، والصور (PNG, JPG) بحد أقصى 25 MB للملف الواحد.",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                            color = Color(0xFF312E81)
+                        )
+                    }
+                }
+
+                // Document Title/Description Field
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(
+                        value = comment,
+                        onValueChange = { comment = it },
+                        label = { Text("وصف ونوع الوثيقة *") },
+                        placeholder = { Text("مثال: سجل تجاري، عقد توريد قطع...") },
+                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    // Suggestion Tags
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("اقتراحات:", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
+                        listOf("سجل تجاري", "عقد توريد", "شهادة ضريبية", "شهادة ISO").forEach { tag ->
+                            val isSelected = comment.trim() == tag
+                            Surface(
+                                onClick = { comment = tag },
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isSelected) Color(0xFFEEF2FF) else Color(0xFFF1F5F9),
+                                border = BorderStroke(1.dp, if (isSelected) Color(0xFFC7D2FE) else Color(0xFFE2E8F0))
+                            ) {
+                                Text(
+                                    text = tag,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 10.5.sp
+                                    ),
+                                    color = if (isSelected) Color(0xFF4338CA) else Color(0xFF475569),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // File Upload Section
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("الملف المرفق المحلي (File Upload)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
+
+                    // Selected File Card
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFEEF2FF).copy(alpha = 0.5f)),
+                        border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFFFFF1F2))
+                                        .border(1.dp, Color(0xFFFECDD3), RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFFE11D48), modifier = Modifier.size(20.dp))
+                                }
+
+                                Column {
+                                    Text(
+                                        text = path.ifBlank { "Contract.pdf" },
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                                        color = Color(0xFF0F172A)
+                                    )
+                                    Text(
+                                        text = "مسار الملف المرفوع • 2.4 MB",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = Color(0xFF64748B)
+                                    )
+                                }
+                            }
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                IconButton(onClick = { }, modifier = Modifier.size(30.dp)) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "تغيير الملف", tint = Color(0xFF4F46E5), modifier = Modifier.size(16.dp))
+                                }
+                                IconButton(onClick = { path = "" }, modifier = Modifier.size(30.dp)) {
+                                    Icon(Icons.Default.Delete, contentDescription = "حذف الملف", tint = Color(0xFFE11D48), modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    // Secondary Alternative Dropzone
+                    Surface(
+                        onClick = {
+                            if (path.isBlank()) path = "Contract.pdf"
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFFF8FAFC),
+                        border = BorderStroke(1.5.dp, Color(0xFFCBD5E1)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        ) {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(18.dp))
+                            Text(
+                                text = "أو انقر لاختيار ملف بديل من الذاكرة المحلية",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium, fontSize = 11.5.sp),
+                                color = Color(0xFF475569)
+                            )
+                        }
+                    }
+                }
+
+                // Divider
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFE2E8F0))
+                    Text(
+                        text = "أو عبر رابط إلكتروني سحابي",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                        color = Color(0xFF94A3B8),
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFE2E8F0))
+                }
+
+                // External Document URL
+                OutlinedTextField(
+                    value = link,
+                    onValueChange = { link = it },
+                    label = { Text("رابط المستند الإلكتروني (Drive, Dropbox, OneDrive)") },
+                    placeholder = { Text("https://drive.google.com/file/d/...") },
+                    leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                // Optional Validity & Status Toggle
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.White)
+                                    .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Verified, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(16.dp))
+                            }
+                            Column {
+                                Text("وثيقة رسمية سارية المفعول", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF0F172A))
+                                Text("إشعار قبل تاريخ الانتهاء بـ 30 يوماً", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
+                            }
+                        }
+
+                        Switch(
+                            checked = isOfficialValid,
+                            onCheckedChange = { isOfficialValid = it }
+                        )
+                    }
+                }
+            }
+
+            // 3. Sticky Action Buttons Footer
+            Surface(
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFFF1F5F9)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = {
+                            if (path.isNotBlank() || link.isNotBlank()) onConfirm(path, link, comment)
+                        },
+                        enabled = path.isNotBlank() || link.isNotBlank(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5), contentColor = Color.White),
+                        contentPadding = PaddingValues(vertical = 12.dp),
+                        modifier = Modifier.weight(2f)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text("حفظ وإرفاق الوثيقة", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp))
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        contentPadding = PaddingValues(vertical = 12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("إلغاء", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp), color = Color(0xFF64748B))
+                    }
+                }
             }
         }
-    )
+    }
 }
 
 @Composable
