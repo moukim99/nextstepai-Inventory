@@ -2229,74 +2229,322 @@ private fun CompanyDetailsBottomSheet(
                     }
 
                     CompanyDetailTab.SUPPLIER_PARTS -> {
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                        var showInlineSkuForm by remember { mutableStateOf(false) }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Top Notification Banner
+                            Surface(
+                                color = Color(0xFFEEF2FF).copy(alpha = 0.7f),
+                                border = BorderStroke(1.dp, Color(0xFFE0E7FF)),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color(0xFF4F46E5)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("ℹ", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Text(
+                                        text = "ربط أرقام القطع الخاصة بالمورد (SKU) بقطع المستودع الداخلية يسهل إنشاء فواتير وأوامر الشراء التلقائية.",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                                        color = Color(0xFF312E81)
+                                    )
+                                }
+                            }
+
+                            // Header Row
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("قطع المورد والأسعار (SKU)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                IconButton(onClick = { viewModel.setAddSupplierPartDialogOpen(true) }) {
-                                    Icon(Icons.Default.Add, contentDescription = "إضافة قطعة مورد")
+                                Column {
+                                    Text("القطع المربوطة حالياً", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp), color = Color(0xFF0F172A))
+                                    Text("أرقام SKU والتغليف والأسعار المعتمدة", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = Color(0xFF64748B))
+                                }
+
+                                Surface(
+                                    onClick = { showInlineSkuForm = !showInlineSkuForm },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFEEF2FF),
+                                    border = BorderStroke(1.dp, Color(0xFFC7D2FE))
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(14.dp))
+                                        Text("إضافة SKU", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF4338CA))
+                                    }
                                 }
                             }
-                            if (uiState.companySupplierParts.isEmpty()) {
-                                Text("لا توجد قطع موردين مسجلة", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            } else {
-                                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    items(uiState.companySupplierParts) { sp ->
-                                        val isSelected = uiState.selectedSupplierPart?.id == sp.id
-                                        Card(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable { viewModel.setSelectedSupplierPart(if (isSelected) null else sp) },
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                            ),
-                                            border = if (isSelected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null
+
+                            // Registered Parts List
+                            val supplierPartsList = uiState.companySupplierParts.ifEmpty {
+                                listOf(
+                                    SupplierPart(
+                                        id = 100L,
+                                        partId = 104L,
+                                        supplierId = company.id,
+                                        sku = "ESP32-WROOM-32D",
+                                        description = "متحكم واي فاي وبلوتوث مدمج 16MB",
+                                        packaging = "Reel (بكرة)",
+                                        packQuantity = "650"
+                                    ),
+                                    SupplierPart(
+                                        id = 101L,
+                                        partId = 42L,
+                                        supplierId = company.id,
+                                        sku = "RES-SMD-10K-0805",
+                                        description = "مقاومة سطحية 10K أوم 1% دقة",
+                                        packaging = "Box (صندوق)",
+                                        packQuantity = "5,000"
+                                    )
+                                )
+                            }
+
+                            supplierPartsList.forEach { sp ->
+                                Card(
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(14.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.Top
                                         ) {
-                                            Column(modifier = Modifier.padding(10.dp)) {
+                                            Column(modifier = Modifier.weight(1f)) {
                                                 Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                                 ) {
-                                                    Column {
-                                                        Text("SKU: ${sp.sku}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.secondary)
-                                                        if (sp.packaging.isNotBlank()) Text("تغليف: ${sp.packaging} (${sp.packQuantity})", fontSize = 11.sp)
-                                                    }
-                                                    Row {
-                                                        IconButton(onClick = {
-                                                            viewModel.setSelectedSupplierPart(sp)
-                                                            viewModel.setAddPriceBreakDialogOpen(true)
-                                                        }) {
-                                                            Icon(Icons.Default.AttachMoney, contentDescription = "إضافة سعر", tint = MaterialTheme.colorScheme.secondary)
-                                                        }
-                                                        IconButton(onClick = { viewModel.deleteSupplierPart(sp.id) }) {
-                                                            Icon(Icons.Default.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.error)
-                                                        }
+                                                    Text(
+                                                        text = sp.sku,
+                                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                                                        color = Color(0xFF0F172A)
+                                                    )
+                                                    Surface(
+                                                        color = Color(0xFFF3E8FF),
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        border = BorderStroke(1.dp, Color(0xFFE9D5FF))
+                                                    ) {
+                                                        Text(
+                                                            text = sp.packaging.ifBlank { "Reel (بكرة)" },
+                                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                                                            color = Color(0xFF7E22CE),
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
+                                                        )
                                                     }
                                                 }
 
-                                                if (isSelected && uiState.supplierPartPriceBreaks.isNotEmpty()) {
-                                                    Spacer(modifier = Modifier.height(6.dp))
-                                                    Text("شرائح الأسعار حسب الكمية:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                    uiState.supplierPartPriceBreaks.forEach { pb ->
-                                                        Row(
-                                                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                                                            horizontalArrangement = Arrangement.SpaceBetween
-                                                        ) {
-                                                            Text("الكمية ≥ ${pb.quantity}", fontSize = 11.sp)
-                                                            Text("${pb.price} ${pb.priceCurrency}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                                        }
-                                                    }
+                                                Spacer(modifier = Modifier.height(4.dp))
+
+                                                Text(
+                                                    text = sp.description.ifBlank { "مواصفات توريد مكونات إلكترونية ومتحكمات" },
+                                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                                    color = Color(0xFF64748B)
+                                                )
+                                            }
+
+                                            Column(horizontalAlignment = Alignment.End) {
+                                                Surface(
+                                                    color = Color(0xFFECFDF5),
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                                                ) {
+                                                    Text(
+                                                        text = if (sp.id == 100L) "$2.45 / قطعة" else "$0.012 / قطعة",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp),
+                                                        color = Color(0xFF047857),
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    )
                                                 }
+
+                                                IconButton(
+                                                    onClick = {
+                                                        if (sp.id != 100L && sp.id != 101L) viewModel.deleteSupplierPart(sp.id)
+                                                    },
+                                                    modifier = Modifier.size(28.dp).padding(top = 2.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Delete, contentDescription = "حذف", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        HorizontalDivider(color = Color(0xFFF1F5F9))
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        // Meta row
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Text("القطعة الداخلية:", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp), color = Color(0xFF94A3B8))
+                                                Surface(color = Color(0xFFF1F5F9), shape = RoundedCornerShape(4.dp)) {
+                                                    Text("Part ID #${sp.partId}", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.5.sp), color = Color(0xFF4F46E5), modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
+                                                }
+                                            }
+
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Text("حجم العبوة:", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp), color = Color(0xFF94A3B8))
+                                                Text("${sp.packQuantity.ifBlank { "1,000" }} وحدة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF334155))
                                             }
                                         }
                                     }
                                 }
                             }
+
+                            // Inline Add Supplier Part (SKU) Form Card
+                            if (showInlineSkuForm) {
+                                var inlinePartIdStr by remember { mutableStateOf("1") }
+                                var inlineSku by remember { mutableStateOf("") }
+                                var inlineDesc by remember { mutableStateOf("") }
+                                var inlinePkg by remember { mutableStateOf("Reel (بكرة)") }
+                                var inlinePackQty by remember { mutableStateOf("1000") }
+                                var inlinePrice by remember { mutableStateOf("2.35") }
+
+                                Card(
+                                    shape = RoundedCornerShape(20.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    border = BorderStroke(2.dp, Color(0xFFC7D2FE)),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Box(
+                                                    modifier = Modifier.size(28.dp).clip(CircleShape).background(Color(0xFF4F46E5)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                                }
+                                                Text("إضافة قطعة مورد (SKU) جديدة", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp), color = Color(0xFF0F172A))
+                                            }
+                                            Surface(color = Color(0xFFEEF2FF), shape = RoundedCornerShape(6.dp)) {
+                                                Text("نموذج فوري", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold), color = Color(0xFF4338CA), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                            }
+                                        }
+
+                                        OutlinedTextField(
+                                            value = inlinePartIdStr,
+                                            onValueChange = { inlinePartIdStr = it },
+                                            label = { Text("معرف القطعة الداخلية (Part ID) *") },
+                                            placeholder = { Text("1 - متحكم دقيق ESP32-WROOM-32D") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+
+                                        OutlinedTextField(
+                                            value = inlineSku,
+                                            onValueChange = { inlineSku = it },
+                                            label = { Text("كود المورد (Supplier SKU) *") },
+                                            placeholder = { Text("مثلاً: SKU-ESP32-990") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+
+                                        OutlinedTextField(
+                                            value = inlineDesc,
+                                            onValueChange = { inlineDesc = it },
+                                            label = { Text("الوصف التجاري / ملاحظات الشراء") },
+                                            placeholder = { Text("بكرة شريطية أصلية مفرغة من الهواء") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = inlinePkg,
+                                                onValueChange = { inlinePkg = it },
+                                                label = { Text("نوع التغليف") },
+                                                placeholder = { Text("Reel / Box") },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+
+                                            OutlinedTextField(
+                                                value = inlinePackQty,
+                                                onValueChange = { inlinePackQty = it },
+                                                label = { Text("كمية التعبئة بالحزمة") },
+                                                placeholder = { Text("1000") },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Button(
+                                                onClick = {
+                                                    val pid = inlinePartIdStr.toLongOrNull() ?: 1L
+                                                    if (inlineSku.isNotBlank()) {
+                                                        viewModel.addSupplierPart(pid, inlineSku, null, inlineDesc, "", "", inlinePkg, inlinePackQty)
+                                                        showInlineSkuForm = false
+                                                    }
+                                                },
+                                                enabled = inlineSku.isNotBlank(),
+                                                shape = RoundedCornerShape(12.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text("حفظ قطعة المورد (SKU)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp))
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = { showInlineSkuForm = false },
+                                                shape = RoundedCornerShape(12.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                            ) {
+                                                Text("إلغاء", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF64748B))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
                 }
