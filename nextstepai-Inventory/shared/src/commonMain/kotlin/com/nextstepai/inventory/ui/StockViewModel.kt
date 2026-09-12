@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /**
- * حالة واجهة إدارة المخزون الفعلي (Stock UI State).
+ * حالة واجهة إدارة المخزون الفعلي ومواقع التخزين (Stock UI State).
  */
 data class StockUiState(
     val stockItems: List<StockItem> = emptyList(),
@@ -22,13 +22,14 @@ data class StockUiState(
     val selectedLocationId: Long? = null,
     val selectedPartId: Long? = null,
     val isAddStockDialogOpen: Boolean = false,
+    val isAddLocationDialogOpen: Boolean = false,
     val selectedItemForSplit: StockItem? = null,
     val errorMessage: String? = null,
     val successMessage: String? = null
 )
 
 /**
- * نموذج العرض (ViewModel) لشاشة إدارة المخزون الفعلي (Stock Management).
+ * نموذج العرض (ViewModel) لشاشة إدارة المخزون الفعلي والمواقع (Stock Management).
  */
 class StockViewModel(
     private val stockRepository: StockRepository = StockRepository(),
@@ -73,8 +74,43 @@ class StockViewModel(
         _uiState.update { it.copy(isAddStockDialogOpen = isOpen, errorMessage = null) }
     }
 
+    fun setAddLocationDialogOpen(isOpen: Boolean) {
+        _uiState.update { it.copy(isAddLocationDialogOpen = isOpen, errorMessage = null) }
+    }
+
     fun setSelectedItemForSplit(item: StockItem?) {
         _uiState.update { it.copy(selectedItemForSplit = item, errorMessage = null) }
+    }
+
+    fun addLocation(
+        name: String,
+        description: String = "",
+        parentId: Long? = null,
+        structural: Boolean = false,
+        external: Boolean = false,
+        icon: String = "warehouse"
+    ) {
+        try {
+            val loc = StockLocation(
+                name = name,
+                description = description,
+                parentId = parentId,
+                structural = structural,
+                external = external,
+                icon = icon
+            )
+            stockRepository.addLocation(loc)
+            _uiState.update {
+                it.copy(
+                    isAddLocationDialogOpen = false,
+                    errorMessage = null,
+                    successMessage = "تم إنشاء موقع التخزين بنجاح"
+                )
+            }
+            loadData()
+        } catch (e: IllegalArgumentException) {
+            _uiState.update { it.copy(errorMessage = e.message) }
+        }
     }
 
     fun addStockItem(

@@ -17,16 +17,6 @@ enum class StockStatus(val code: Int, val label: String) {
 }
 
 /**
- * تمثيل موقع التخزين في المستودع (StockLocation).
- */
-data class StockLocation(
-    val id: Long,
-    val name: String,
-    val description: String = "",
-    val parentId: Long? = null
-)
-
-/**
  * تمثيل سجل الوحدة المخزنية الفعلية (StockItem) المادية الموجودة على الرفوف وفق تحليل InvenTree (24 حقل).
  *
  * @property id المعرف الرقمي الفريد للوحدة المخزنية
@@ -161,16 +151,56 @@ class StockItemTable {
     }
 
     /**
-     * إدراج موقع تخزين جديد.
+     * إدراج موقع تخزين جديد مع تطبيق قيود الشجرة الهرمية والأسماء المكررة.
      */
-    fun insertLocation(name: String, description: String = ""): StockLocation {
-        val loc = StockLocation(
-            id = nextLocationId++,
-            name = name,
-            description = description
+    fun insertLocation(
+        name: String,
+        description: String = "",
+        parentId: Long? = null,
+        structural: Boolean = false,
+        external: Boolean = false,
+        icon: String = "warehouse"
+    ): StockLocation {
+        return insertLocation(
+            StockLocation(
+                name = name,
+                description = description,
+                parentId = parentId,
+                structural = structural,
+                external = external,
+                icon = icon
+            )
         )
-        locations.add(loc)
-        return loc
+    }
+
+    /**
+     * إدراج كائن موقع تخزين.
+     */
+    fun insertLocation(location: StockLocation): StockLocation {
+        val trimmedName = location.name.trim()
+        require(trimmedName.isNotBlank()) { "اسم الموقع التخزيني لا يمكن أن يكون فارغاً" }
+
+        val duplicateName = locations.any {
+            it.id != location.id && it.parentId == location.parentId && it.name.trim().equals(trimmedName, ignoreCase = true)
+        }
+        require(!duplicateName) {
+            "اسم الموقع المخزني '$trimmedName' مستخدم بالفعل تحت هذا الموقع الأب."
+        }
+
+        val parentLoc = locations.find { it.id == location.parentId }
+        val calculatedLevel = parentLoc?.let { it.level + 1 } ?: 0
+        val calculatedTreeId = parentLoc?.treeId ?: (locations.maxOfOrNull { it.treeId } ?: 0) + 1
+
+        val newLoc = location.copy(
+            id = if (location.id == 0L) nextLocationId++ else location.id,
+            name = trimmedName,
+            level = calculatedLevel,
+            treeId = calculatedTreeId
+        )
+
+        locations.removeAll { it.id == newLoc.id }
+        locations.add(newLoc)
+        return newLoc
     }
 
     /**
@@ -180,10 +210,20 @@ class StockItemTable {
 
     /**
      * إدراج وحدة مخزنية جديدة مع التحقق من القيود:
-     * 1. قيد التتبع الرقمي (Serial Constraint): إذا أُدخل serial يجب أن تكون الكمية quantity = 1
-     * 2. قيد التكرار الرقمي للرقم التسلسلي لنفس القطعة.
+     * 1. قيد الموقع الهيكلي (Structural Location Constraint): يمنع تخزين العناصر مباشرة في الموقع الهيكلي.
+     * 2. قيد التتبع الرقمي (Serial Constraint): إذا أُدخل serial يجب أن تكون الكمية quantity = 1
+     * 3. قيد التكرار الرقمي للرقم التسلسلي لنفس القطعة.
      */
     fun insertStockItem(item: StockItem): StockItem {
+        if (item.locationId != null) {
+            val targetLoc = locations.find { it.id == item.locationId }
+            if (targetLoc != null && targetLoc.structural) {
+                throw IllegalArgumentException(
+                    "لا يمكن تخزين عناصر مخزنية مباشرة في موقع هيكلي (Structural Location: '${targetLoc.name}'). يُرجى اختيار موقع فرعي إجرائي."
+                )
+            }
+        }
+
         val finalQuantity = if (item.serial.isNotBlank()) 1.0 else item.quantity
 
         if (item.serial.isNotBlank()) {

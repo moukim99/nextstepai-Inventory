@@ -41,9 +41,9 @@ import nextstepai_inventory.shared.generated.resources.save
 import nextstepai_inventory.shared.generated.resources.stock_items_count
 
 /**
- * شاشة إدارة المخزون الفعلي (StockItem Management Screen).
+ * شاشة إدارة المخزون الفعلي ومواقع التخزين الهيكلية (StockItem & StockLocation Screen).
  * مطابقة تماماً للتصميم الهيكلي الموحد مع الترويسة العلوية، البحث والباركود المدمج، والفلترة بحسب مواقع التخزين،
- * بالإضافة لمتابعة كافة حقول StockItem الـ 24 المعتمدة (جرد، سعر الشراء، الصلاحية، المراجعة الفنية...).
+ * بالإضافة لمتابعة كافة حقول StockItem الـ 24 و StockLocation الـ 15 المعتمدة.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,7 +59,8 @@ fun StockScreen(
         topBar = {
             StockTopBar(
                 onBackClick = onBackClick,
-                onAddClick = { viewModel.setAddDialogOpen(true) }
+                onAddStockClick = { viewModel.setAddDialogOpen(true) },
+                onAddLocationClick = { viewModel.setAddLocationDialogOpen(true) }
             )
         },
         modifier = modifier
@@ -121,7 +122,7 @@ fun StockScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // شريط اختيار موقع التخزين عبر LazyRow
+                // شريط اختيار موقع التخزين عبر LazyRow مع بادرات للمواقع الهيكلية
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -135,10 +136,15 @@ fun StockScreen(
                         )
                     }
                     items(uiState.locations, key = { "location-${it.id}" }) { loc ->
+                        val badge = when {
+                            loc.structural -> "🏗️"
+                            loc.external -> "🌐"
+                            else -> "📍"
+                        }
                         FilterChip(
                             selected = uiState.selectedLocationId == loc.id,
                             onClick = { viewModel.filterByLocation(if (uiState.selectedLocationId == loc.id) null else loc.id) },
-                            label = { Text("📍 ${loc.name}", fontWeight = FontWeight.Bold) },
+                            label = { Text("$badge ${loc.name}", fontWeight = FontWeight.Bold) },
                             shape = RoundedCornerShape(50)
                         )
                     }
@@ -242,6 +248,23 @@ fun StockScreen(
         )
     }
 
+    if (uiState.isAddLocationDialogOpen) {
+        AddStockLocationDialog(
+            locations = uiState.locations,
+            onDismiss = { viewModel.setAddLocationDialogOpen(false) },
+            onConfirm = { name, desc, parentId, structural, external, icon ->
+                viewModel.addLocation(
+                    name = name,
+                    description = desc,
+                    parentId = parentId,
+                    structural = structural,
+                    external = external,
+                    icon = icon
+                )
+            }
+        )
+    }
+
     if (uiState.selectedItemForSplit != null) {
         SplitStockDialog(
             item = uiState.selectedItemForSplit!!,
@@ -252,12 +275,13 @@ fun StockScreen(
 }
 
 /**
- * الترويسة العلوية لشاشة إدارة المخزون
+ * الترويسة العلوية لشاشة إدارة المخزون والمواقع
  */
 @Composable
 private fun StockTopBar(
     onBackClick: () -> Unit,
-    onAddClick: () -> Unit
+    onAddStockClick: () -> Unit,
+    onAddLocationClick: () -> Unit
 ) {
     Surface(
         modifier = Modifier
@@ -290,7 +314,7 @@ private fun StockTopBar(
                 }
 
                 Text(
-                    text = "إدارة المخزون الفعلي (StockItem)",
+                    text = "المخزون والمواقع (Stock)",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 17.sp
@@ -299,29 +323,48 @@ private fun StockTopBar(
                 )
             }
 
-            // اليسار: زر "+ إضافة وحدة مخزنية"
-            Button(
-                onClick = onAddClick,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            // اليسار: زر إضافة وحدة وزر إضافة موقع
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                OutlinedButton(
+                    onClick = onAddLocationClick,
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(Res.string.add_new_stock),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = "إضافة وحدة",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(Icons.Default.AddLocation, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Text("موقع جديد", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                    }
+                }
+
+                Button(
+                    onClick = onAddStockClick,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = stringResource(Res.string.add_new_stock),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "إضافة وحدة",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
                 }
             }
         }
@@ -458,8 +501,13 @@ private fun StockItemCard(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline
                         )
+                        val badge = when {
+                            location?.structural == true -> "🏗️"
+                            location?.external == true -> "🌐"
+                            else -> "📍"
+                        }
                         Text(
-                            text = "📍 ${location?.name ?: "غير محدد"}",
+                            text = "$badge ${location?.name ?: "غير محدد"}",
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -562,6 +610,125 @@ private fun StockItemCard(
 }
 
 @Composable
+private fun AddStockLocationDialog(
+    locations: List<StockLocation>,
+    onDismiss: () -> Unit,
+    onConfirm: (
+        name: String,
+        description: String,
+        parentId: Long?,
+        structural: Boolean,
+        external: Boolean,
+        icon: String
+    ) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var selectedParentId by remember { mutableStateOf<Long?>(null) }
+    var structural by remember { mutableStateOf(false) }
+    var external by remember { mutableStateOf(false) }
+    var icon by remember { mutableStateOf("warehouse") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("إضافة موقع تخزيني جديد (StockLocation)", fontWeight = FontWeight.Bold)
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (name.isNotBlank()) {
+                        onConfirm(name.trim(), description.trim(), selectedParentId, structural, external, icon)
+                    }
+                },
+                enabled = name.isNotBlank(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("اسم الموقع التخزيني (مثل: الرف B3، مستودع أ)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("الوصف التفصيلي للموقع") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Text("اختر الموقع الحاوي (الأب) ضمن الهرمية الشجرية:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item(key = "parent-root") {
+                        FilterChip(
+                            selected = selectedParentId == null,
+                            onClick = { selectedParentId = null },
+                            label = { Text("موقع رئيسي (Root)", fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                    items(locations, key = { "loc-parent-${it.id}" }) { loc ->
+                        FilterChip(
+                            selected = selectedParentId == loc.id,
+                            onClick = { selectedParentId = loc.id },
+                            label = { Text("${if (loc.structural) "🏗️ " else "📍 "}${loc.name}", fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = structural, onCheckedChange = { structural = it })
+                    Text("موقع هيكلي لتجميع العقد (يمنع التخزين المباشر)", fontSize = 12.sp)
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = external, onCheckedChange = { external = it })
+                    Text("موقع خارجي (مملوك للعميل/المورد/سيارة نقل)", fontSize = 12.sp)
+                }
+
+                OutlinedTextField(
+                    value = icon,
+                    onValueChange = { icon = it },
+                    label = { Text("رمز/أيقونة الموقع (Icon Name)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        }
+    )
+}
+
+@Composable
 private fun AddStockItemDialog(
     parts: List<Part>,
     locations: List<StockLocation>,
@@ -584,7 +751,7 @@ private fun AddStockItemDialog(
     ) -> Unit
 ) {
     var selectedPartId by remember { mutableStateOf<Long?>(parts.firstOrNull()?.id) }
-    var selectedLocationId by remember { mutableStateOf<Long?>(locations.firstOrNull()?.id) }
+    var selectedLocationId by remember { mutableStateOf<Long?>(locations.firstOrNull { !it.structural }?.id ?: locations.firstOrNull()?.id) }
     var quantityText by remember { mutableStateOf("1.0") }
     var serial by remember { mutableStateOf("") }
     var batch by remember { mutableStateOf("") }
@@ -651,6 +818,20 @@ private fun AddStockItemDialog(
                             selected = selectedPartId == p.id,
                             onClick = { selectedPartId = p.id },
                             label = { Text(p.name, fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                }
+
+                Text("اختر موقع التخزين المباشر:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(locations, key = { "stock-loc-${it.id}" }) { loc ->
+                        FilterChip(
+                            selected = selectedLocationId == loc.id,
+                            onClick = { selectedLocationId = loc.id },
+                            enabled = !loc.structural,
+                            label = { Text("${if (loc.structural) "🏗️ (هيكلي)" else "📍"} ${loc.name}", fontWeight = FontWeight.Bold) },
                             shape = RoundedCornerShape(12.dp)
                         )
                     }

@@ -127,6 +127,30 @@ object SqliteDatabaseManager {
         """.trimIndent()).use { it.step() }
 
         conn.prepare("""
+            CREATE TABLE IF NOT EXISTS stock_locations (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                locationId INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                parentId INTEGER,
+                structural INTEGER NOT NULL DEFAULT 0,
+                external INTEGER NOT NULL DEFAULT 0,
+                locationTypeId INTEGER,
+                ownerId INTEGER,
+                icon TEXT NOT NULL DEFAULT 'warehouse',
+                customIcon TEXT NOT NULL DEFAULT '',
+                level INTEGER NOT NULL DEFAULT 0,
+                lft INTEGER NOT NULL DEFAULT 0,
+                rght INTEGER NOT NULL DEFAULT 0,
+                treeId INTEGER NOT NULL DEFAULT 1,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
             CREATE TABLE IF NOT EXISTS companies (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 name TEXT NOT NULL,
