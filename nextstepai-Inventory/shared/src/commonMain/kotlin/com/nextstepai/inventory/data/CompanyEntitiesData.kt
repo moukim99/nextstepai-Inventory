@@ -187,6 +187,43 @@ class AddressTable {
     private val addresses = mutableListOf<Address>()
     private var nextId = 1L
 
+    init {
+        seedSampleAddresses()
+    }
+
+    private fun seedSampleAddresses() {
+        insertAddress(
+            Address(
+                companyId = 1L,
+                title = "المقر الرئيسي",
+                isPrimary = true,
+                line1 = "المنطقة الصناعية الثانية",
+                city = "الرياض",
+                country = "المملكة العربية السعودية"
+            )
+        )
+        insertAddress(
+            Address(
+                companyId = 2L,
+                title = "المصنع الرئيسي",
+                isPrimary = true,
+                line1 = "Zhangjiang Hi-Tech Park",
+                city = "شنغهاي",
+                country = "الصين"
+            )
+        )
+        insertAddress(
+            Address(
+                companyId = 3L,
+                title = "المقر الرئيسي",
+                isPrimary = true,
+                line1 = "واحة التقنية - حي الزهراء",
+                city = "الرياض",
+                country = "المملكة العربية السعودية"
+            )
+        )
+    }
+
     fun insertAddress(address: Address): Address {
         require(address.line1.isNotBlank()) { "السطر الأول من العنوان إلزامي" }
         require(address.companyId != 0L) { "معرف الشركة إلزامي لربط العنوان" }
@@ -242,6 +279,21 @@ class AddressTable {
 class ManufacturerPartTable {
     private val parts = mutableListOf<ManufacturerPart>()
     private var nextId = 1L
+
+    init {
+        seedSampleManufacturerParts()
+    }
+
+    private fun seedSampleManufacturerParts() {
+        insertManufacturerPart(
+            ManufacturerPart(
+                partId = 1L,
+                manufacturerId = 2L,
+                mpn = "ESP32-WROOM-32U",
+                description = "وحدة متحكم ESP32 Wi-Fi + Bluetooth"
+            )
+        )
+    }
 
     fun insertManufacturerPart(part: ManufacturerPart, isManufacturerCompany: Boolean = true): ManufacturerPart {
         require(isManufacturerCompany) { "لا يمكن إضافة قطعة مصنّع لشركة غير معرفة كمصنّع (isManufacturer = false)" }
@@ -357,6 +409,29 @@ class ManufacturerPartAttachmentTable {
 class SupplierPartTable {
     private val parts = mutableListOf<SupplierPart>()
     private var nextId = 1L
+
+    init {
+        seedSampleSupplierParts()
+    }
+
+    private fun seedSampleSupplierParts() {
+        insertSupplierPart(
+            SupplierPart(
+                partId = 1L,
+                supplierId = 1L,
+                sku = "SKU-ADV-101",
+                description = "حساس حرارة دقيق DHT22"
+            )
+        )
+        insertSupplierPart(
+            SupplierPart(
+                partId = 2L,
+                supplierId = 2L,
+                sku = "SKU-ESP-001",
+                description = "شريحة متحكم ESP32-S3"
+            )
+        )
+    }
 
     fun insertSupplierPart(part: SupplierPart, isSupplierCompany: Boolean = true): SupplierPart {
         require(isSupplierCompany) { "لا يمكن إضافة قطعة مورد لشركة غير معرفة كمورد (isSupplier = false)" }

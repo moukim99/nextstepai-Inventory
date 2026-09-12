@@ -3,6 +3,7 @@ package com.nextstepai.inventory.ui
 import androidx.lifecycle.ViewModel
 import com.nextstepai.inventory.data.*
 import com.nextstepai.inventory.repository.CompanyRepository
+import com.nextstepai.inventory.repository.PurchaseOrderRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,10 +25,24 @@ enum class CompanyDetailTab {
 }
 
 /**
+ * إحصائيات حقيقية ديناميكية مأخوذة من جداول قاعدة البيانات للشركة.
+ */
+data class CompanyStats(
+    val supplierPartsCount: Int = 0,
+    val manufacturerPartsCount: Int = 0,
+    val ordersCount: Int = 0,
+    val primaryAddress: String = ""
+)
+
+/**
  * حالة واجهة شاشة الشركات والعلاقات التجارية (Company UI State).
  */
 data class CompanyUiState(
     val companies: List<Company> = emptyList(),
+    val companyStatsMap: Map<Long, CompanyStats> = emptyMap(),
+    val totalSuppliersCount: Int = 0,
+    val totalManufacturersCount: Int = 0,
+    val totalCustomersCount: Int = 0,
     val searchQuery: String = "",
     val roleFilter: CompanyRoleFilter = CompanyRoleFilter.ALL,
     val selectedCompany: Company? = null,
@@ -59,7 +74,8 @@ data class CompanyUiState(
  * نموذج العرض (ViewModel) لشاشة إدارة الشركات والعلاقات التجارية (Company Management).
  */
 class CompanyViewModel(
-    private val repository: CompanyRepository = CompanyRepository()
+    private val repository: CompanyRepository = CompanyRepository(),
+    private val poRepository: PurchaseOrderRepository = PurchaseOrderRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CompanyUiState())
@@ -77,7 +93,42 @@ class CompanyViewModel(
             manufacturerOnly = filter == CompanyRoleFilter.MANUFACTURER_ONLY,
             customerOnly = filter == CompanyRoleFilter.CUSTOMER_ONLY
         )
-        _uiState.update { it.copy(companies = list) }
+
+        val allCompanies = repository.getCompanies()
+        val supCount = allCompanies.count { it.isSupplier }
+        val mfgCount = allCompanies.count { it.isManufacturer }
+        val custCount = allCompanies.count { it.isCustomer }
+
+        val statsMap = list.associate { company ->
+            val supParts = repository.getSupplierPartsForCompany(company.id).size
+            val mfgParts = repository.getManufacturerPartsForCompany(company.id).size
+            val orders = poRepository.searchOrders("", supplierId = company.id).size
+            val addrs = repository.getAddressesForCompany(company.id)
+            val primaryAddr = addrs.find { it.isPrimary } ?: addrs.firstOrNull()
+            val addrText = primaryAddr?.let {
+                val cityStr = it.city.ifBlank { it.line1 }
+                if (cityStr.isNotBlank()) {
+                    if (it.country.isNotBlank()) "$cityStr، ${it.country}" else cityStr
+                } else company.address
+            } ?: company.address
+
+            company.id to CompanyStats(
+                supplierPartsCount = supParts,
+                manufacturerPartsCount = mfgParts,
+                ordersCount = orders,
+                primaryAddress = addrText
+            )
+        }
+
+        _uiState.update {
+            it.copy(
+                companies = list,
+                companyStatsMap = statsMap,
+                totalSuppliersCount = supCount,
+                totalManufacturersCount = mfgCount,
+                totalCustomersCount = custCount
+            )
+        }
     }
 
     fun onSearchQueryChanged(query: String) {
