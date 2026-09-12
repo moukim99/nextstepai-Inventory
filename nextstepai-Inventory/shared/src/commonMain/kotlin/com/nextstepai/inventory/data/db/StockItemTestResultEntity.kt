@@ -4,10 +4,11 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.nextstepai.inventory.sync.SyncStatus
 import com.nextstepai.inventory.sync.SyncableEntity
+import com.nextstepai.inventory.util.DateTimeUtils
 import kotlin.time.Clock
 
 /**
- * تمثيل كيان نتائج فحوصات الجودة (StockItemTestResultEntity) في قاعدة بيانات Room المحلية يدعم المرجع المحلي stockItemUuid.
+ * تمثيل كيان نتائج فحوصات الجودة (StockItemTestResultEntity) في قاعدة بيانات Room المحلية مع التاريخ اللحظي الديناميكي.
  */
 @Entity(tableName = "stock_item_test_results")
 data class StockItemTestResultEntity(
@@ -22,7 +23,7 @@ data class StockItemTestResultEntity(
     val value: String = "Passed",
     val attachment: String = "",
     val notes: String = "",
-    val date: String = "2025-02-15",
+    val date: String = DateTimeUtils.getCurrentDate(),
     val userId: Long? = null,
     val metadata: String = "{}",
     override val syncStatus: SyncStatus = SyncStatus.PENDING,

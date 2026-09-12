@@ -11,6 +11,7 @@ import com.nextstepai.inventory.data.StockLocationType
 import com.nextstepai.inventory.data.StockStatus
 import com.nextstepai.inventory.repository.PartRepository
 import com.nextstepai.inventory.repository.StockRepository
+import com.nextstepai.inventory.util.DateTimeUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -375,7 +376,7 @@ class StockViewModel(
         }
     }
 
-    fun performStocktake(stockId: Long, userId: Long = 1L, stocktakeDate: String = "2025-02-15") {
+    fun performStocktake(stockId: Long, userId: Long = 1L, stocktakeDate: String = DateTimeUtils.getCurrentDate()) {
         try {
             stockRepository.performStocktake(stockId, userId, stocktakeDate)
             _uiState.update {

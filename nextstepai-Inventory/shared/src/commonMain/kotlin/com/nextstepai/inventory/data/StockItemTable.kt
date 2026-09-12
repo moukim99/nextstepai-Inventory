@@ -1,5 +1,7 @@
 package com.nextstepai.inventory.data
 
+import com.nextstepai.inventory.util.DateTimeUtils
+
 /**
  * حالة الوحدة المخزنية (StockItem Status).
  */
@@ -297,7 +299,7 @@ class StockItemTable {
         val newItem = item.copy(
             id = if (item.id == 0L) nextStockId++ else item.id,
             quantity = finalQuantity,
-            updated = "2025-02-15"
+            updated = DateTimeUtils.getCurrentDate()
         )
         stockItems.add(newItem)
 
@@ -326,7 +328,7 @@ class StockItemTable {
         val tracking = StockItemTracking(
             id = nextTrackingId++,
             stockItemId = stockItemId,
-            date = "2025-02-15 12:00:00",
+            date = DateTimeUtils.getCurrentDateTime(),
             trackingType = trackingType,
             userId = userId,
             label = label,
@@ -407,7 +409,7 @@ class StockItemTable {
         val record = attachmentItem.copy(
             id = if (attachmentItem.id == 0L) nextAttachmentId++ else attachmentItem.id,
             comment = autoComment,
-            uploadDate = attachmentItem.uploadDate.ifBlank { "2025-02-15" }
+            uploadDate = attachmentItem.uploadDate.ifBlank { DateTimeUtils.getCurrentDate() }
         )
         stockAttachments.add(record)
         return record
@@ -480,7 +482,7 @@ class StockItemTable {
     /**
      * إجراء عملية جرد فعلي (Stocktake) على وحدة مخزنية وتحديث تاريخ الجرد والمستخدم.
      */
-    fun performStocktake(stockId: Long, userId: Long, stocktakeDate: String = "2025-02-15"): StockItem {
+    fun performStocktake(stockId: Long, userId: Long, stocktakeDate: String = DateTimeUtils.getCurrentDate()): StockItem {
         val index = stockItems.indexOfFirst { it.id == stockId }
         require(index != -1) { "الوحدة المخزنية غير موجودة" }
 

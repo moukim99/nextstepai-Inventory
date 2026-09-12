@@ -1,7 +1,9 @@
 package com.nextstepai.inventory.data
 
+import com.nextstepai.inventory.util.DateTimeUtils
+
 /**
- * تمثيل نتائج فحوصات الجودة والأداء الفني للوحدة المخزنية (StockItemTestResult - 11 عموداً).
+ * تمثيل نتائج فحوصات الجودة والأداء الفني للوحدة المخزنية (StockItemTestResult - 11 عموداً) مع التاريخ اللحظي الديناميكي.
  *
  * @property id المفتاح الأساسي التسلسلي للسجل
  * @property stockItemId رابط العنصر المخزني الخاضع للفحص (StockItem.id)
@@ -11,7 +13,7 @@ package com.nextstepai.inventory.data
  * @property value القيمة المقاسة الفعلية أثناء الاختبار (مثل: "5.02V"، "12.4 Ohm")
  * @property attachment مسار ملف مرفق يوثق نتائج القياس (PDF أو صورة تقرير)
  * @property notes ملاحظات الفني أو ظروف أداء الفحص
- * @property date تاريخ إجراء الاختبار
+ * @property date تاريخ إجراء الاختبار اللحظي الديناميكي
  * @property userId معرف المستخدم/المفتش الفني المسجل للفحص
  * @property metadata بيانات وصفية إضافية بصيغة JSON لأجهزة الفحص الآلي
  */
@@ -24,7 +26,7 @@ data class StockItemTestResult(
     val value: String = "Passed",
     val attachment: String = "",
     val notes: String = "",
-    val date: String = "2025-02-15",
+    val date: String = DateTimeUtils.getCurrentDate(),
     val userId: Long? = null,
     val metadata: String = "{}"
 )

@@ -25,6 +25,7 @@ import com.nextstepai.inventory.media.ProcessedImage
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
+import com.nextstepai.inventory.util.DateTimeUtils
 import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 
@@ -178,7 +179,7 @@ class StockRepository(
     /**
      * تنفيذ عملية الجرد الفعلي (Stocktake) وتسجيل حركة الجرد.
      */
-    fun performStocktake(stockId: Long, userId: Long, stocktakeDate: String = "2025-02-15"): StockItem {
+    fun performStocktake(stockId: Long, userId: Long, stocktakeDate: String = DateTimeUtils.getCurrentDate()): StockItem {
         val updated = stockTable.performStocktake(stockId, userId, stocktakeDate)
         runBlocking {
             stockDao.insertOrUpdate(updated.toEntity())
