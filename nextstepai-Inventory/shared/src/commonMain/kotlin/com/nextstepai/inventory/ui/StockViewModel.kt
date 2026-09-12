@@ -3,6 +3,7 @@ package com.nextstepai.inventory.ui
 import androidx.lifecycle.ViewModel
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.StockItem
+import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockLocationType
 import com.nextstepai.inventory.data.StockStatus
@@ -14,7 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /**
- * حالة واجهة إدارة المخزون الفعلي ومواقع التخزين وأنواعها (Stock UI State).
+ * حالة واجهة إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات التتبع (Stock UI State).
  */
 data class StockUiState(
     val stockItems: List<StockItem> = emptyList(),
@@ -27,12 +28,14 @@ data class StockUiState(
     val isAddLocationDialogOpen: Boolean = false,
     val isAddLocationTypeDialogOpen: Boolean = false,
     val selectedItemForSplit: StockItem? = null,
+    val selectedItemForHistory: StockItem? = null,
+    val trackingLogsForSelected: List<StockItemTracking> = emptyList(),
     val errorMessage: String? = null,
     val successMessage: String? = null
 )
 
 /**
- * نموذج العرض (ViewModel) لشاشة إدارة المخزون الفعلي والمواقع والأنواع (Stock Management).
+ * نموذج العرض (ViewModel) لشاشة إدارة المخزون الفعلي والمواقع والأنواع وسجلات الحركة والتتبع (Stock Management).
  */
 class StockViewModel(
     private val stockRepository: StockRepository = StockRepository(),
@@ -89,6 +92,26 @@ class StockViewModel(
 
     fun setSelectedItemForSplit(item: StockItem?) {
         _uiState.update { it.copy(selectedItemForSplit = item, errorMessage = null) }
+    }
+
+    fun openTrackingHistory(item: StockItem) {
+        val logs = stockRepository.getTrackingForStockItem(item.id)
+        _uiState.update {
+            it.copy(
+                selectedItemForHistory = item,
+                trackingLogsForSelected = logs,
+                errorMessage = null
+            )
+        }
+    }
+
+    fun closeTrackingHistory() {
+        _uiState.update {
+            it.copy(
+                selectedItemForHistory = null,
+                trackingLogsForSelected = emptyList()
+            )
+        }
     }
 
     fun addLocationType(

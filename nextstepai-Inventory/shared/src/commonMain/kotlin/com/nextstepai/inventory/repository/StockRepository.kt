@@ -2,10 +2,14 @@ package com.nextstepai.inventory.repository
 
 import com.nextstepai.inventory.data.StockItem
 import com.nextstepai.inventory.data.StockItemTable
+import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockLocationType
+import com.nextstepai.inventory.data.StockTrackingType
 import com.nextstepai.inventory.data.db.StockItemDao
 import com.nextstepai.inventory.data.db.StockItemEntity
+import com.nextstepai.inventory.data.db.StockItemTrackingDao
+import com.nextstepai.inventory.data.db.StockItemTrackingEntity
 import com.nextstepai.inventory.data.db.StockLocationDao
 import com.nextstepai.inventory.data.db.StockLocationEntity
 import com.nextstepai.inventory.data.db.StockLocationTypeDao
@@ -19,7 +23,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 
 /**
- * المستودع (Repository) المسؤول عن إدارة المخزون الفعلي ومواقع التخزين الهيكلية وأنواعها (StockLocationType)
+ * المستودع (Repository) المسؤول عن إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات الحركات والتتبع (StockItemTracking)
  * وتجزئة الكميات والجرد والمزامنة المجمعة مع السحابة وضغط الصور.
  */
 class StockRepository(
@@ -27,6 +31,7 @@ class StockRepository(
     private val stockDao: StockItemDao = StockItemDao(),
     private val locationDao: StockLocationDao = StockLocationDao(),
     private val locationTypeDao: StockLocationTypeDao = StockLocationTypeDao(),
+    private val trackingDao: StockItemTrackingDao = StockItemTrackingDao(),
     private val batchSyncService: BatchSyncService = BatchSyncService(),
     private val imageProcessor: ImageProcessor = ImageProcessor(maxDimension = 1024, compressionQuality = 85)
 ) {
@@ -58,6 +63,13 @@ class StockRepository(
     fun getLocationTypes(): List<StockLocationType> = stockTable.getAllLocationTypes()
 
     /**
+     * جلب سجلات الحركات والتتبع لوحدة مخزنية محددة.
+     */
+    fun getTrackingForStockItem(stockItemId: Long): List<StockItemTracking> {
+        return stockTable.getTrackingForStockItem(stockItemId)
+    }
+
+    /**
      * إضافة أو تحديث نوع موقع تخزيني جديد (StockLocationType).
      */
     fun addLocationType(locationType: StockLocationType): StockLocationType {
@@ -80,36 +92,61 @@ class StockRepository(
     }
 
     /**
-     * إضافة وحدة مخزنية جديدة.
+     * إضافة وحدة مخزنية جديدة وتسجيل حركة الإنشاء آلياً.
      */
     fun addStockItem(item: StockItem): StockItem {
         val inserted = stockTable.insertStockItem(item)
         runBlocking {
             stockDao.insertOrUpdate(inserted.toEntity())
+            val trackings = stockTable.getTrackingForStockItem(inserted.id)
+            trackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
         }
         return inserted
     }
 
     /**
-     * تجزئة كمية مخزنية إلى تشغيلة أصل وفرع (Split Stock).
+     * تجزئة كمية مخزنية إلى تشغيلة أصل وفرع وتسجيل حركات التجزئة.
      */
     fun splitStockItem(parentId: Long, splitQuantity: Double): StockItem {
         val child = stockTable.splitStockItem(parentId, splitQuantity)
         runBlocking {
             stockDao.insertOrUpdate(child.toEntity())
+            val parentTrackings = stockTable.getTrackingForStockItem(parentId)
+            val childTrackings = stockTable.getTrackingForStockItem(child.id)
+            (parentTrackings + childTrackings).forEach { trackingDao.insertOrUpdate(it.toEntity()) }
         }
         return child
     }
 
     /**
-     * تنفيذ عملية الجرد الفعلي (Stocktake).
+     * تنفيذ عملية الجرد الفعلي (Stocktake) وتسجيل حركة الجرد.
      */
     fun performStocktake(stockId: Long, userId: Long, stocktakeDate: String = "2025-02-15"): StockItem {
         val updated = stockTable.performStocktake(stockId, userId, stocktakeDate)
         runBlocking {
             stockDao.insertOrUpdate(updated.toEntity())
+            val trackings = stockTable.getTrackingForStockItem(stockId)
+            trackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
         }
         return updated
+    }
+
+    /**
+     * تسجيل حركة تتبع مخصصة لوحدة مخزنية.
+     */
+    fun recordTracking(
+        stockItemId: Long,
+        trackingType: StockTrackingType,
+        userId: Long? = null,
+        label: String = trackingType.label,
+        notes: String = "",
+        deltas: String = "{}"
+    ): StockItemTracking {
+        val tracking = stockTable.recordTracking(stockItemId, trackingType, userId, label, notes, deltas)
+        runBlocking {
+            trackingDao.insertOrUpdate(tracking.toEntity())
+        }
+        return tracking
     }
 
     /**
@@ -139,6 +176,21 @@ class StockRepository(
         val response = batchSyncService.performBatchSync(payloads, Clock.System.now().toEpochMilliseconds() - 86400000)
         stockDao.updateSyncStatusForUuids(response.acceptedUuids, SyncStatus.SYNCED)
         return response.acceptedUuids.size
+    }
+
+    private fun StockItemTracking.toEntity(): StockItemTrackingEntity {
+        return StockItemTrackingEntity(
+            uuid = "tracking-$id",
+            trackingId = id,
+            stockItemId = stockItemId,
+            date = date,
+            trackingTypeCode = trackingType.code,
+            userId = userId,
+            label = label,
+            notes = notes,
+            deltas = deltas,
+            syncStatus = SyncStatus.PENDING
+        )
     }
 
     private fun StockLocationType.toEntity(): StockLocationTypeEntity {

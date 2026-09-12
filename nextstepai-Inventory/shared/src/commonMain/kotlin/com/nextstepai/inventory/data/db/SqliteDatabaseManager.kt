@@ -166,6 +166,23 @@ object SqliteDatabaseManager {
         """.trimIndent()).use { it.step() }
 
         conn.prepare("""
+            CREATE TABLE IF NOT EXISTS stock_item_tracking (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                trackingId INTEGER NOT NULL,
+                stockItemId INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                trackingTypeCode INTEGER NOT NULL DEFAULT 10,
+                userId INTEGER,
+                label TEXT NOT NULL DEFAULT '',
+                notes TEXT NOT NULL DEFAULT '',
+                deltas TEXT NOT NULL DEFAULT '{}',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
             CREATE TABLE IF NOT EXISTS companies (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 name TEXT NOT NULL,

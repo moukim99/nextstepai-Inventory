@@ -90,9 +90,11 @@ class StockItemTable {
     private val stockItems = mutableListOf<StockItem>()
     private val locations = mutableListOf<StockLocation>()
     private val locationTypes = mutableListOf<StockLocationType>()
+    private val trackingLogs = mutableListOf<StockItemTracking>()
     private var nextStockId = 1L
     private var nextLocationId = 1L
     private var nextLocationTypeId = 1L
+    private var nextTrackingId = 1L
 
     init {
         seedSampleStockData()
@@ -294,8 +296,54 @@ class StockItemTable {
             updated = "2025-02-15"
         )
         stockItems.add(newItem)
+
+        recordTracking(
+            stockItemId = newItem.id,
+            trackingType = StockTrackingType.CREATED,
+            label = "إنشاء وحدة مخزنية جديدة",
+            notes = newItem.notes,
+            deltas = "{\"quantity\":[0.0,${newItem.quantity}],\"status\":[0,${newItem.status.code}]}"
+        )
+
         return newItem
     }
+
+    /**
+     * تسجيل حركة تاريخية غير قابلة للتعديل في سجل التتبع (Tracking Log).
+     */
+    fun recordTracking(
+        stockItemId: Long,
+        trackingType: StockTrackingType,
+        userId: Long? = null,
+        label: String = trackingType.label,
+        notes: String = "",
+        deltas: String = "{}"
+    ): StockItemTracking {
+        val tracking = StockItemTracking(
+            id = nextTrackingId++,
+            stockItemId = stockItemId,
+            date = "2025-02-15 12:00:00",
+            trackingType = trackingType,
+            userId = userId,
+            label = label,
+            notes = notes,
+            deltas = deltas
+        )
+        trackingLogs.add(tracking)
+        return tracking
+    }
+
+    /**
+     * جلب سجل الحركات والتتبع لوحدة مخزنية محددة.
+     */
+    fun getTrackingForStockItem(stockItemId: Long): List<StockItemTracking> {
+        return trackingLogs.filter { it.stockItemId == stockItemId }
+    }
+
+    /**
+     * جلب كافة سجلات التتبع التاريخية.
+     */
+    fun getAllTrackingLogs(): List<StockItemTracking> = trackingLogs.toList()
 
     /**
      * جلب الوحدات المخزنية لقطعة محددة.
@@ -329,6 +377,21 @@ class StockItemTable {
             parentId = parentStockId
         )
         stockItems.add(childItem)
+
+        recordTracking(
+            stockItemId = parentStockId,
+            trackingType = StockTrackingType.SPLIT,
+            label = "تجزئة رصيد مخزني",
+            deltas = "{\"quantity\":[${parentItem.quantity},$newParentQty],\"child_id\":${childItem.id}}"
+        )
+
+        recordTracking(
+            stockItemId = childItem.id,
+            trackingType = StockTrackingType.CREATED,
+            label = "وحدة فرعية ناتجة عن تجزئة",
+            deltas = "{\"quantity\":[0.0,$splitQuantity],\"parent_id\":$parentStockId}"
+        )
+
         return childItem
     }
 
@@ -339,12 +402,22 @@ class StockItemTable {
         val index = stockItems.indexOfFirst { it.id == stockId }
         require(index != -1) { "الوحدة المخزنية غير موجودة" }
 
-        val updatedItem = stockItems[index].copy(
+        val oldItem = stockItems[index]
+        val updatedItem = oldItem.copy(
             stocktakeDate = stocktakeDate,
             stocktakeUserId = userId,
             reviewNeeded = false
         )
         stockItems[index] = updatedItem
+
+        recordTracking(
+            stockItemId = stockId,
+            trackingType = StockTrackingType.COUNT,
+            userId = userId,
+            label = "جرد فعلي ميداني",
+            deltas = "{\"quantity\":[${oldItem.quantity},${oldItem.quantity}],\"stocktake_date\":\"$stocktakeDate\"}"
+        )
+
         return updatedItem
     }
 

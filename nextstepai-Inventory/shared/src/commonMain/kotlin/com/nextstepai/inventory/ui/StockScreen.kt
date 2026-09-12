@@ -31,6 +31,7 @@ import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.StockItem
+import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockLocationType
 import com.nextstepai.inventory.data.StockStatus
@@ -42,7 +43,7 @@ import nextstepai_inventory.shared.generated.resources.save
 import nextstepai_inventory.shared.generated.resources.stock_items_count
 
 /**
- * شاشة إدارة المخزون الفعلي ومواقع التخزين وأنواعها (Stock, Location, LocationType Screen).
+ * شاشة إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات التتبع والتاريخ (StockScreen).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -212,7 +213,8 @@ fun StockScreen(
                                 part = part,
                                 location = loc,
                                 onSplitClick = { viewModel.setSelectedItemForSplit(item) },
-                                onStocktakeClick = { viewModel.performStocktake(item.id) }
+                                onStocktakeClick = { viewModel.performStocktake(item.id) },
+                                onHistoryClick = { viewModel.openTrackingHistory(item) }
                             )
                         }
                     }
@@ -278,6 +280,14 @@ fun StockScreen(
                     customIcon = customIcon
                 )
             }
+        )
+    }
+
+    if (uiState.selectedItemForHistory != null) {
+        StockTrackingHistoryDialog(
+            item = uiState.selectedItemForHistory!!,
+            logs = uiState.trackingLogsForSelected,
+            onDismiss = { viewModel.closeTrackingHistory() }
         )
     }
 
@@ -388,7 +398,7 @@ private fun StockTopBar(
 }
 
 /**
- * بطاقة عرض الوحدة المخزنية المادية مع كامل تفاصيل الـ 24 حقل المعتمدة
+ * بطاقة عرض الوحدة المخزنية المادية مع كامل تفاصيل الـ 24 حقل المعتمدة وزر التتبع التاريخي
  */
 @Composable
 private fun StockItemCard(
@@ -396,7 +406,8 @@ private fun StockItemCard(
     part: Part?,
     location: StockLocation?,
     onSplitClick: () -> Unit,
-    onStocktakeClick: () -> Unit
+    onStocktakeClick: () -> Unit,
+    onHistoryClick: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -593,6 +604,19 @@ private fun StockItemCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedButton(
+                    onClick = onHistoryClick,
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.padding(end = 6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Text("السجل (History)", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                    }
+                }
+
+                OutlinedButton(
                     onClick = onStocktakeClick,
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
@@ -618,6 +642,81 @@ private fun StockItemCard(
             }
         }
     }
+}
+
+@Composable
+private fun StockTrackingHistoryDialog(
+    item: StockItem,
+    logs: List<StockItemTracking>,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("سجل التتبع والحركات (StockItemTracking)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("إغلاق", fontWeight = FontWeight.Bold) }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("الوحدة المخزنية #${item.id} (الرقم التسلسلي: ${item.serial.ifBlank { "غير معرّف" }})", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
+
+                if (logs.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text("لا يوجد سجل حركات تاريخية لهذه القطعة", style = MaterialTheme.typography.bodyMedium)
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(logs, key = { "track-${it.id}" }) { log ->
+                            Card(
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(log.label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                                        Text(log.date, fontSize = 10.sp, color = MaterialTheme.colorScheme.outline)
+                                    }
+                                    if (log.notes.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text("ملاحظات: ${log.notes}", fontSize = 11.sp)
+                                    }
+                                    if (log.deltas != "{}") {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text("التغيرات (Deltas): ${log.deltas}", fontSize = 10.sp, color = MaterialTheme.colorScheme.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    )
 }
 
 @Composable
@@ -847,7 +946,7 @@ private fun AddStockLocationDialog(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = external, onCheckedChange = { external = it })
-                    Text("موقع خارجي (مملوق للعميل/المورد/سيارة نقل)", fontSize = 12.sp)
+                    Text("موقع خارجي (مملوك للعميل/المورد/سيارة نقل)", fontSize = 12.sp)
                 }
 
                 OutlinedTextField(
