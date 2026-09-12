@@ -404,7 +404,7 @@ fun CompanyScreen(
     }
 
     if (uiState.isAddCompanyDialogOpen) {
-        AddCompanyDialog(
+        AddCompanyBottomSheet(
             companies = uiState.companies,
             errorMessage = uiState.errorMessage,
             onDismiss = { viewModel.setAddDialogOpen(false) },
@@ -2617,8 +2617,9 @@ private fun DetailRow(label: String, value: String) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddCompanyDialog(
+private fun AddCompanyBottomSheet(
     companies: List<Company>,
     errorMessage: String?,
     onDismiss: () -> Unit,
@@ -2637,6 +2638,8 @@ private fun AddCompanyDialog(
         parentId: Long?
     ) -> Unit
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var website by remember { mutableStateOf("") }
@@ -2649,130 +2652,323 @@ private fun AddCompanyDialog(
     var isCustomer by remember { mutableStateOf(false) }
     var currency by remember { mutableStateOf("USD") }
     var selectedParentId by remember { mutableStateOf<Long?>(null) }
-
     var selectedCountry by remember { mutableStateOf(CountryRepository.defaultCountry()) }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp),
-        title = {
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 6.dp)
+                    .width(48.dp)
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFCBD5E1))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+        ) {
+            // Header Section
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(stringResource(Res.string.add_new_company), fontWeight = FontWeight.Bold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFEEF2FF))
+                            .border(1.dp, Color(0xFFE0E7FF), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.CorporateFare, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(20.dp))
+                    }
+                    Column {
+                        Text("تسجيل شركة جديدة", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp), color = Color(0xFF0F172A))
+                        Text("سجل الموردين والمصنّعين (InventTree System)", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = Color(0xFF64748B))
+                    }
+                }
+
                 IconButton(onClick = onDismiss) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                    Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color(0xFF64748B))
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (name.isNotBlank()) {
-                        val formattedPhone = if (phone.isBlank()) "" else "${selectedCountry.dialCode} $phone"
-                        onConfirm(name, description, website, formattedPhone, email, address, contact, isSupplier, isManufacturer, isCustomer, currency, selectedParentId)
-                    }
-                },
-                enabled = name.isNotBlank(),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
-        },
-        text = {
+
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+
+            // Scrollable Form Content
             Column(
                 modifier = Modifier
+                    .weight(1f)
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (errorMessage != null) {
                     Text(text = errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
 
+                // Company Name Field
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("اسم الشركة *") },
+                    placeholder = { Text("مثال: شركة إلكترونيات الدقة المحدودة") },
+                    leadingIcon = { Icon(Icons.Default.CorporateFare, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
 
+                // Activity Description Field
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
                     label = { Text("وصف نشاط الشركة") },
+                    placeholder = { Text("توضيح تخصص الشركة، المكونات الدقيقة، خطوط الإنتاج والوكالات...") },
                     modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
                     shape = RoundedCornerShape(12.dp)
                 )
 
+                // Parent Company Segmented Control
                 if (companies.isNotEmpty()) {
-                    Text("الشركة الأم (اختياري للهيكلية الهرمية):", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        FilterChip(
-                            selected = selectedParentId == null,
-                            onClick = { selectedParentId = null },
-                            label = { Text("بدون أم", fontSize = 10.sp) }
-                        )
-                        companies.take(3).forEach { comp ->
-                            FilterChip(
-                                selected = selectedParentId == comp.id,
-                                onClick = { selectedParentId = comp.id },
-                                label = { Text(comp.name, fontSize = 10.sp) }
-                            )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("الشركة الأم (اختياري للهيكلية الهرمية)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
+                        Surface(
+                            color = Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(3.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Surface(
+                                    onClick = { selectedParentId = null },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (selectedParentId == null) Color(0xFF4F46E5) else Color.Transparent,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
+                                        Text("بدون أم (مستقلة)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (selectedParentId == null) Color.White else Color(0xFF64748B))
+                                    }
+                                }
+
+                                companies.take(2).forEach { comp ->
+                                    val isSelected = selectedParentId == comp.id
+                                    Surface(
+                                        onClick = { selectedParentId = comp.id },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isSelected) Color(0xFF4F46E5) else Color.Transparent,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
+                                            Text(comp.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isSelected) Color.White else Color(0xFF64748B), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
+                // Official Phone Number
                 PhoneNumberInputField(
                     phoneValue = phone,
                     onPhoneValueChange = { phone = it },
                     selectedCountry = selectedCountry,
                     onCountrySelected = { selectedCountry = it },
-                    label = "رقم الهاتف"
+                    label = "رقم الهاتف الرسمي"
                 )
 
+                // Official Email Field
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
-                    label = { Text("البريد الإلكتروني") },
+                    label = { Text("البريد الإلكتروني التجاري") },
+                    placeholder = { Text("procurement@company.com") },
+                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                OutlinedTextField(
-                    value = currency,
-                    onValueChange = { currency = it },
-                    label = { Text("رمز العملة (USD / EUR / SAR)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = isSupplier, onCheckedChange = { isSupplier = it })
-                    Text("مورد تجاري (Supplier)", fontSize = 12.sp)
+                // Default Currency Selector
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("رمز العملة المعتمدة للتعامل", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("USD" to "دولار أمريكي ($)", "SAR" to "ريال سعودي (ر.س)", "EUR" to "يورو أوروبي (€)").forEach { (currCode, currLabel) ->
+                            val isSelected = currency.equals(currCode, ignoreCase = true)
+                            Surface(
+                                onClick = { currency = currCode },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSelected) Color(0xFFEEF2FF) else Color.White,
+                                border = BorderStroke(1.5.dp, if (isSelected) Color(0xFF4F46E5) else Color(0xFFE2E8F0)),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(10.dp)
+                                ) {
+                                    Text(currCode, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold, fontSize = 13.sp), color = if (isSelected) Color(0xFF4338CA) else Color(0xFF0F172A))
+                                    Text(currLabel, style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp), color = if (isSelected) Color(0xFF4F46E5) else Color(0xFF94A3B8), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = isManufacturer, onCheckedChange = { isManufacturer = it })
-                    Text("مصنع مكونات (Manufacturer)", fontSize = 12.sp)
-                }
+                // Company Roles Section
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("تصنيف وأدوار الشركة بالنظام", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
+                        Text("يمكن تحديد أكثر من دور", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
+                    }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = isCustomer, onCheckedChange = { isCustomer = it })
-                    Text("عميل مشتريات (Customer)", fontSize = 12.sp)
+                    // Role 1: Supplier
+                    Surface(
+                        onClick = { isSupplier = !isSupplier },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isSupplier) Color(0xFFEEF2FF).copy(alpha = 0.6f) else Color.White,
+                        border = BorderStroke(1.5.dp, if (isSupplier) Color(0xFF4F46E5) else Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.weight(1f)) {
+                                Box(modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(if (isSupplier) Color(0xFF4F46E5) else Color(0xFFF1F5F9)), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.LocalShipping, contentDescription = null, tint = if (isSupplier) Color.White else Color(0xFF64748B), modifier = Modifier.size(18.dp))
+                                }
+                                Column {
+                                    Text("مورّد تجاري (Supplier)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.5.sp), color = Color(0xFF0F172A))
+                                    Text("توفير القطع والمخزون، عروض الأسعار وأوامر الشراء", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF64748B))
+                                }
+                            }
+                            Checkbox(checked = isSupplier, onCheckedChange = { isSupplier = it })
+                        }
+                    }
+
+                    // Role 2: Manufacturer
+                    Surface(
+                        onClick = { isManufacturer = !isManufacturer },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isManufacturer) Color(0xFFEEF2FF).copy(alpha = 0.6f) else Color.White,
+                        border = BorderStroke(1.5.dp, if (isManufacturer) Color(0xFF4F46E5) else Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.weight(1f)) {
+                                Box(modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(if (isManufacturer) Color(0xFF4F46E5) else Color(0xFFF1F5F9)), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Memory, contentDescription = null, tint = if (isManufacturer) Color.White else Color(0xFF64748B), modifier = Modifier.size(18.dp))
+                                }
+                                Column {
+                                    Text("مُصنّع مكونات (Manufacturer)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.5.sp), color = Color(0xFF0F172A))
+                                    Text("الجهة المصنعة للقطع (MPN) وتوثيق المواصفات", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF64748B))
+                                }
+                            }
+                            Checkbox(checked = isManufacturer, onCheckedChange = { isManufacturer = it })
+                        }
+                    }
+
+                    // Role 3: Customer
+                    Surface(
+                        onClick = { isCustomer = !isCustomer },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isCustomer) Color(0xFFEEF2FF).copy(alpha = 0.6f) else Color.White,
+                        border = BorderStroke(1.5.dp, if (isCustomer) Color(0xFF4F46E5) else Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.weight(1f)) {
+                                Box(modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(if (isCustomer) Color(0xFF4F46E5) else Color(0xFFF1F5F9)), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.ShoppingBag, contentDescription = null, tint = if (isCustomer) Color.White else Color(0xFF64748B), modifier = Modifier.size(18.dp))
+                                }
+                                Column {
+                                    Text("عميل ومشتريات (Customer)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.5.sp), color = Color(0xFF0F172A))
+                                    Text("تصدير الفواتير وشحن المنتجات المجمعة والطلبات", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF64748B))
+                                }
+                            }
+                            Checkbox(checked = isCustomer, onCheckedChange = { isCustomer = it })
+                        }
+                    }
+                }
+            }
+
+            // Sticky Actions Footer
+            Surface(
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFFF1F5F9)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = {
+                            if (name.isNotBlank()) {
+                                val formattedPhone = if (phone.isBlank()) "" else "${selectedCountry.dialCode} $phone"
+                                onConfirm(name, description, website, formattedPhone, email, address, contact, isSupplier, isManufacturer, isCustomer, currency, selectedParentId)
+                            }
+                        },
+                        enabled = name.isNotBlank(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5), contentColor = Color.White),
+                        contentPadding = PaddingValues(vertical = 12.dp),
+                        modifier = Modifier.weight(2f)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text("حفظ وتسجيل الشركة", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp))
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        contentPadding = PaddingValues(vertical = 12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("إلغاء", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp), color = Color(0xFF64748B))
+                    }
                 }
             }
         }
-    )
+    }
 }
 
 @Composable
