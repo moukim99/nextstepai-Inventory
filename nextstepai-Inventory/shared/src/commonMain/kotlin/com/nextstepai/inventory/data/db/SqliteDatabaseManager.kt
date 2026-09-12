@@ -108,8 +108,10 @@ object SqliteDatabaseManager {
                 purchasePriceCurrency TEXT NOT NULL DEFAULT 'USD',
                 purchaseOrderId INTEGER,
                 supplierPartId INTEGER,
+                supplierPartUuid TEXT NOT NULL DEFAULT '',
                 salesOrderId INTEGER,
                 customerId INTEGER,
+                customerUuid TEXT NOT NULL DEFAULT '',
                 buildId INTEGER,
                 isBuilding INTEGER NOT NULL DEFAULT 0,
                 parentId INTEGER,
@@ -133,8 +135,10 @@ object SqliteDatabaseManager {
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN purchasePriceCurrency TEXT NOT NULL DEFAULT 'USD'").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN purchaseOrderId INTEGER").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN supplierPartId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN supplierPartUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN salesOrderId INTEGER").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN customerId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN customerUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN buildId INTEGER").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN isBuilding INTEGER NOT NULL DEFAULT 0").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN parentId INTEGER").use { it.step() } }
@@ -265,13 +269,39 @@ object SqliteDatabaseManager {
                 uuid TEXT PRIMARY KEY NOT NULL,
                 name TEXT NOT NULL,
                 description TEXT NOT NULL DEFAULT '',
+                website TEXT NOT NULL DEFAULT '',
                 phone TEXT NOT NULL DEFAULT '',
                 email TEXT NOT NULL DEFAULT '',
                 isSupplier INTEGER NOT NULL DEFAULT 1,
                 isManufacturer INTEGER NOT NULL DEFAULT 0,
                 isCustomer INTEGER NOT NULL DEFAULT 0,
+                active INTEGER NOT NULL DEFAULT 1,
                 currency TEXT NOT NULL DEFAULT 'USD',
                 logoPath TEXT,
+                notes TEXT NOT NULL DEFAULT '',
+                metadata TEXT NOT NULL DEFAULT '{}',
+                parentUuid TEXT,
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE companies ADD COLUMN website TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE companies ADD COLUMN active INTEGER NOT NULL DEFAULT 1").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE companies ADD COLUMN notes TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE companies ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE companies ADD COLUMN parentUuid TEXT").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS company_attachments (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                companyUuid TEXT NOT NULL,
+                attachmentPath TEXT NOT NULL DEFAULT '',
+                link TEXT NOT NULL DEFAULT '',
+                comment TEXT NOT NULL DEFAULT '',
+                uploadDate INTEGER NOT NULL DEFAULT 0,
+                userId INTEGER,
                 syncStatus TEXT NOT NULL DEFAULT 'PENDING',
                 isDeleted INTEGER NOT NULL DEFAULT 0,
                 updatedAt INTEGER NOT NULL DEFAULT 0
@@ -279,10 +309,148 @@ object SqliteDatabaseManager {
         """.trimIndent()).use { it.step() }
 
         conn.prepare("""
+            CREATE TABLE IF NOT EXISTS contacts (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                companyUuid TEXT NOT NULL,
+                name TEXT NOT NULL,
+                phone TEXT NOT NULL DEFAULT '',
+                email TEXT NOT NULL DEFAULT '',
+                role TEXT NOT NULL DEFAULT '',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS addresses (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                companyUuid TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT 'الفرع الرئيسي',
+                isPrimary INTEGER NOT NULL DEFAULT 0,
+                line1 TEXT NOT NULL,
+                line2 TEXT NOT NULL DEFAULT '',
+                postalCode TEXT NOT NULL DEFAULT '',
+                city TEXT NOT NULL DEFAULT '',
+                province TEXT NOT NULL DEFAULT '',
+                country TEXT NOT NULL DEFAULT '',
+                shippingNotes TEXT NOT NULL DEFAULT '',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS manufacturer_parts (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                partUuid TEXT NOT NULL,
+                manufacturerUuid TEXT NOT NULL,
+                mpn TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                link TEXT NOT NULL DEFAULT '',
+                metadata TEXT NOT NULL DEFAULT '{}',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE manufacturer_parts ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS manufacturer_part_parameters (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                manufacturerPartUuid TEXT NOT NULL,
+                name TEXT NOT NULL,
+                value TEXT NOT NULL DEFAULT '',
+                units TEXT NOT NULL DEFAULT '',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS manufacturer_part_attachments (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                manufacturerPartUuid TEXT NOT NULL,
+                attachmentPath TEXT NOT NULL DEFAULT '',
+                link TEXT NOT NULL DEFAULT '',
+                comment TEXT NOT NULL DEFAULT '',
+                uploadDate INTEGER NOT NULL DEFAULT 0,
+                userId INTEGER,
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS supplier_parts (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                partUuid TEXT NOT NULL,
+                supplierUuid TEXT NOT NULL,
+                sku TEXT NOT NULL,
+                manufacturerPartUuid TEXT,
+                description TEXT NOT NULL DEFAULT '',
+                link TEXT NOT NULL DEFAULT '',
+                note TEXT NOT NULL DEFAULT '',
+                packaging TEXT NOT NULL DEFAULT '',
+                packQuantity TEXT NOT NULL DEFAULT '1',
+                availableForPurchase INTEGER NOT NULL DEFAULT 1,
+                active INTEGER NOT NULL DEFAULT 1,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE supplier_parts ADD COLUMN availableForPurchase INTEGER NOT NULL DEFAULT 1").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE supplier_parts ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS supplier_price_breaks (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                supplierPartUuid TEXT NOT NULL,
+                quantity REAL NOT NULL DEFAULT 1.0,
+                price REAL NOT NULL DEFAULT 0.0,
+                priceCurrency TEXT NOT NULL DEFAULT 'USD',
+                packQuantity TEXT NOT NULL DEFAULT '1',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE supplier_price_breaks ADD COLUMN packQuantity TEXT NOT NULL DEFAULT '1'").use { it.step() } }
+
+        // قيود التفرد المركبة والجزئية على مستوى DDL (Composite & Partial Unique Indexes)
+        runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_primary_address ON addresses(companyUuid) WHERE isPrimary = 1").use { it.step() } }
+        runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_mfg_parts_mfg_mpn ON manufacturer_parts(manufacturerUuid, mpn)").use { it.step() } }
+        runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_supplier_parts_sup_sku ON supplier_parts(supplierUuid, sku)").use { it.step() } }
+        runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_price_breaks_part_qty ON supplier_price_breaks(supplierPartUuid, quantity)").use { it.step() } }
+        runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_mfg_param_part_name ON manufacturer_part_parameters(manufacturerPartUuid, name)").use { it.step() } }
+
+        // فهارس استعلامات الأداء للقطع الداخلية
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_supplier_parts_partUuid ON supplier_parts(partUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_mfg_parts_partUuid ON manufacturer_parts(partUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_company_att_compUuid ON company_attachments(companyUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_mfg_param_mfgPartUuid ON manufacturer_part_parameters(manufacturerPartUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_contacts_companyUuid ON contacts(companyUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_addresses_companyUuid ON addresses(companyUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_mfg_parts_mfgUuid ON manufacturer_parts(manufacturerUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_mfg_attachments_mfgPartUuid ON manufacturer_part_attachments(manufacturerPartUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_supplier_parts_supUuid ON supplier_parts(supplierUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_price_breaks_partUuid ON supplier_price_breaks(supplierPartUuid)").use { it.step() } }
+
+        conn.prepare("""
             CREATE TABLE IF NOT EXISTS purchase_orders (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 reference TEXT NOT NULL,
                 supplierId INTEGER NOT NULL,
+                supplierUuid TEXT NOT NULL DEFAULT '',
                 supplierName TEXT NOT NULL DEFAULT '',
                 statusCode INTEGER NOT NULL DEFAULT 10,
                 description TEXT NOT NULL DEFAULT '',
@@ -295,11 +463,14 @@ object SqliteDatabaseManager {
             );
         """.trimIndent()).use { it.step() }
 
+        runCatching { conn.prepare("ALTER TABLE purchase_orders ADD COLUMN supplierUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS purchase_order_lines (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 orderUuid TEXT NOT NULL,
                 supplierPartId INTEGER NOT NULL,
+                supplierPartUuid TEXT NOT NULL DEFAULT '',
                 quantity REAL NOT NULL DEFAULT 1.0,
                 receivedQuantity REAL NOT NULL DEFAULT 0.0,
                 purchasePrice REAL NOT NULL DEFAULT 0.0,
@@ -308,6 +479,8 @@ object SqliteDatabaseManager {
                 updatedAt INTEGER NOT NULL DEFAULT 0
             );
         """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE purchase_order_lines ADD COLUMN supplierPartUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS build_orders (
@@ -411,10 +584,6 @@ object SqliteDatabaseManager {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_line_items_buildId ON build_order_line_items(buildId)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_line_items_buildUuid ON build_order_line_items(buildUuid)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_line_items_bomItemUuid ON build_order_line_items(bomItemUuid)").use { it.step() } }
-
-
-
-
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS part_categories (

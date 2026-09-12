@@ -37,7 +37,9 @@ data class Company(
     val currency: String = "USD",
     val imageUrl: String? = null,
     val link: String = "",
-    val notes: String = ""
+    val notes: String = "",
+    val metadata: String = "{}",
+    val parentId: Long? = null
 )
 
 /**
@@ -150,4 +152,35 @@ class CompanyTable {
      * جلب كافة الشركات.
      */
     fun getAllCompanies(): List<Company> = companies.toList()
+
+    /**
+     * جلب شركة حسب المعرف الرقمي.
+     */
+    fun getCompanyById(id: Long): Company? = companies.find { it.id == id }
+
+    /**
+     * تحديث بيانات شركة حالية مع التحقق من الفرادة.
+     */
+    fun updateCompany(company: Company): Company {
+        require(company.id != 0L) { "المعرف الرقمي للشركة غير صالح للتحديث" }
+        require(company.name.isNotBlank()) { "اسم الشركة إلزامي ولا يمكن أن يكون فارغاً" }
+        require(company.parentId == null || company.parentId != company.id) { "لا يمكن اختيار الشركة لنفسها كشركة أم" }
+
+        val duplicateName = companies.any { it.name.trim().equals(company.name.trim(), ignoreCase = true) && it.id != company.id }
+        require(!duplicateName) {
+            "اسم الشركة '${company.name}' مسجل بالفعل لشركة أخرى."
+        }
+
+        val index = companies.indexOfFirst { it.id == company.id }
+        require(index != -1) { "الشركة المطلوبة غير موجودة لتحديثها" }
+        companies[index] = company
+        return company
+    }
+
+    /**
+     * حذف شركة حسب المعرف.
+     */
+    fun deleteCompany(id: Long): Boolean {
+        return companies.removeIf { it.id == id }
+    }
 }
