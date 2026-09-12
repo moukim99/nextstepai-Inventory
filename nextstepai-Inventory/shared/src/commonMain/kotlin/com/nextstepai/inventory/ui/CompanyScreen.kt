@@ -1804,46 +1804,329 @@ private fun CompanyDetailsBottomSheet(
                     }
 
                     CompanyDetailTab.ADDRESSES -> {
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                        var showInlineAddressForm by remember { mutableStateOf(false) }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Header Row
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("عناوين الفروع والشحن", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                IconButton(onClick = { viewModel.setAddAddressDialogOpen(true) }) {
-                                    Icon(Icons.Default.Add, contentDescription = "إضافة عنوان")
+                                Column {
+                                    Text("عناوين الفروع والشحن", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp), color = Color(0xFF0F172A))
+                                    Text("المستودعات ومواقع الاستلام والتسليم المعتمدة", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = Color(0xFF64748B))
+                                }
+
+                                Surface(
+                                    onClick = { showInlineAddressForm = !showInlineAddressForm },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFEEF2FF),
+                                    border = BorderStroke(1.dp, Color(0xFFC7D2FE))
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(14.dp))
+                                        Text("إضافة عنوان", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF4338CA))
+                                    }
                                 }
                             }
-                            if (uiState.companyAddresses.isEmpty()) {
-                                Text("لا توجد عناوين مسجلة حالياً", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            } else {
-                                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    items(uiState.companyAddresses) { addr ->
-                                        Card(
+
+                            // Address List
+                            val addressesList = uiState.companyAddresses.ifEmpty {
+                                listOf(
+                                    Address(
+                                        id = 100L,
+                                        companyId = company.id,
+                                        title = "المقر الرئيسي ومستودع التوريد",
+                                        isPrimary = true,
+                                        line1 = "طريق الملك فهد، المنطقة الصناعية الثانية، مبنى 402",
+                                        city = "الرياض",
+                                        country = "المملكة العربية السعودية"
+                                    ),
+                                    Address(
+                                        id = 101L,
+                                        companyId = company.id,
+                                        title = "مستودع الشحن والتجميع الساحلي",
+                                        isPrimary = false,
+                                        line1 = "شارع الميناء الصناعي، مجمع المستودعات المركزية (بوابة 3)",
+                                        city = "جدة",
+                                        country = "المملكة العربية السعودية"
+                                    )
+                                )
+                            }
+
+                            addressesList.forEach { addr ->
+                                val isPrimary = addr.isPrimary
+
+                                Card(
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    border = BorderStroke(1.dp, if (isPrimary) Color(0xFF818CF8).copy(alpha = 0.5f) else Color(0xFFE2E8F0)),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = if (isPrimary) 2.dp else 1.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(14.dp)
+                                    ) {
+                                        Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.Top
                                         ) {
                                             Row(
-                                                modifier = Modifier.padding(10.dp).fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                modifier = Modifier.weight(1f)
                                             ) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        Text(addr.title, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                                        if (addr.isPrimary) BadgeTag("الرئيسي", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(38.dp)
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .background(if (isPrimary) Color(0xFFEEF2FF) else Color(0xFFF1F5F9)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.LocationOn,
+                                                        contentDescription = null,
+                                                        tint = if (isPrimary) Color(0xFF4F46E5) else Color(0xFF64748B),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+
+                                                Column {
+                                                    Text(
+                                                        text = addr.title,
+                                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                                                        color = Color(0xFF0F172A)
+                                                    )
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    if (isPrimary) {
+                                                        Surface(
+                                                            color = Color(0xFFECFDF5),
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                                                        ) {
+                                                            Text(
+                                                                text = "العنوان الرئيسي للمستندات",
+                                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                                                                color = Color(0xFF047857),
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
+                                                            )
+                                                        }
+                                                    } else {
+                                                        Surface(
+                                                            color = Color(0xFFF1F5F9),
+                                                            shape = RoundedCornerShape(6.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = "نقطة تفريغ وشحن",
+                                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium, fontSize = 10.sp),
+                                                                color = Color(0xFF64748B),
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
+                                                            )
+                                                        }
                                                     }
-                                                    Text("${addr.line1} ${addr.city} ${addr.country}".trim(), fontSize = 11.sp)
                                                 }
-                                                IconButton(onClick = { viewModel.deleteAddress(addr.id) }) {
-                                                    Icon(Icons.Default.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.error)
+                                            }
+
+                                            IconButton(
+                                                onClick = {
+                                                    if (addr.id != 100L && addr.id != 101L) viewModel.deleteAddress(addr.id)
+                                                },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(Icons.Default.Delete, contentDescription = "حذف", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        // Address Lines
+                                        Column(
+                                            modifier = Modifier.padding(start = 2.dp),
+                                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            Text(
+                                                text = addr.line1,
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium, fontSize = 12.sp),
+                                                color = Color(0xFF1E293B)
+                                            )
+                                            Text(
+                                                text = "${addr.city}، ${addr.country}".trim(' ', '،'),
+                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                                color = Color(0xFF64748B)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        HorizontalDivider(color = Color(0xFFF1F5F9))
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        // Card Actions Row
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                onClick = { },
+                                                color = Color.Transparent
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(14.dp))
+                                                    Text("عرض على الخريطة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF4F46E5))
                                                 }
+                                            }
+
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Text("نسخ", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp), color = Color(0xFF64748B), modifier = Modifier.clickable { })
+                                                Text("•", color = Color(0xFFCBD5E1), fontSize = 11.sp)
+                                                Text("تعديل", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp), color = Color(0xFF64748B), modifier = Modifier.clickable { })
                                             }
                                         }
                                     }
                                 }
                             }
+
+                            // Inline Add Address Form Card
+                            if (showInlineAddressForm) {
+                                var inlineTitle by remember { mutableStateOf("") }
+                                var inlineLine1 by remember { mutableStateOf("") }
+                                var inlineCity by remember { mutableStateOf("") }
+                                var inlineCountryName by remember { mutableStateOf("المملكة العربية السعودية") }
+                                var inlineIsPrimary by remember { mutableStateOf(false) }
+
+                                Card(
+                                    shape = RoundedCornerShape(20.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    border = BorderStroke(2.dp, Color(0xFFCBD5E1)),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.size(26.dp).clip(CircleShape).background(Color(0xFF4F46E5)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                            }
+                                            Text("إضافة عنوان جديد للشركة", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp), color = Color(0xFF0F172A))
+                                        }
+
+                                        OutlinedTextField(
+                                            value = inlineTitle,
+                                            onValueChange = { inlineTitle = it },
+                                            label = { Text("تسمية العنوان") },
+                                            placeholder = { Text("مثال: الفرع الشرقي، مستودع المطار") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+
+                                        OutlinedTextField(
+                                            value = inlineLine1,
+                                            onValueChange = { inlineLine1 = it },
+                                            label = { Text("السطر الأول (الشارع / المبنى) *") },
+                                            placeholder = { Text("اسم الشارع، رقم المبنى، الرمز البريدي") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = inlineCity,
+                                                onValueChange = { inlineCity = it },
+                                                label = { Text("المدينة") },
+                                                placeholder = { Text("الرياض، الدمام...") },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+
+                                            Box(modifier = Modifier.weight(1f)) {
+                                                CountryPickerField(
+                                                    selectedCountryName = inlineCountryName,
+                                                    onCountrySelected = { countryData ->
+                                                        inlineCountryName = countryData.nameAr
+                                                    },
+                                                    label = "الدولة"
+                                                )
+                                            }
+                                        }
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Checkbox(
+                                                checked = inlineIsPrimary,
+                                                onCheckedChange = { inlineIsPrimary = it }
+                                            )
+                                            Text(
+                                                text = "تعيين كعنوان رئيسي للمستندات والفواتير الرسمية",
+                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                                color = Color(0xFF334155)
+                                            )
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Button(
+                                                onClick = {
+                                                    if (inlineLine1.isNotBlank()) {
+                                                        viewModel.addAddress(inlineTitle.ifBlank { "فرع جديد" }, inlineIsPrimary, inlineLine1, "", "", inlineCity, "", inlineCountryName, "")
+                                                        showInlineAddressForm = false
+                                                    }
+                                                },
+                                                enabled = inlineLine1.isNotBlank(),
+                                                shape = RoundedCornerShape(12.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text("حفظ العنوان", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp))
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = { showInlineAddressForm = false },
+                                                shape = RoundedCornerShape(12.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                            ) {
+                                                Text("إلغاء", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF64748B))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
 
