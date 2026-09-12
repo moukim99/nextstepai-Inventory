@@ -98,6 +98,7 @@ object SqliteDatabaseManager {
                 uuid TEXT PRIMARY KEY NOT NULL,
                 partId INTEGER NOT NULL,
                 locationId INTEGER,
+                locationUuid TEXT,
                 quantity REAL NOT NULL DEFAULT 1.0,
                 serial TEXT NOT NULL DEFAULT '',
                 batch TEXT NOT NULL DEFAULT '',
@@ -127,6 +128,7 @@ object SqliteDatabaseManager {
             );
         """.trimIndent()).use { it.step() }
 
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN locationUuid TEXT").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN purchasePrice REAL NOT NULL DEFAULT 0.0").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN purchasePriceCurrency TEXT NOT NULL DEFAULT 'USD'").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN purchaseOrderId INTEGER").use { it.step() } }
@@ -249,6 +251,14 @@ object SqliteDatabaseManager {
         """.trimIndent()).use { it.step() }
 
         runCatching { conn.prepare("ALTER TABLE stock_item_attachments ADD COLUMN stockItemUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+
+        // إنشاء فهارس الأداء لحقول المزامنة والربط المحلي (Performance Indexes)
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_items_partId ON stock_items(partId)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_items_locationUuid ON stock_items(locationUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_locations_parentUuid ON stock_locations(parentUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_tracking_itemUuid ON stock_item_tracking(stockItemUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_tests_itemUuid ON stock_item_test_results(stockItemUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_attachments_itemUuid ON stock_item_attachments(stockItemUuid)").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS companies (

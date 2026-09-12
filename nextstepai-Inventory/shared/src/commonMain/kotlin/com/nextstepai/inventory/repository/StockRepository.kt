@@ -327,6 +327,7 @@ class StockRepository(
             uuid = "stock-$id",
             partId = partId,
             locationId = locationId,
+            locationUuid = locationId?.let { "location-$it" },
             quantity = quantity,
             serial = serial,
             batch = batch,
