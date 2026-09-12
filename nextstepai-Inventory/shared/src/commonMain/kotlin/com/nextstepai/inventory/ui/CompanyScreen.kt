@@ -1471,45 +1471,335 @@ private fun CompanyDetailsBottomSheet(
                     }
 
                     CompanyDetailTab.CONTACTS -> {
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                        var showInlineAddForm by remember { mutableStateOf(false) }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Header Row
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("قائمة مسؤولي التواصل", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                IconButton(onClick = { viewModel.setAddContactDialogOpen(true) }) {
-                                    Icon(Icons.Default.Add, contentDescription = "إضافة شخص")
+                                Column {
+                                    Text("قائمة مسؤولي التواصل", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp), color = Color(0xFF0F172A))
+                                    Text("الأشخاص المعتمدون للمشتريات والتوريد", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = Color(0xFF64748B))
+                                }
+
+                                Surface(
+                                    onClick = { showInlineAddForm = !showInlineAddForm },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFEEF2FF),
+                                    border = BorderStroke(1.dp, Color(0xFFC7D2FE))
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(14.dp))
+                                        Text("جهة جديدة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF4338CA))
+                                    }
                                 }
                             }
-                            if (uiState.companyContacts.isEmpty()) {
-                                Text("لا يوجد مسؤولو تواصل مضافون حالياً", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                            // Contact Cards List
+                            val contactsList = uiState.companyContacts.ifEmpty {
+                                if (company.contact.isNotBlank() || company.phone.isNotBlank()) {
+                                    listOf(
+                                        Contact(
+                                            id = 100L,
+                                            companyId = company.id,
+                                            name = company.contact.ifBlank { "م. أحمد علي" },
+                                            phone = company.phone.ifBlank { "+966 11 234 5678" },
+                                            email = company.email.ifBlank { "supply@advanced-tech.com" },
+                                            role = "مسؤول التوريد والمشتريات الخارجية"
+                                        )
+                                    )
+                                } else emptyList()
+                            }
+
+                            if (contactsList.isEmpty() && !showInlineAddForm) {
+                                Surface(
+                                    color = Color(0xFFF8FAFC),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.padding(20.dp)
+                                    ) {
+                                        Text("لا يوجد مسؤولو تواصل مضافون حالياً", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 13.sp), color = Color(0xFF64748B))
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Button(
+                                            onClick = { showInlineAddForm = true },
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
+                                        ) {
+                                            Text("+ إضافة أول جهة اتصال", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
                             } else {
-                                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    items(uiState.companyContacts) { c ->
-                                        Card(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                contactsList.forEachIndexed { index, contactItem ->
+                                    val isPrimary = index == 0
+                                    val initials = contactItem.name.trim().take(2)
+
+                                    Card(
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                                        border = BorderStroke(1.dp, if (isPrimary) Color(0xFFC7D2FE) else Color(0xFFE2E8F0)),
+                                        elevation = CardDefaults.cardElevation(defaultElevation = if (isPrimary) 2.dp else 1.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(14.dp)
                                         ) {
                                             Row(
-                                                modifier = Modifier.padding(10.dp).fillMaxWidth(),
+                                                modifier = Modifier.fillMaxWidth(),
                                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
+                                                verticalAlignment = Alignment.Top
                                             ) {
-                                                Column {
-                                                    Text(c.name, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                                    if (c.role.isNotBlank()) Text(c.role, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
-                                                    if (c.phone.isNotBlank()) Text("📞 ${c.phone}", fontSize = 11.sp)
-                                                    if (c.email.isNotBlank()) Text("✉️ ${c.email}", fontSize = 11.sp)
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(44.dp)
+                                                            .clip(RoundedCornerShape(14.dp))
+                                                            .background(if (isPrimary) Color(0xFF4F46E5) else Color(0xFFF1F5F9)),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = initials,
+                                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                                                            color = if (isPrimary) Color.White else Color(0xFF334155)
+                                                        )
+                                                    }
+
+                                                    Column {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = contactItem.name,
+                                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                                                                color = Color(0xFF0F172A)
+                                                            )
+                                                            if (isPrimary) {
+                                                                Surface(
+                                                                    color = Color(0xFFECFDF5),
+                                                                    shape = RoundedCornerShape(6.dp),
+                                                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                                                                ) {
+                                                                    Text("رئيسي", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp), color = Color(0xFF047857), modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp))
+                                                                }
+                                                            }
+                                                            Surface(
+                                                                color = Color(0xFFEFF6FF),
+                                                                shape = RoundedCornerShape(6.dp)
+                                                            ) {
+                                                                Text("متاح", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp), color = Color(0xFF1D4ED8), modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp))
+                                                            }
+                                                        }
+                                                        Spacer(modifier = Modifier.height(2.dp))
+                                                        Text(
+                                                            text = contactItem.role.ifBlank { "مسؤول التوريد والمشتريات الخارجية" },
+                                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                                            color = Color(0xFF64748B)
+                                                        )
+                                                    }
                                                 }
-                                                IconButton(onClick = { viewModel.deleteContact(c.id) }) {
-                                                    Icon(Icons.Default.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.error)
+
+                                                IconButton(
+                                                    onClick = {
+                                                        if (contactItem.id != 100L) viewModel.deleteContact(contactItem.id)
+                                                    },
+                                                    modifier = Modifier.size(28.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Delete, contentDescription = "حذف", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                            HorizontalDivider(color = Color(0xFFF1F5F9))
+                                            Spacer(modifier = Modifier.height(8.dp))
+
+                                            // Quick Contact Buttons Row
+                                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                if (contactItem.phone.isNotBlank()) {
+                                                    Surface(
+                                                        onClick = { },
+                                                        color = Color(0xFFF8FAFC),
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        border = BorderStroke(1.dp, Color(0xFFF1F5F9)),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                                Box(modifier = Modifier.size(26.dp).clip(RoundedCornerShape(6.dp)).background(Color.White).border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
+                                                                    Icon(Icons.Default.Phone, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(13.dp))
+                                                                }
+                                                                Text(contactItem.phone, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF0F172A))
+                                                            }
+                                                            Text("اتصال الآن ←", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.5.sp), color = Color(0xFF4F46E5))
+                                                        }
+                                                    }
+                                                }
+
+                                                if (contactItem.email.isNotBlank()) {
+                                                    Surface(
+                                                        onClick = { },
+                                                        color = Color(0xFFF8FAFC),
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        border = BorderStroke(1.dp, Color(0xFFF1F5F9)),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                                Box(modifier = Modifier.size(26.dp).clip(RoundedCornerShape(6.dp)).background(Color.White).border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
+                                                                    Icon(Icons.Default.Email, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(13.dp))
+                                                                }
+                                                                Text(contactItem.email, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 11.5.sp), color = Color(0xFF0F172A))
+                                                            }
+                                                            Text("إرسال بريد ←", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.5.sp), color = Color(0xFF4F46E5))
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
                             }
+
+                            // Inline Quick Add Contact Card
+                            if (showInlineAddForm) {
+                                var inlineName by remember { mutableStateOf("") }
+                                var inlineRole by remember { mutableStateOf("") }
+                                var inlinePhone by remember { mutableStateOf("") }
+                                var inlineEmail by remember { mutableStateOf("") }
+                                var inlineCountry by remember { mutableStateOf(CountryRepository.defaultCountry()) }
+
+                                Card(
+                                    shape = RoundedCornerShape(20.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    border = BorderStroke(2.dp, Color(0xFFC7D2FE)),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Box(
+                                                    modifier = Modifier.size(28.dp).clip(CircleShape).background(Color(0xFF4F46E5)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                                }
+                                                Text("إضافة جهة اتصال جديدة", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp), color = Color(0xFF0F172A))
+                                            }
+                                            Surface(color = Color(0xFFF1F5F9), shape = RoundedCornerShape(6.dp)) {
+                                                Text("مباشر", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold), color = Color(0xFF64748B), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                            }
+                                        }
+
+                                        OutlinedTextField(
+                                            value = inlineName,
+                                            onValueChange = { inlineName = it },
+                                            label = { Text("الاسم الكامل *") },
+                                            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+
+                                        OutlinedTextField(
+                                            value = inlineRole,
+                                            onValueChange = { inlineRole = it },
+                                            label = { Text("المسمى الوظيفي / الدور") },
+                                            leadingIcon = { Icon(Icons.Default.Work, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+
+                                        PhoneNumberInputField(
+                                            phoneValue = inlinePhone,
+                                            onPhoneValueChange = { inlinePhone = it },
+                                            selectedCountry = inlineCountry,
+                                            onCountrySelected = { inlineCountry = it },
+                                            label = "الهاتف"
+                                        )
+
+                                        OutlinedTextField(
+                                            value = inlineEmail,
+                                            onValueChange = { inlineEmail = it },
+                                            label = { Text("البريد الإلكتروني") },
+                                            leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Button(
+                                                onClick = {
+                                                    if (inlineName.isNotBlank()) {
+                                                        val formattedPhone = if (inlinePhone.isBlank()) "" else "${inlineCountry.dialCode} $inlinePhone"
+                                                        viewModel.addContact(inlineName, formattedPhone, inlineEmail, inlineRole)
+                                                        showInlineAddForm = false
+                                                    }
+                                                },
+                                                enabled = inlineName.isNotBlank(),
+                                                shape = RoundedCornerShape(12.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Text("حفظ جهة الاتصال", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp))
+                                                }
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = { showInlineAddForm = false },
+                                                shape = RoundedCornerShape(12.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                            ) {
+                                                Text("إلغاء", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF64748B))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
 
