@@ -91,10 +91,12 @@ fun CompanyScreen(
             ) {
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // شريط البحث والفلتر المطور
+                // شريط البحث والفلتر المطور متطابق الارتفاع
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedTextField(
@@ -103,7 +105,7 @@ fun CompanyScreen(
                         placeholder = {
                             Text(
                                 text = "بحث بالاسم، الوصف، أو الهاتف...",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.5.sp),
                                 color = MaterialTheme.colorScheme.outline
                             )
                         },
@@ -112,7 +114,7 @@ fun CompanyScreen(
                                 imageVector = Icons.Default.Search,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         },
                         modifier = Modifier.weight(1f),
@@ -134,7 +136,8 @@ fun CompanyScreen(
                             containerColor = Color.White,
                             contentColor = MaterialTheme.colorScheme.onSurface
                         ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        modifier = Modifier.fillMaxHeight()
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -157,147 +160,164 @@ fun CompanyScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // شريط تصفية أدوار الشركات (Filter Chips)
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                // شريط تصفية أدوار الشركات (Filter Chips) - صف واحد محكم بدون سحب جانبي
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    item(key = "filter-role-all") {
-                        val selected = uiState.roleFilter == CompanyRoleFilter.ALL
-                        Surface(
-                            onClick = { viewModel.setRoleFilter(CompanyRoleFilter.ALL) },
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (selected) Color(0xFF4F46E5) else Color.White,
-                            border = BorderStroke(1.dp, if (selected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
-                            shadowElevation = if (selected) 2.dp else 0.dp
+                    // 1. الكل
+                    val isAllSelected = uiState.roleFilter == CompanyRoleFilter.ALL
+                    Surface(
+                        onClick = { viewModel.setRoleFilter(CompanyRoleFilter.ALL) },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isAllSelected) Color(0xFF4F46E5) else Color.White,
+                        border = BorderStroke(1.dp, if (isAllSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
+                        shadowElevation = if (isAllSelected) 2.dp else 0.dp,
+                        modifier = Modifier.weight(0.8f)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp)
                         ) {
                             Text(
                                 text = "الكل",
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
+                                    fontSize = 11.5.sp
                                 ),
-                                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                color = if (isAllSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
-                    item(key = "filter-role-suppliers") {
-                        val selected = uiState.roleFilter == CompanyRoleFilter.SUPPLIER_ONLY
-                        Surface(
-                            onClick = { viewModel.setRoleFilter(CompanyRoleFilter.SUPPLIER_ONLY) },
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (selected) Color(0xFF4F46E5) else Color.White,
-                            border = BorderStroke(1.dp, if (selected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
-                            shadowElevation = if (selected) 2.dp else 0.dp
+
+                    // 2. الموردون
+                    val isSupplierSelected = uiState.roleFilter == CompanyRoleFilter.SUPPLIER_ONLY
+                    Surface(
+                        onClick = { viewModel.setRoleFilter(CompanyRoleFilter.SUPPLIER_ONLY) },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isSupplierSelected) Color(0xFF4F46E5) else Color.White,
+                        border = BorderStroke(1.dp, if (isSupplierSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
+                        shadowElevation = if (isSupplierSelected) 2.dp else 0.dp,
+                        modifier = Modifier.weight(1.1f)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            Text(
+                                text = "الموردون 🚚",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.5.sp
+                                ),
+                                color = if (isSupplierSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Surface(
+                                shape = RoundedCornerShape(5.dp),
+                                color = if (isSupplierSelected) Color(0xFF3730A3) else Color(0xFFF1F5F9)
                             ) {
                                 Text(
-                                    text = "الموردون 🚚",
-                                    style = MaterialTheme.typography.labelMedium.copy(
+                                    text = uiState.totalSuppliersCount.toString(),
+                                    style = MaterialTheme.typography.labelSmall.copy(
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
+                                        fontSize = 9.5.sp
                                     ),
-                                    color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
+                                    color = if (isSupplierSelected) Color.White else Color(0xFF64748B),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                 )
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (selected) Color(0xFF3730A3) else Color(0xFFF1F5F9)
-                                ) {
-                                    Text(
-                                        text = uiState.totalSuppliersCount.toString(),
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 10.sp
-                                        ),
-                                        color = if (selected) Color.White else Color(0xFF64748B),
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
                             }
                         }
                     }
-                    item(key = "filter-role-manufacturers") {
-                        val selected = uiState.roleFilter == CompanyRoleFilter.MANUFACTURER_ONLY
-                        Surface(
-                            onClick = { viewModel.setRoleFilter(CompanyRoleFilter.MANUFACTURER_ONLY) },
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (selected) Color(0xFF4F46E5) else Color.White,
-                            border = BorderStroke(1.dp, if (selected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
-                            shadowElevation = if (selected) 2.dp else 0.dp
+
+                    // 3. المصنعون
+                    val isManufacturerSelected = uiState.roleFilter == CompanyRoleFilter.MANUFACTURER_ONLY
+                    Surface(
+                        onClick = { viewModel.setRoleFilter(CompanyRoleFilter.MANUFACTURER_ONLY) },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isManufacturerSelected) Color(0xFF4F46E5) else Color.White,
+                        border = BorderStroke(1.dp, if (isManufacturerSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
+                        shadowElevation = if (isManufacturerSelected) 2.dp else 0.dp,
+                        modifier = Modifier.weight(1.1f)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            Text(
+                                text = "المصنعون 🏭",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.5.sp
+                                ),
+                                color = if (isManufacturerSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Surface(
+                                shape = RoundedCornerShape(5.dp),
+                                color = if (isManufacturerSelected) Color(0xFF3730A3) else Color(0xFFF1F5F9)
                             ) {
                                 Text(
-                                    text = "المصنّعون 🏭",
-                                    style = MaterialTheme.typography.labelMedium.copy(
+                                    text = uiState.totalManufacturersCount.toString(),
+                                    style = MaterialTheme.typography.labelSmall.copy(
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
+                                        fontSize = 9.5.sp
                                     ),
-                                    color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
+                                    color = if (isManufacturerSelected) Color.White else Color(0xFF64748B),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                 )
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (selected) Color(0xFF3730A3) else Color(0xFFF1F5F9)
-                                ) {
-                                    Text(
-                                        text = uiState.totalManufacturersCount.toString(),
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 10.sp
-                                        ),
-                                        color = if (selected) Color.White else Color(0xFF64748B),
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
                             }
                         }
                     }
-                    item(key = "filter-role-customers") {
-                        val selected = uiState.roleFilter == CompanyRoleFilter.CUSTOMER_ONLY
-                        Surface(
-                            onClick = { viewModel.setRoleFilter(CompanyRoleFilter.CUSTOMER_ONLY) },
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (selected) Color(0xFF4F46E5) else Color.White,
-                            border = BorderStroke(1.dp, if (selected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
-                            shadowElevation = if (selected) 2.dp else 0.dp
+
+                    // 4. العملاء
+                    val isCustomerSelected = uiState.roleFilter == CompanyRoleFilter.CUSTOMER_ONLY
+                    Surface(
+                        onClick = { viewModel.setRoleFilter(CompanyRoleFilter.CUSTOMER_ONLY) },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isCustomerSelected) Color(0xFF4F46E5) else Color.White,
+                        border = BorderStroke(1.dp, if (isCustomerSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
+                        shadowElevation = if (isCustomerSelected) 2.dp else 0.dp,
+                        modifier = Modifier.weight(1.1f)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            Text(
+                                text = "العملاء 🤝",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.5.sp
+                                ),
+                                color = if (isCustomerSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Surface(
+                                shape = RoundedCornerShape(5.dp),
+                                color = if (isCustomerSelected) Color(0xFF3730A3) else Color(0xFFF1F5F9)
                             ) {
                                 Text(
-                                    text = "العملاء 🤝",
-                                    style = MaterialTheme.typography.labelMedium.copy(
+                                    text = uiState.totalCustomersCount.toString(),
+                                    style = MaterialTheme.typography.labelSmall.copy(
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
+                                        fontSize = 9.5.sp
                                     ),
-                                    color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
+                                    color = if (isCustomerSelected) Color.White else Color(0xFF64748B),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                 )
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (selected) Color(0xFF3730A3) else Color(0xFFF1F5F9)
-                                ) {
-                                    Text(
-                                        text = uiState.totalCustomersCount.toString(),
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 10.sp
-                                        ),
-                                        color = if (selected) Color.White else Color(0xFF64748B),
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
                             }
                         }
                     }
