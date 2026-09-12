@@ -98,18 +98,167 @@ object SqliteDatabaseManager {
                 uuid TEXT PRIMARY KEY NOT NULL,
                 partId INTEGER NOT NULL,
                 locationId INTEGER,
+                locationUuid TEXT,
                 quantity REAL NOT NULL DEFAULT 1.0,
                 serial TEXT NOT NULL DEFAULT '',
                 batch TEXT NOT NULL DEFAULT '',
                 statusCode INTEGER NOT NULL DEFAULT 10,
                 packaging TEXT NOT NULL DEFAULT 'Box',
+                purchasePrice REAL NOT NULL DEFAULT 0.0,
+                purchasePriceCurrency TEXT NOT NULL DEFAULT 'USD',
+                purchaseOrderId INTEGER,
+                supplierPartId INTEGER,
+                salesOrderId INTEGER,
+                customerId INTEGER,
+                buildId INTEGER,
+                isBuilding INTEGER NOT NULL DEFAULT 0,
+                parentId INTEGER,
+                parentUuid TEXT,
                 expiryDate TEXT NOT NULL DEFAULT '',
+                stocktakeDate TEXT NOT NULL DEFAULT '',
+                stocktakeUserId INTEGER,
+                reviewNeeded INTEGER NOT NULL DEFAULT 0,
+                deleteOnDeplete INTEGER NOT NULL DEFAULT 0,
+                link TEXT NOT NULL DEFAULT '',
                 notes TEXT NOT NULL DEFAULT '',
+                metadata TEXT NOT NULL DEFAULT '{}',
                 syncStatus TEXT NOT NULL DEFAULT 'PENDING',
                 isDeleted INTEGER NOT NULL DEFAULT 0,
                 updatedAt INTEGER NOT NULL DEFAULT 0
             );
         """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN locationUuid TEXT").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN purchasePrice REAL NOT NULL DEFAULT 0.0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN purchasePriceCurrency TEXT NOT NULL DEFAULT 'USD'").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN purchaseOrderId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN supplierPartId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN salesOrderId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN customerId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN buildId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN isBuilding INTEGER NOT NULL DEFAULT 0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN parentId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN parentUuid TEXT").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN expiryDate TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN stocktakeDate TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN stocktakeUserId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN reviewNeeded INTEGER NOT NULL DEFAULT 0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN deleteOnDeplete INTEGER NOT NULL DEFAULT 0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN link TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS stock_locations (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                locationId INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                parentId INTEGER,
+                parentUuid TEXT,
+                structural INTEGER NOT NULL DEFAULT 0,
+                external INTEGER NOT NULL DEFAULT 0,
+                locationTypeId INTEGER,
+                ownerId INTEGER,
+                icon TEXT NOT NULL DEFAULT 'warehouse',
+                customIcon TEXT NOT NULL DEFAULT '',
+                level INTEGER NOT NULL DEFAULT 0,
+                lft INTEGER NOT NULL DEFAULT 0,
+                rght INTEGER NOT NULL DEFAULT 0,
+                treeId INTEGER NOT NULL DEFAULT 1,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE stock_locations ADD COLUMN parentUuid TEXT").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS stock_location_types (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                typeId INTEGER NOT NULL,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT NOT NULL DEFAULT '',
+                icon TEXT NOT NULL DEFAULT 'warehouse',
+                customIcon TEXT NOT NULL DEFAULT '',
+                metadata TEXT NOT NULL DEFAULT '{}',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS stock_item_tracking (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                trackingId INTEGER NOT NULL,
+                stockItemId INTEGER NOT NULL,
+                stockItemUuid TEXT NOT NULL DEFAULT '',
+                date TEXT NOT NULL DEFAULT (DATETIME('now')),
+                trackingTypeCode INTEGER NOT NULL DEFAULT 10,
+                userId INTEGER,
+                label TEXT NOT NULL DEFAULT '',
+                notes TEXT NOT NULL DEFAULT '',
+                deltas TEXT NOT NULL DEFAULT '{}',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE stock_item_tracking ADD COLUMN stockItemUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS stock_item_test_results (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                resultId INTEGER NOT NULL,
+                stockItemId INTEGER NOT NULL,
+                stockItemUuid TEXT NOT NULL DEFAULT '',
+                templateId INTEGER,
+                test TEXT NOT NULL,
+                result INTEGER NOT NULL DEFAULT 1,
+                value TEXT NOT NULL DEFAULT 'Passed',
+                attachment TEXT NOT NULL DEFAULT '',
+                notes TEXT NOT NULL DEFAULT '',
+                date TEXT NOT NULL DEFAULT (DATE('now')),
+                userId INTEGER,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE stock_item_test_results ADD COLUMN stockItemUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS stock_item_attachments (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                attachmentId INTEGER NOT NULL,
+                stockItemId INTEGER NOT NULL,
+                stockItemUuid TEXT NOT NULL DEFAULT '',
+                attachment TEXT,
+                link TEXT,
+                comment TEXT NOT NULL DEFAULT '',
+                uploadDate TEXT NOT NULL DEFAULT (DATE('now')),
+                userId INTEGER,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE stock_item_attachments ADD COLUMN stockItemUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+
+        // إنشاء فهارس الأداء لحقول المزامنة والربط المحلي (Performance Indexes)
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_items_partId ON stock_items(partId)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_items_locationUuid ON stock_items(locationUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_locations_parentUuid ON stock_locations(parentUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_tracking_itemUuid ON stock_item_tracking(stockItemUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_tests_itemUuid ON stock_item_test_results(stockItemUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_attachments_itemUuid ON stock_item_attachments(stockItemUuid)").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS companies (

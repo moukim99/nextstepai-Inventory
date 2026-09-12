@@ -1,5 +1,7 @@
 package com.nextstepai.inventory.data
 
+import com.nextstepai.inventory.util.DateTimeUtils
+
 /**
  * حالة الوحدة المخزنية (StockItem Status).
  */
@@ -17,56 +19,62 @@ enum class StockStatus(val code: Int, val label: String) {
 }
 
 /**
- * تمثيل موقع التخزين في المستودع (StockLocation).
- */
-data class StockLocation(
-    val id: Long,
-    val name: String,
-    val description: String = "",
-    val parentId: Long? = null
-)
-
-/**
- * تمثيل سجل الوحدة المخزنية الفعلية (StockItem) المادية الموجودة على الرفوف وفق تحليل InvenTree.
+ * تمثيل سجل الوحدة المخزنية الفعلية (StockItem) المادية الموجودة على الرفوف وفق تحليل InvenTree (24 حقل).
  *
  * @property id المعرف الرقمي الفريد للوحدة المخزنية
- * @property partId معرف القطعة المرجعية التجريدية
- * @property supplierPartId ربط ببيانات التوريد المعتمدة
- * @property locationId معرف موقع التخزين في المستودع
+ * @property partId معرف القطعة المرجعية التجريدية (ForeignKey)
+ * @property locationId معرف موقع التخزين في المستودع (ForeignKey)
  * @property quantity الكمية الفعلية المتوفرة
  * @property serial الرقم التسلسلي المميز (إذا كانت القطعة trackable)
  * @property batch رقم الشحنة أو التشغيلة (Batch/Lot)
- * @property status كود الحالة التشغيلية
+ * @property status كود الحالة التشغيلية (OK, Damaged, Destroyed, Rejected, Quarantine, Expired)
  * @property packaging طريقة التغليف الفيزيائي (مثل: Reel, Box, Tray)
- * @property expiryDate تاريخ انتهاء الصلاحية
- * @property purchasePrice سعر الشراء والعملة
+ * @property purchasePrice سعر الشراء الفعلي للوحدة
+ * @property purchasePriceCurrency عملة سعر الشراء (مثل USD, SAR)
+ * @property purchaseOrderId رابط أمر الشراء الذاتي (ForeignKey)
+ * @property supplierPartId ربط ببيانات التوريد المعتمدة (SupplierPart)
+ * @property salesOrderId رابط أمر البيع المخصص له هذه الكمية (ForeignKey)
+ * @property customerId العميل المستلم للقطعة (ForeignKey)
+ * @property buildId رابط أمر التصنيع المُنْتِج لهذا العنصر (ForeignKey)
+ * @property isBuilding يحدد ما إذا كانت الوحدة ما زالت تحت التجميع والإنتاج
  * @property parentId معرف السجل الأب في حالات تجزئة المخزون (Split)
- * @property isBuilding يحدد ما إذا كانت الوحدة قيد التجميع والإنتاج حالياً
- * @property reviewNeeded مؤشر يفرض إعادة مراجعة الجودة
- * @property deleteOnDeplete حذف السجل آلياً عند وصول الكمية للصفر
- * @property link رابط خارجي للوحدة
+ * @property expiryDate تاريخ انتهاء الصلاحية
+ * @property stocktakeDate تاريخ آخر جرد فعلي أُجري على الكمية
+ * @property stocktakeUserId المستخدم الذي أجرى آخر جرد
+ * @property reviewNeeded مؤشر يفرض إعادة مراجعة الجودة فنيًا
+ * @property deleteOnDeplete حذف السجل تلقائيًا أو أرشفته عند وصول الكمية للصفر
+ * @property link رابط خارجي أو توثيق للدفعة
  * @property notes ملاحظات تشغيلية
+ * @property metadata بيانات ديناميكية إضافية (JSON)
  * @property updated الطابع الزمني لآخر تحديث
  * @property allocatedQuantity الكميات المحجوزة لأوامر الإنتاج أو البيع
  */
 data class StockItem(
     val id: Long = 0L,
     val partId: Long,
-    val supplierPartId: Long? = null,
     val locationId: Long? = null,
     val quantity: Double = 1.0,
     val serial: String = "",
     val batch: String = "",
     val status: StockStatus = StockStatus.OK,
     val packaging: String = "Box",
-    val expiryDate: String = "",
     val purchasePrice: Double = 0.0,
-    val parentId: Long? = null,
+    val purchasePriceCurrency: String = "USD",
+    val purchaseOrderId: Long? = null,
+    val supplierPartId: Long? = null,
+    val salesOrderId: Long? = null,
+    val customerId: Long? = null,
+    val buildId: Long? = null,
     val isBuilding: Boolean = false,
+    val parentId: Long? = null,
+    val expiryDate: String = "",
+    val stocktakeDate: String = "",
+    val stocktakeUserId: Long? = null,
     val reviewNeeded: Boolean = false,
     val deleteOnDeplete: Boolean = false,
     val link: String = "",
     val notes: String = "",
+    val metadata: String = "{}",
     val updated: String = "",
     val allocatedQuantity: Double = 0.0
 ) {
@@ -78,21 +86,33 @@ data class StockItem(
 }
 
 /**
- * محاكاة جدول إدارة المخزون الفعلي (StockItem Table) والقيود المنطقية المرافقة.
+ * محاكاة جدول إدارة المخزون الفعلي (StockItem Table) ومواقع التخزين وأنواعها مع القيود المنطقية.
  */
 class StockItemTable {
     private val stockItems = mutableListOf<StockItem>()
     private val locations = mutableListOf<StockLocation>()
+    private val locationTypes = mutableListOf<StockLocationType>()
+    private val trackingLogs = mutableListOf<StockItemTracking>()
+    private val testResults = mutableListOf<StockItemTestResult>()
+    private val stockAttachments = mutableListOf<StockItemAttachment>()
     private var nextStockId = 1L
     private var nextLocationId = 1L
+    private var nextLocationTypeId = 1L
+    private var nextTrackingId = 1L
+    private var nextTestResultId = 1L
+    private var nextAttachmentId = 1L
 
     init {
         seedSampleStockData()
     }
 
     private fun seedSampleStockData() {
-        val loc1 = insertLocation("المستودع الرئيسي - رف A1", "مستودع المكونات الإلكترونية")
-        val loc2 = insertLocation("مستودع التجميع - رف B3", "مستودع المنتجات النهائية")
+        val typeWarehouse = insertLocationType("مستودع رئيسي", "مستودعات تخزين ضخمة وخامات", "warehouse")
+        val typeCleanRoom = insertLocationType("غرفة نظيفة", "بيئة نظيفة ومراقبة حرارياً", "cleanroom")
+        val typeShelf = insertLocationType("رف تخزين", "أرفف لتخزين المكونات الإلكترونية", "shelf")
+
+        val loc1 = insertLocation("المستودع الرئيسي - رف A1", "مستودع المكونات الإلكترونية", locationTypeId = typeShelf.id)
+        val loc2 = insertLocation("مستودع التجميع - رف B3", "مستودع المنتجات النهائية", locationTypeId = typeWarehouse.id)
 
         insertStockItem(
             StockItem(
@@ -145,16 +165,105 @@ class StockItemTable {
     }
 
     /**
-     * إدراج موقع تخزين جديد.
+     * إدراج نوع موقع تخزيني جديد مع التحقق من فرادة الاسم.
      */
-    fun insertLocation(name: String, description: String = ""): StockLocation {
-        val loc = StockLocation(
-            id = nextLocationId++,
-            name = name,
-            description = description
+    fun insertLocationType(
+        name: String,
+        description: String = "",
+        icon: String = "warehouse",
+        customIcon: String = ""
+    ): StockLocationType {
+        return insertLocationType(
+            StockLocationType(
+                name = name,
+                description = description,
+                icon = icon,
+                customIcon = customIcon
+            )
         )
-        locations.add(loc)
-        return loc
+    }
+
+    /**
+     * إدراج كائن نوع موقع تخزيني.
+     */
+    fun insertLocationType(locationType: StockLocationType): StockLocationType {
+        val trimmedName = locationType.name.trim()
+        require(trimmedName.isNotBlank()) { "اسم نوع الموقع التخزيني لا يمكن أن يكون فارغاً" }
+
+        val duplicateName = locationTypes.any {
+            it.id != locationType.id && it.name.trim().equals(trimmedName, ignoreCase = true)
+        }
+        require(!duplicateName) {
+            "اسم نوع الموقع التخزيني '$trimmedName' مستخدم بالفعل في النظام."
+        }
+
+        val newType = locationType.copy(
+            id = if (locationType.id == 0L) nextLocationTypeId++ else locationType.id,
+            name = trimmedName
+        )
+        locationTypes.removeAll { it.id == newType.id }
+        locationTypes.add(newType)
+        return newType
+    }
+
+    /**
+     * جلب كافة أنواع مواقع التخزين المتاحة.
+     */
+    fun getAllLocationTypes(): List<StockLocationType> = locationTypes.toList()
+
+    /**
+     * إدراج موقع تخزين جديد مع تطبيق قيود الشجرة الهرمية والأسماء المكررة.
+     */
+    fun insertLocation(
+        name: String,
+        description: String = "",
+        parentId: Long? = null,
+        structural: Boolean = false,
+        external: Boolean = false,
+        locationTypeId: Long? = null,
+        icon: String = "warehouse"
+    ): StockLocation {
+        return insertLocation(
+            StockLocation(
+                name = name,
+                description = description,
+                parentId = parentId,
+                structural = structural,
+                external = external,
+                locationTypeId = locationTypeId,
+                icon = icon
+            )
+        )
+    }
+
+    /**
+     * إدراج كائن موقع تخزين.
+     */
+    fun insertLocation(location: StockLocation): StockLocation {
+        val trimmedName = location.name.trim()
+        require(trimmedName.isNotBlank()) { "اسم الموقع التخزيني لا يمكن أن يكون فارغاً" }
+
+        val duplicateName = locations.any {
+            it.id != location.id && it.parentId == location.parentId && it.name.trim().equals(trimmedName, ignoreCase = true)
+        }
+        require(!duplicateName) {
+            "اسم الموقع المخزني '$trimmedName' مستخدم بالفعل تحت هذا الموقع الأب."
+        }
+
+        val parentLoc = locations.find { it.id == location.parentId }
+        val calculatedLevel = parentLoc?.let { it.level + 1 } ?: 0
+        val calculatedTreeId = parentLoc?.treeId ?: (locations.maxOfOrNull { it.treeId } ?: 0) + 1
+
+        val newLoc = location.copy(
+            id = if (location.id == 0L) nextLocationId++ else location.id,
+            name = trimmedName,
+            level = calculatedLevel,
+            treeId = calculatedTreeId
+        )
+
+        locations.removeAll { it.id == newLoc.id }
+        locations.add(newLoc)
+        return newLoc
     }
 
     /**
@@ -164,10 +273,20 @@ class StockItemTable {
 
     /**
      * إدراج وحدة مخزنية جديدة مع التحقق من القيود:
-     * 1. قيد التتبع الرقمي (Serial Constraint): إذا أُدخل serial يجب أن تكون الكمية quantity = 1
-     * 2. قيد التكرار الرقمي للرقم التسلسلي لنفس القطعة.
+     * 1. قيد الموقع الهيكلي (Structural Location Constraint): يمنع تخزين العناصر مباشرة في الموقع الهيكلي.
+     * 2. قيد التتبع الرقمي (Serial Constraint): إذا أُدخل serial يجب أن تكون الكمية quantity = 1
+     * 3. قيد التكرار الرقمي للرقم التسلسلي لنفس القطعة.
      */
     fun insertStockItem(item: StockItem): StockItem {
+        if (item.locationId != null) {
+            val targetLoc = locations.find { it.id == item.locationId }
+            if (targetLoc != null && targetLoc.structural) {
+                throw IllegalArgumentException(
+                    "لا يمكن تخزين عناصر مخزنية مباشرة في موقع هيكلي (Structural Location: '${targetLoc.name}'). يُرجى اختيار موقع فرعي إجرائي."
+                )
+            }
+        }
+
         val finalQuantity = if (item.serial.isNotBlank()) 1.0 else item.quantity
 
         if (item.serial.isNotBlank()) {
@@ -180,10 +299,134 @@ class StockItemTable {
         val newItem = item.copy(
             id = if (item.id == 0L) nextStockId++ else item.id,
             quantity = finalQuantity,
-            updated = "2025-02-15"
+            updated = DateTimeUtils.getCurrentDate()
         )
         stockItems.add(newItem)
+
+        recordTracking(
+            stockItemId = newItem.id,
+            trackingType = StockTrackingType.CREATED,
+            label = "إنشاء وحدة مخزنية جديدة",
+            notes = newItem.notes,
+            deltas = "{\"quantity\":[0.0,${newItem.quantity}],\"status\":[0,${newItem.status.code}]}"
+        )
+
         return newItem
+    }
+
+    /**
+     * تسجيل حركة تاريخية غير قابلة للتعديل في سجل التتبع (Tracking Log).
+     */
+    fun recordTracking(
+        stockItemId: Long,
+        trackingType: StockTrackingType,
+        userId: Long? = null,
+        label: String = trackingType.label,
+        notes: String = "",
+        deltas: String = "{}"
+    ): StockItemTracking {
+        val tracking = StockItemTracking(
+            id = nextTrackingId++,
+            stockItemId = stockItemId,
+            date = DateTimeUtils.getCurrentDateTime(),
+            trackingType = trackingType,
+            userId = userId,
+            label = label,
+            notes = notes,
+            deltas = deltas
+        )
+        trackingLogs.add(tracking)
+        return tracking
+    }
+
+    /**
+     * جلب سجل الحركات والتتبع لوحدة مخزنية محددة.
+     */
+    fun getTrackingForStockItem(stockItemId: Long): List<StockItemTracking> {
+        return trackingLogs.filter { it.stockItemId == stockItemId }
+    }
+
+    /**
+     * جلب كافة سجلات التتبع التاريخية.
+     */
+    fun getAllTrackingLogs(): List<StockItemTracking> = trackingLogs.toList()
+
+    /**
+     * إدراج نتيجة فحص جودة واختبار فني جديد (StockItemTestResult).
+     */
+    fun addTestResult(testResult: StockItemTestResult): StockItemTestResult {
+        require(testResult.test.isNotBlank()) { "اسم الاختبار الفني لا يمكن أن يكون فارغاً" }
+        require(stockItems.any { it.id == testResult.stockItemId }) { "الوحدة المخزنية الخاضعة للفحص غير موجودة" }
+
+        val newResult = testResult.copy(
+            id = if (testResult.id == 0L) nextTestResultId++ else testResult.id,
+            test = testResult.test.trim(),
+            value = testResult.value.ifBlank { "Passed" }
+        )
+        testResults.add(newResult)
+        return newResult
+    }
+
+    /**
+     * جلب سجلات نتائج الفحص والجودة لوحدة مخزنية محددة.
+     */
+    fun getTestResultsForStockItem(stockItemId: Long): List<StockItemTestResult> {
+        return testResults.filter { it.stockItemId == stockItemId }
+    }
+
+    /**
+     * جلب كافة نتائج الفحوصات الفنية.
+     */
+    fun getAllTestResults(): List<StockItemTestResult> = testResults.toList()
+
+    /**
+     * إدراج مرفق أو وثيقة جديدة لعنصر مخزني مع التحقق من القيود المنطقية:
+     * 1. يلزم توفر أحد الحقلين (إما attachment أو link).
+     * 2. التوليد الآلي للوصف comment من اسم الملف الأصلي إذا تُرك فارغاً.
+     */
+    fun addStockItemAttachment(attachmentItem: StockItemAttachment): StockItemAttachment {
+        val hasFile = !attachmentItem.attachment.isNullOrBlank()
+        val hasLink = !attachmentItem.link.isNullOrBlank()
+        require(hasFile || hasLink) {
+            "خطأ في إدخال المرفق: يجب تقديم ملف مرفق محلي (attachment) أو رابط ويب خارجي (link) على الأقل!"
+        }
+        require(stockItems.any { it.id == attachmentItem.stockItemId }) {
+            "العنصر المخزني المرتبط بالمرفق غير موجود"
+        }
+
+        val autoComment = if (attachmentItem.comment.isBlank()) {
+            val file = attachmentItem.attachment
+            val url = attachmentItem.link
+            when {
+                !file.isNullOrBlank() -> file.substringAfterLast('/').substringAfterLast('\\')
+                !url.isNullOrBlank() -> url
+                else -> "مرفق مخزني"
+            }
+        } else {
+            attachmentItem.comment.trim()
+        }
+
+        val record = attachmentItem.copy(
+            id = if (attachmentItem.id == 0L) nextAttachmentId++ else attachmentItem.id,
+            comment = autoComment,
+            uploadDate = attachmentItem.uploadDate.ifBlank { DateTimeUtils.getCurrentDate() }
+        )
+        stockAttachments.add(record)
+        return record
+    }
+
+    /**
+     * جلب كافة الوثائق والمرفقات المرتبطة بعنصر مخزني محدد.
+     */
+    fun getAttachmentsForStockItem(stockItemId: Long): List<StockItemAttachment> {
+        return stockAttachments.filter { it.stockItemId == stockItemId }
+    }
+
+    /**
+     * حذف مرفق مخزني محدد بالـ ID.
+     */
+    fun deleteStockItemAttachment(id: Long): Boolean {
+        return stockAttachments.removeIf { it.id == id }
     }
 
     /**
@@ -203,8 +446,12 @@ class StockItemTable {
         val parentItem = stockItems[parentIndex]
         require(parentItem.availableQuantity >= splitQuantity) { "الكمية المتاحة لا تكفي للتجزئة" }
 
-        // خصم الكمية من السجل الأصلي
-        stockItems[parentIndex] = parentItem.copy(quantity = parentItem.quantity - splitQuantity)
+        val newParentQty = parentItem.quantity - splitQuantity
+        if (newParentQty <= 0.0 && parentItem.deleteOnDeplete) {
+            stockItems.removeAt(parentIndex)
+        } else {
+            stockItems[parentIndex] = parentItem.copy(quantity = newParentQty)
+        }
 
         // إنشاء سجل فرعي مشتق ومربوط بالأب
         val childItem = parentItem.copy(
@@ -214,7 +461,69 @@ class StockItemTable {
             parentId = parentStockId
         )
         stockItems.add(childItem)
+
+        recordTracking(
+            stockItemId = parentStockId,
+            trackingType = StockTrackingType.SPLIT,
+            label = "تجزئة رصيد مخزني",
+            deltas = "{\"quantity\":[${parentItem.quantity},$newParentQty],\"child_id\":${childItem.id}}"
+        )
+
+        recordTracking(
+            stockItemId = childItem.id,
+            trackingType = StockTrackingType.CREATED,
+            label = "وحدة فرعية ناتجة عن تجزئة",
+            deltas = "{\"quantity\":[0.0,$splitQuantity],\"parent_id\":$parentStockId}"
+        )
+
         return childItem
+    }
+
+    /**
+     * إجراء عملية جرد فعلي (Stocktake) على وحدة مخزنية وتحديث تاريخ الجرد والمستخدم.
+     */
+    fun performStocktake(stockId: Long, userId: Long, stocktakeDate: String = DateTimeUtils.getCurrentDate()): StockItem {
+        val index = stockItems.indexOfFirst { it.id == stockId }
+        require(index != -1) { "الوحدة المخزنية غير موجودة" }
+
+        val oldItem = stockItems[index]
+        val updatedItem = oldItem.copy(
+            stocktakeDate = stocktakeDate,
+            stocktakeUserId = userId,
+            reviewNeeded = false
+        )
+        stockItems[index] = updatedItem
+
+        recordTracking(
+            stockItemId = stockId,
+            trackingType = StockTrackingType.COUNT,
+            userId = userId,
+            label = "جرد فعلي ميداني",
+            deltas = "{\"quantity\":[${oldItem.quantity},${oldItem.quantity}],\"stocktake_date\":\"$stocktakeDate\"}"
+        )
+
+        return updatedItem
+    }
+
+    /**
+     * تقليل أو استهلاك كمية مخزنية مع تطبيق قاعدة deleteOnDeplete عند وصول الكمية للصفر.
+     */
+    fun consumeStockQuantity(stockId: Long, consumeQty: Double): StockItem? {
+        val index = stockItems.indexOfFirst { it.id == stockId }
+        require(index != -1) { "الوحدة المخزنية غير موجودة" }
+
+        val item = stockItems[index]
+        require(item.availableQuantity >= consumeQty) { "الكمية المتاحة لا تكفي للاستهلاك" }
+
+        val remainingQty = item.quantity - consumeQty
+        if (remainingQty <= 0.0 && item.deleteOnDeplete) {
+            stockItems.removeAt(index)
+            return null
+        } else {
+            val updated = item.copy(quantity = remainingQty.coerceAtLeast(0.0))
+            stockItems[index] = updated
+            return updated
+        }
     }
 
     /**
