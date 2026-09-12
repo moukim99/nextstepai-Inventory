@@ -383,6 +383,7 @@ object SqliteDatabaseManager {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_items_buildLineId ON build_items(buildLineId)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_items_buildLineUuid ON build_items(buildLineUuid)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_items_stockItemUuid ON build_items(stockItemUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_items_installIntoStockItemUuid ON build_items(installIntoStockItemUuid)").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS build_order_line_items (
@@ -409,6 +410,8 @@ object SqliteDatabaseManager {
 
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_line_items_buildId ON build_order_line_items(buildId)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_line_items_buildUuid ON build_order_line_items(buildUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_line_items_bomItemUuid ON build_order_line_items(bomItemUuid)").use { it.step() } }
+
 
 
 
