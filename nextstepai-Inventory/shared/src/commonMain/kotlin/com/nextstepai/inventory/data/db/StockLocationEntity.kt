@@ -7,7 +7,7 @@ import com.nextstepai.inventory.sync.SyncableEntity
 import kotlin.time.Clock
 
 /**
- * تمثيل كيان موقع التخزين (StockLocationEntity) في قاعدة بيانات Room المحتوية على 15 حقل + حقول المزامنة.
+ * تمثيل كيان موقع التخزين (StockLocationEntity) في قاعدة بيانات Room المحتوية على 15 حقل + حقول المزامنة بمرجع المحلي (parentUuid).
  */
 @Entity(tableName = "stock_locations")
 data class StockLocationEntity(
@@ -17,6 +17,7 @@ data class StockLocationEntity(
     val name: String,
     val description: String = "",
     val parentId: Long? = null,
+    val parentUuid: String? = null,
     val structural: Boolean = false,
     val external: Boolean = false,
     val locationTypeId: Long? = null,

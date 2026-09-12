@@ -7,7 +7,7 @@ import com.nextstepai.inventory.sync.SyncableEntity
 import kotlin.time.Clock
 
 /**
- * تمثيل كيان مرفقات المخزون (StockItemAttachmentEntity) في قاعدة بيانات Room المحلية.
+ * تمثيل كيان مرفقات المخزون (StockItemAttachmentEntity) في قاعدة بيانات Room المحلية يدعم المرجع المحلي stockItemUuid.
  */
 @Entity(tableName = "stock_item_attachments")
 data class StockItemAttachmentEntity(
@@ -15,6 +15,7 @@ data class StockItemAttachmentEntity(
     override val uuid: String,
     val attachmentId: Long,
     val stockItemId: Long,
+    val stockItemUuid: String = "",
     val attachment: String? = null,
     val link: String? = null,
     val comment: String = "",

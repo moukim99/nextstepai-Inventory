@@ -112,6 +112,7 @@ object SqliteDatabaseManager {
                 buildId INTEGER,
                 isBuilding INTEGER NOT NULL DEFAULT 0,
                 parentId INTEGER,
+                parentUuid TEXT,
                 expiryDate TEXT NOT NULL DEFAULT '',
                 stocktakeDate TEXT NOT NULL DEFAULT '',
                 stocktakeUserId INTEGER,
@@ -126,6 +127,24 @@ object SqliteDatabaseManager {
             );
         """.trimIndent()).use { it.step() }
 
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN purchasePrice REAL NOT NULL DEFAULT 0.0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN purchasePriceCurrency TEXT NOT NULL DEFAULT 'USD'").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN purchaseOrderId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN supplierPartId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN salesOrderId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN customerId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN buildId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN isBuilding INTEGER NOT NULL DEFAULT 0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN parentId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN parentUuid TEXT").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN expiryDate TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN stocktakeDate TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN stocktakeUserId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN reviewNeeded INTEGER NOT NULL DEFAULT 0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN deleteOnDeplete INTEGER NOT NULL DEFAULT 0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN link TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'").use { it.step() } }
+
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS stock_locations (
                 uuid TEXT PRIMARY KEY NOT NULL,
@@ -133,6 +152,7 @@ object SqliteDatabaseManager {
                 name TEXT NOT NULL,
                 description TEXT NOT NULL DEFAULT '',
                 parentId INTEGER,
+                parentUuid TEXT,
                 structural INTEGER NOT NULL DEFAULT 0,
                 external INTEGER NOT NULL DEFAULT 0,
                 locationTypeId INTEGER,
@@ -149,6 +169,8 @@ object SqliteDatabaseManager {
                 updatedAt INTEGER NOT NULL DEFAULT 0
             );
         """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE stock_locations ADD COLUMN parentUuid TEXT").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS stock_location_types (
@@ -170,7 +192,8 @@ object SqliteDatabaseManager {
                 uuid TEXT PRIMARY KEY NOT NULL,
                 trackingId INTEGER NOT NULL,
                 stockItemId INTEGER NOT NULL,
-                date TEXT NOT NULL,
+                stockItemUuid TEXT NOT NULL DEFAULT '',
+                date TEXT NOT NULL DEFAULT (DATETIME('now')),
                 trackingTypeCode INTEGER NOT NULL DEFAULT 10,
                 userId INTEGER,
                 label TEXT NOT NULL DEFAULT '',
@@ -182,18 +205,21 @@ object SqliteDatabaseManager {
             );
         """.trimIndent()).use { it.step() }
 
+        runCatching { conn.prepare("ALTER TABLE stock_item_tracking ADD COLUMN stockItemUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS stock_item_test_results (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 resultId INTEGER NOT NULL,
                 stockItemId INTEGER NOT NULL,
+                stockItemUuid TEXT NOT NULL DEFAULT '',
                 templateId INTEGER,
                 test TEXT NOT NULL,
                 result INTEGER NOT NULL DEFAULT 1,
                 value TEXT NOT NULL DEFAULT 'Passed',
                 attachment TEXT NOT NULL DEFAULT '',
                 notes TEXT NOT NULL DEFAULT '',
-                date TEXT NOT NULL DEFAULT '2025-02-15',
+                date TEXT NOT NULL DEFAULT (DATE('now')),
                 userId INTEGER,
                 metadata TEXT NOT NULL DEFAULT '{}',
                 syncStatus TEXT NOT NULL DEFAULT 'PENDING',
@@ -202,15 +228,18 @@ object SqliteDatabaseManager {
             );
         """.trimIndent()).use { it.step() }
 
+        runCatching { conn.prepare("ALTER TABLE stock_item_test_results ADD COLUMN stockItemUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS stock_item_attachments (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 attachmentId INTEGER NOT NULL,
                 stockItemId INTEGER NOT NULL,
+                stockItemUuid TEXT NOT NULL DEFAULT '',
                 attachment TEXT,
                 link TEXT,
                 comment TEXT NOT NULL DEFAULT '',
-                uploadDate TEXT NOT NULL DEFAULT '2025-02-15',
+                uploadDate TEXT NOT NULL DEFAULT (DATE('now')),
                 userId INTEGER,
                 metadata TEXT NOT NULL DEFAULT '{}',
                 syncStatus TEXT NOT NULL DEFAULT 'PENDING',
@@ -218,6 +247,8 @@ object SqliteDatabaseManager {
                 updatedAt INTEGER NOT NULL DEFAULT 0
             );
         """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE stock_item_attachments ADD COLUMN stockItemUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS companies (

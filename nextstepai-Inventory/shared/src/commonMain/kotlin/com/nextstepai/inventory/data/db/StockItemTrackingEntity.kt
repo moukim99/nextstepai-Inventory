@@ -7,7 +7,7 @@ import com.nextstepai.inventory.sync.SyncableEntity
 import kotlin.time.Clock
 
 /**
- * تمثيل كيان سجل التتبع والحركات (StockItemTrackingEntity) في قاعدة بيانات Room المحلية.
+ * تمثيل كيان سجل التتبع والحركات (StockItemTrackingEntity) في قاعدة بيانات Room المحلية يدعم المرجع المحلي stockItemUuid.
  */
 @Entity(tableName = "stock_item_tracking")
 data class StockItemTrackingEntity(
@@ -15,6 +15,7 @@ data class StockItemTrackingEntity(
     override val uuid: String,
     val trackingId: Long,
     val stockItemId: Long,
+    val stockItemUuid: String = "",
     val date: String,
     val trackingTypeCode: Int,
     val userId: Long? = null,

@@ -7,7 +7,7 @@ import com.nextstepai.inventory.sync.SyncableEntity
 import kotlin.time.Clock
 
 /**
- * تمثيل كيان نتائج فحوصات الجودة (StockItemTestResultEntity) في قاعدة بيانات Room المحلية.
+ * تمثيل كيان نتائج فحوصات الجودة (StockItemTestResultEntity) في قاعدة بيانات Room المحلية يدعم المرجع المحلي stockItemUuid.
  */
 @Entity(tableName = "stock_item_test_results")
 data class StockItemTestResultEntity(
@@ -15,6 +15,7 @@ data class StockItemTestResultEntity(
     override val uuid: String,
     val resultId: Long,
     val stockItemId: Long,
+    val stockItemUuid: String = "",
     val templateId: Long? = null,
     val test: String,
     val result: Boolean = true,

@@ -7,7 +7,7 @@ import com.nextstepai.inventory.sync.SyncableEntity
 import kotlin.time.Clock
 
 /**
- * تمثيل كيان الوحدة المخزنية (StockItemEntity) المادية في قاعدة بيانات Room المحلية محتوياً على الـ 24 حقل الكاملة.
+ * تمثيل كيان الوحدة المخزنية (StockItemEntity) المادية في قاعدة بيانات Room المحلية محتوياً على الـ 24 حقل الكاملة بدعم المفاتيح المرجعية المحلية (parentUuid).
  */
 @Entity(tableName = "stock_items")
 data class StockItemEntity(
@@ -29,6 +29,7 @@ data class StockItemEntity(
     val buildId: Long? = null,
     val isBuilding: Boolean = false,
     val parentId: Long? = null,
+    val parentUuid: String? = null,
     val expiryDate: String = "",
     val stocktakeDate: String = "",
     val stocktakeUserId: Long? = null,

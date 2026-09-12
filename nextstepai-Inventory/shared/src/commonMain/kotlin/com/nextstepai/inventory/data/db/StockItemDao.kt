@@ -13,7 +13,7 @@ class StockItemDao {
     private val selectColumns = """
         uuid, partId, locationId, quantity, serial, batch, statusCode, packaging,
         purchasePrice, purchasePriceCurrency, purchaseOrderId, supplierPartId,
-        salesOrderId, customerId, buildId, isBuilding, parentId, expiryDate,
+        salesOrderId, customerId, buildId, isBuilding, parentId, parentUuid, expiryDate,
         stocktakeDate, stocktakeUserId, reviewNeeded, deleteOnDeplete, link,
         notes, metadata, syncStatus, isDeleted, updatedAt
     """.trimIndent()
@@ -77,11 +77,11 @@ class StockItemDao {
             INSERT OR REPLACE INTO stock_items (
                 uuid, partId, locationId, quantity, serial, batch, statusCode, packaging,
                 purchasePrice, purchasePriceCurrency, purchaseOrderId, supplierPartId,
-                salesOrderId, customerId, buildId, isBuilding, parentId, expiryDate,
+                salesOrderId, customerId, buildId, isBuilding, parentId, parentUuid, expiryDate,
                 stocktakeDate, stocktakeUserId, reviewNeeded, deleteOnDeplete, link,
                 notes, metadata, syncStatus, isDeleted, updatedAt
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
             stmt.bindLong(2, entity.partId)
@@ -100,17 +100,18 @@ class StockItemDao {
             if (entity.buildId != null) stmt.bindLong(15, entity.buildId) else stmt.bindNull(15)
             stmt.bindLong(16, if (entity.isBuilding) 1L else 0L)
             if (entity.parentId != null) stmt.bindLong(17, entity.parentId) else stmt.bindNull(17)
-            stmt.bindText(18, entity.expiryDate)
-            stmt.bindText(19, entity.stocktakeDate)
-            if (entity.stocktakeUserId != null) stmt.bindLong(20, entity.stocktakeUserId) else stmt.bindNull(20)
-            stmt.bindLong(21, if (entity.reviewNeeded) 1L else 0L)
-            stmt.bindLong(22, if (entity.deleteOnDeplete) 1L else 0L)
-            stmt.bindText(23, entity.link)
-            stmt.bindText(24, entity.notes)
-            stmt.bindText(25, entity.metadata)
-            stmt.bindText(26, entity.syncStatus.name)
-            stmt.bindLong(27, if (entity.isDeleted) 1L else 0L)
-            stmt.bindLong(28, entity.updatedAt)
+            if (entity.parentUuid != null) stmt.bindText(18, entity.parentUuid) else stmt.bindNull(18)
+            stmt.bindText(19, entity.expiryDate)
+            stmt.bindText(20, entity.stocktakeDate)
+            if (entity.stocktakeUserId != null) stmt.bindLong(21, entity.stocktakeUserId) else stmt.bindNull(21)
+            stmt.bindLong(22, if (entity.reviewNeeded) 1L else 0L)
+            stmt.bindLong(23, if (entity.deleteOnDeplete) 1L else 0L)
+            stmt.bindText(24, entity.link)
+            stmt.bindText(25, entity.notes)
+            stmt.bindText(26, entity.metadata)
+            stmt.bindText(27, entity.syncStatus.name)
+            stmt.bindLong(28, if (entity.isDeleted) 1L else 0L)
+            stmt.bindLong(29, entity.updatedAt)
             stmt.step()
         }
     }
@@ -129,34 +130,35 @@ class StockItemDao {
 
     private fun mapStockItemEntity(stmt: SQLiteStatement): StockItemEntity {
         return StockItemEntity(
-            uuid = stmt.getText(0),
-            partId = stmt.getLong(1),
-            locationId = if (stmt.isNull(2)) null else stmt.getLong(2),
-            quantity = stmt.getDouble(3),
-            serial = stmt.getText(4),
-            batch = stmt.getText(5),
-            statusCode = stmt.getLong(6).toInt(),
-            packaging = stmt.getText(7),
-            purchasePrice = stmt.getDouble(8),
-            purchasePriceCurrency = stmt.getText(9),
-            purchaseOrderId = if (stmt.isNull(10)) null else stmt.getLong(10),
-            supplierPartId = if (stmt.isNull(11)) null else stmt.getLong(11),
-            salesOrderId = if (stmt.isNull(12)) null else stmt.getLong(12),
-            customerId = if (stmt.isNull(13)) null else stmt.getLong(13),
-            buildId = if (stmt.isNull(14)) null else stmt.getLong(14),
-            isBuilding = stmt.getLong(15) != 0L,
-            parentId = if (stmt.isNull(16)) null else stmt.getLong(16),
-            expiryDate = stmt.getText(17),
-            stocktakeDate = stmt.getText(18),
-            stocktakeUserId = if (stmt.isNull(19)) null else stmt.getLong(19),
-            reviewNeeded = stmt.getLong(20) != 0L,
-            deleteOnDeplete = stmt.getLong(21) != 0L,
-            link = stmt.getText(22),
-            notes = stmt.getText(23),
-            metadata = stmt.getText(24),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(25)) }.getOrDefault(SyncStatus.PENDING),
-            isDeleted = stmt.getLong(26) != 0L,
-            updatedAt = stmt.getLong(27)
+            uuid = runCatching { stmt.getText(0) }.getOrDefault(""),
+            partId = runCatching { stmt.getLong(1) }.getOrDefault(0L),
+            locationId = runCatching { if (stmt.isNull(2)) null else stmt.getLong(2) }.getOrNull(),
+            quantity = runCatching { stmt.getDouble(3) }.getOrDefault(1.0),
+            serial = runCatching { stmt.getText(4) }.getOrDefault(""),
+            batch = runCatching { stmt.getText(5) }.getOrDefault(""),
+            statusCode = runCatching { stmt.getLong(6).toInt() }.getOrDefault(10),
+            packaging = runCatching { stmt.getText(7) }.getOrDefault("Box"),
+            purchasePrice = runCatching { stmt.getDouble(8) }.getOrDefault(0.0),
+            purchasePriceCurrency = runCatching { stmt.getText(9) }.getOrDefault("USD"),
+            purchaseOrderId = runCatching { if (stmt.isNull(10)) null else stmt.getLong(10) }.getOrNull(),
+            supplierPartId = runCatching { if (stmt.isNull(11)) null else stmt.getLong(11) }.getOrNull(),
+            salesOrderId = runCatching { if (stmt.isNull(12)) null else stmt.getLong(12) }.getOrNull(),
+            customerId = runCatching { if (stmt.isNull(13)) null else stmt.getLong(13) }.getOrNull(),
+            buildId = runCatching { if (stmt.isNull(14)) null else stmt.getLong(14) }.getOrNull(),
+            isBuilding = runCatching { stmt.getLong(15) != 0L }.getOrDefault(false),
+            parentId = runCatching { if (stmt.isNull(16)) null else stmt.getLong(16) }.getOrNull(),
+            parentUuid = runCatching { if (stmt.isNull(17)) null else stmt.getText(17) }.getOrNull(),
+            expiryDate = runCatching { stmt.getText(18) }.getOrDefault(""),
+            stocktakeDate = runCatching { stmt.getText(19) }.getOrDefault(""),
+            stocktakeUserId = runCatching { if (stmt.isNull(20)) null else stmt.getLong(20) }.getOrNull(),
+            reviewNeeded = runCatching { stmt.getLong(21) != 0L }.getOrDefault(false),
+            deleteOnDeplete = runCatching { stmt.getLong(22) != 0L }.getOrDefault(false),
+            link = runCatching { stmt.getText(23) }.getOrDefault(""),
+            notes = runCatching { stmt.getText(24) }.getOrDefault(""),
+            metadata = runCatching { stmt.getText(25) }.getOrDefault("{}"),
+            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(26)) }.getOrDefault(SyncStatus.PENDING),
+            isDeleted = runCatching { stmt.getLong(27) != 0L }.getOrDefault(false),
+            updatedAt = runCatching { stmt.getLong(28) }.getOrDefault(0L)
         )
     }
 }
