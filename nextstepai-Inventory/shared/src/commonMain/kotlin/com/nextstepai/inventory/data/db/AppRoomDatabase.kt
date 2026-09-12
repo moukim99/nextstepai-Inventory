@@ -11,6 +11,11 @@ import androidx.room.TypeConverters
         BomItemEntity::class,
         BomItemSubstituteEntity::class,
         StockItemEntity::class,
+        StockLocationEntity::class,
+        StockLocationTypeEntity::class,
+        StockItemTrackingEntity::class,
+        StockItemTestResultEntity::class,
+        StockItemAttachmentEntity::class,
         CompanyEntity::class,
         PurchaseOrderEntity::class,
         PurchaseOrderLineEntity::class,
@@ -35,6 +40,11 @@ abstract class AppRoomDatabase : RoomDatabase() {
     abstract fun partDao(): PartDao
     abstract fun bomItemDao(): BomItemDao
     abstract fun stockItemDao(): StockItemDao
+    abstract fun stockLocationDao(): StockLocationDao
+    abstract fun stockLocationTypeDao(): StockLocationTypeDao
+    abstract fun stockItemTrackingDao(): StockItemTrackingDao
+    abstract fun stockItemTestResultDao(): StockItemTestResultDao
+    abstract fun stockItemAttachmentDao(): StockItemAttachmentDao
     abstract fun companyDao(): CompanyDao
     abstract fun purchaseOrderDao(): PurchaseOrderDao
     abstract fun buildOrderDao(): BuildOrderDao
