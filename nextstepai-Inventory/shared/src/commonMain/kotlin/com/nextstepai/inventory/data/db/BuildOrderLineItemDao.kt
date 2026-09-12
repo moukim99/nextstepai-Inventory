@@ -55,6 +55,39 @@ class BuildOrderLineItemDao {
         return results
     }
 
+    suspend fun getPendingSyncLineItems(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<BuildOrderLineItemEntity> {
+        val conn = SqliteDatabaseManager.getConnection()
+        val results = mutableListOf<BuildOrderLineItemEntity>()
+
+        conn.prepare("""
+            SELECT $selectColumns
+            FROM build_order_line_items
+            WHERE syncStatus = ?
+            ORDER BY updatedAt ASC
+            LIMIT ? OFFSET ?
+        """.trimIndent()).use { stmt ->
+            stmt.bindText(1, status.name)
+            stmt.bindLong(2, limit.toLong())
+            stmt.bindLong(3, offset.toLong())
+            while (stmt.step()) {
+                results.add(mapLineItemEntity(stmt))
+            }
+        }
+        return results
+    }
+
+    suspend fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
+        if (uuids.isEmpty()) return
+        val conn = SqliteDatabaseManager.getConnection()
+        for (uuid in uuids) {
+            conn.prepare("UPDATE build_order_line_items SET syncStatus = ? WHERE uuid = ?").use { stmt ->
+                stmt.bindText(1, newStatus.name)
+                stmt.bindText(2, uuid)
+                stmt.step()
+            }
+        }
+    }
+
     suspend fun insertOrUpdate(entity: BuildOrderLineItemEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
