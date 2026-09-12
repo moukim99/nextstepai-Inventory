@@ -183,6 +183,26 @@ object SqliteDatabaseManager {
         """.trimIndent()).use { it.step() }
 
         conn.prepare("""
+            CREATE TABLE IF NOT EXISTS stock_item_test_results (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                resultId INTEGER NOT NULL,
+                stockItemId INTEGER NOT NULL,
+                templateId INTEGER,
+                test TEXT NOT NULL,
+                result INTEGER NOT NULL DEFAULT 1,
+                value TEXT NOT NULL DEFAULT 'Passed',
+                attachment TEXT NOT NULL DEFAULT '',
+                notes TEXT NOT NULL DEFAULT '',
+                date TEXT NOT NULL DEFAULT '2025-02-15',
+                userId INTEGER,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
             CREATE TABLE IF NOT EXISTS companies (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 name TEXT NOT NULL,

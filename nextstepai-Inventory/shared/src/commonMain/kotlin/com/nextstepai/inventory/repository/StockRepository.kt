@@ -2,12 +2,15 @@ package com.nextstepai.inventory.repository
 
 import com.nextstepai.inventory.data.StockItem
 import com.nextstepai.inventory.data.StockItemTable
+import com.nextstepai.inventory.data.StockItemTestResult
 import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockLocationType
 import com.nextstepai.inventory.data.StockTrackingType
 import com.nextstepai.inventory.data.db.StockItemDao
 import com.nextstepai.inventory.data.db.StockItemEntity
+import com.nextstepai.inventory.data.db.StockItemTestResultDao
+import com.nextstepai.inventory.data.db.StockItemTestResultEntity
 import com.nextstepai.inventory.data.db.StockItemTrackingDao
 import com.nextstepai.inventory.data.db.StockItemTrackingEntity
 import com.nextstepai.inventory.data.db.StockLocationDao
@@ -23,8 +26,8 @@ import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 
 /**
- * المستودع (Repository) المسؤول عن إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات الحركات والتتبع (StockItemTracking)
- * وتجزئة الكميات والجرد والمزامنة المجمعة مع السحابة وضغط الصور.
+ * المستودع (Repository) المسؤول عن إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات التتبع
+ * ونتائج فحوصات الجودة (StockItemTestResult) وتجزئة الكميات والجرد والمزامنة مع السحابة.
  */
 class StockRepository(
     private val stockTable: StockItemTable = StockItemTable(),
@@ -32,6 +35,7 @@ class StockRepository(
     private val locationDao: StockLocationDao = StockLocationDao(),
     private val locationTypeDao: StockLocationTypeDao = StockLocationTypeDao(),
     private val trackingDao: StockItemTrackingDao = StockItemTrackingDao(),
+    private val testResultDao: StockItemTestResultDao = StockItemTestResultDao(),
     private val batchSyncService: BatchSyncService = BatchSyncService(),
     private val imageProcessor: ImageProcessor = ImageProcessor(maxDimension = 1024, compressionQuality = 85)
 ) {
@@ -67,6 +71,24 @@ class StockRepository(
      */
     fun getTrackingForStockItem(stockItemId: Long): List<StockItemTracking> {
         return stockTable.getTrackingForStockItem(stockItemId)
+    }
+
+    /**
+     * جلب نتائج فحوص الجودة والقياسات الفنية لوحدة مخزنية محددة.
+     */
+    fun getTestResultsForStockItem(stockItemId: Long): List<StockItemTestResult> {
+        return stockTable.getTestResultsForStockItem(stockItemId)
+    }
+
+    /**
+     * تسجيل نتيجة فحص جودة واختبار فني جديد (StockItemTestResult).
+     */
+    fun addTestResult(testResult: StockItemTestResult): StockItemTestResult {
+        val inserted = stockTable.addTestResult(testResult)
+        runBlocking {
+            testResultDao.insertOrUpdate(inserted.toEntity())
+        }
+        return inserted
     }
 
     /**
@@ -176,6 +198,24 @@ class StockRepository(
         val response = batchSyncService.performBatchSync(payloads, Clock.System.now().toEpochMilliseconds() - 86400000)
         stockDao.updateSyncStatusForUuids(response.acceptedUuids, SyncStatus.SYNCED)
         return response.acceptedUuids.size
+    }
+
+    private fun StockItemTestResult.toEntity(): StockItemTestResultEntity {
+        return StockItemTestResultEntity(
+            uuid = "test-result-$id",
+            resultId = id,
+            stockItemId = stockItemId,
+            templateId = templateId,
+            test = test,
+            result = result,
+            value = value,
+            attachment = attachment,
+            notes = notes,
+            date = date,
+            userId = userId,
+            metadata = metadata,
+            syncStatus = SyncStatus.PENDING
+        )
     }
 
     private fun StockItemTracking.toEntity(): StockItemTrackingEntity {

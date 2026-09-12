@@ -91,10 +91,12 @@ class StockItemTable {
     private val locations = mutableListOf<StockLocation>()
     private val locationTypes = mutableListOf<StockLocationType>()
     private val trackingLogs = mutableListOf<StockItemTracking>()
+    private val testResults = mutableListOf<StockItemTestResult>()
     private var nextStockId = 1L
     private var nextLocationId = 1L
     private var nextLocationTypeId = 1L
     private var nextTrackingId = 1L
+    private var nextTestResultId = 1L
 
     init {
         seedSampleStockData()
@@ -344,6 +346,34 @@ class StockItemTable {
      * جلب كافة سجلات التتبع التاريخية.
      */
     fun getAllTrackingLogs(): List<StockItemTracking> = trackingLogs.toList()
+
+    /**
+     * إدراج نتيجة فحص جودة واختبار فني جديد (StockItemTestResult).
+     */
+    fun addTestResult(testResult: StockItemTestResult): StockItemTestResult {
+        require(testResult.test.isNotBlank()) { "اسم الاختبار الفني لا يمكن أن يكون فارغاً" }
+        require(stockItems.any { it.id == testResult.stockItemId }) { "الوحدة المخزنية الخاضعة للفحص غير موجودة" }
+
+        val newResult = testResult.copy(
+            id = if (testResult.id == 0L) nextTestResultId++ else testResult.id,
+            test = testResult.test.trim(),
+            value = testResult.value.ifBlank { "Passed" }
+        )
+        testResults.add(newResult)
+        return newResult
+    }
+
+    /**
+     * جلب سجلات نتائج الفحص والجودة لوحدة مخزنية محددة.
+     */
+    fun getTestResultsForStockItem(stockItemId: Long): List<StockItemTestResult> {
+        return testResults.filter { it.stockItemId == stockItemId }
+    }
+
+    /**
+     * جلب كافة نتائج الفحوصات الفنية.
+     */
+    fun getAllTestResults(): List<StockItemTestResult> = testResults.toList()
 
     /**
      * جلب الوحدات المخزنية لقطعة محددة.

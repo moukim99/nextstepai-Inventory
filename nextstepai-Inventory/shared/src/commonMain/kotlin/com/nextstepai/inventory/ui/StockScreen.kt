@@ -31,6 +31,7 @@ import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.StockItem
+import com.nextstepai.inventory.data.StockItemTestResult
 import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockLocationType
@@ -43,7 +44,7 @@ import nextstepai_inventory.shared.generated.resources.save
 import nextstepai_inventory.shared.generated.resources.stock_items_count
 
 /**
- * شاشة إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات التتبع والتاريخ (StockScreen).
+ * شاشة إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات التتبع وفحوص الجودة (StockScreen).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -214,7 +215,8 @@ fun StockScreen(
                                 location = loc,
                                 onSplitClick = { viewModel.setSelectedItemForSplit(item) },
                                 onStocktakeClick = { viewModel.performStocktake(item.id) },
-                                onHistoryClick = { viewModel.openTrackingHistory(item) }
+                                onHistoryClick = { viewModel.openTrackingHistory(item) },
+                                onTestsClick = { viewModel.openTestResults(item) }
                             )
                         }
                     }
@@ -288,6 +290,32 @@ fun StockScreen(
             item = uiState.selectedItemForHistory!!,
             logs = uiState.trackingLogsForSelected,
             onDismiss = { viewModel.closeTrackingHistory() }
+        )
+    }
+
+    if (uiState.selectedItemForTests != null) {
+        StockTestResultsDialog(
+            item = uiState.selectedItemForTests!!,
+            results = uiState.testResultsForSelected,
+            onDismiss = { viewModel.closeTestResults() },
+            onAddTestClick = { viewModel.setAddTestResultDialogOpen(true) }
+        )
+    }
+
+    if (uiState.isAddTestResultDialogOpen && uiState.selectedItemForTests != null) {
+        AddStockTestResultDialog(
+            item = uiState.selectedItemForTests!!,
+            onDismiss = { viewModel.setAddTestResultDialogOpen(false) },
+            onConfirm = { test, result, value, attach, notes ->
+                viewModel.addTestResult(
+                    stockItemId = uiState.selectedItemForTests!!.id,
+                    test = test,
+                    result = result,
+                    value = value,
+                    attachment = attach,
+                    notes = notes
+                )
+            }
         )
     }
 
@@ -398,7 +426,7 @@ private fun StockTopBar(
 }
 
 /**
- * بطاقة عرض الوحدة المخزنية المادية مع كامل تفاصيل الـ 24 حقل المعتمدة وزر التتبع التاريخي
+ * بطاقة عرض الوحدة المخزنية المادية مع زر فحوص الجودة والسجل التاريخي
  */
 @Composable
 private fun StockItemCard(
@@ -407,7 +435,8 @@ private fun StockItemCard(
     location: StockLocation?,
     onSplitClick: () -> Unit,
     onStocktakeClick: () -> Unit,
-    onHistoryClick: () -> Unit
+    onHistoryClick: () -> Unit,
+    onTestsClick: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -604,28 +633,41 @@ private fun StockItemCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedButton(
+                    onClick = onTestsClick,
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.6f)),
+                    modifier = Modifier.padding(end = 4.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Icon(Icons.Default.Science, contentDescription = null, modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.secondary)
+                        Text("الجودة (QC)", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                    }
+                }
+
+                OutlinedButton(
                     onClick = onHistoryClick,
                     shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.padding(end = 6.dp)
+                    modifier = Modifier.padding(end = 4.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Text("السجل (History)", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Text("السجل", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                     }
                 }
 
                 OutlinedButton(
                     onClick = onStocktakeClick,
                     shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                    modifier = Modifier.padding(end = 6.dp)
+                    modifier = Modifier.padding(end = 4.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
-                        Text("جرد (Count)", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.primary)
+                        Text("جرد", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                     }
                 }
 
@@ -633,15 +675,225 @@ private fun StockItemCard(
                     OutlinedButton(
                         onClick = onSplitClick,
                         shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
-                        Text("تجزئة (Split)", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                        Text("تجزئة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun StockTestResultsDialog(
+    item: StockItem,
+    results: List<StockItemTestResult>,
+    onDismiss: () -> Unit,
+    onAddTestClick: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("نتائج فحوص الجودة والقياسات (QA/QC Tests)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onAddTestClick,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Text("إضافة فحص فني", fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("إغلاق") }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("الوحدة المخزنية #${item.id} (الرقم التسلسلي: ${item.serial.ifBlank { "غير معرّف" }})", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
+
+                if (results.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text("لا توجد فحوصات فنية مسجلة لهذه القطعة حتى الآن", style = MaterialTheme.typography.bodyMedium)
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(results, key = { "test-${it.id}" }) { res ->
+                            Card(
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = if (res.result) Color(0xFFECFDF5) else Color(0xFFFEF2F2)),
+                                border = BorderStroke(1.dp, if (res.result) Color(0xFFA7F3D0) else Color(0xFFFCA5A5)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(res.test, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        Surface(
+                                            color = if (res.result) Color(0xFF059669) else Color(0xFFDC2626),
+                                            shape = RoundedCornerShape(50)
+                                        ) {
+                                            Text(
+                                                text = if (res.result) "✅ ناجح (Pass)" else "❌ راسب (Fail)",
+                                                color = Color.White,
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("القيمة المقاسة: ${res.value}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    if (res.notes.isNotBlank()) {
+                                        Text("ملاحظات: ${res.notes}", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                                    }
+                                    Text("التاريخ: ${res.date}", fontSize = 10.sp, color = MaterialTheme.colorScheme.outline)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun AddStockTestResultDialog(
+    item: StockItem,
+    onDismiss: () -> Unit,
+    onConfirm: (
+        test: String,
+        result: Boolean,
+        value: String,
+        attachment: String,
+        notes: String
+    ) -> Unit
+) {
+    var testName by remember { mutableStateOf("فحص الجهد والأبعاد الفنية") }
+    var measuredValue by remember { mutableStateOf("5.00 V - OK") }
+    var isPass by remember { mutableStateOf(true) }
+    var attachment by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("تسجيل نتيجة فحص جودة (QC Test)", fontWeight = FontWeight.Bold)
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (testName.isNotBlank()) {
+                        onConfirm(testName.trim(), isPass, measuredValue.trim(), attachment.trim(), notes.trim())
+                    }
+                },
+                enabled = testName.isNotBlank(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = testName,
+                    onValueChange = { testName = it },
+                    label = { Text("اسم الاختبار الفني (مثل: فحص العزل الكهربائي)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = measuredValue,
+                    onValueChange = { measuredValue = it },
+                    label = { Text("القيمة المقاسة الفعلية (Value)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("النتيجة الإجمالية للفحص:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    FilterChip(
+                        selected = isPass,
+                        onClick = { isPass = true },
+                        label = { Text("✅ ناجح (Pass)") },
+                        shape = RoundedCornerShape(50)
+                    )
+                    FilterChip(
+                        selected = !isPass,
+                        onClick = { isPass = false },
+                        label = { Text("❌ راسب (Fail)") },
+                        shape = RoundedCornerShape(50)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = attachment,
+                    onValueChange = { attachment = it },
+                    label = { Text("مسار تقرير أو ملف التوثيق المرفق (PDF/Image)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("ملاحظات المفتش الفني") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        }
+    )
 }
 
 @Composable

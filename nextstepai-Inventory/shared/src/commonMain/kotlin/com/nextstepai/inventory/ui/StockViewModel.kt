@@ -3,6 +3,7 @@ package com.nextstepai.inventory.ui
 import androidx.lifecycle.ViewModel
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.StockItem
+import com.nextstepai.inventory.data.StockItemTestResult
 import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockLocationType
@@ -15,7 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /**
- * حالة واجهة إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات التتبع (Stock UI State).
+ * حالة واجهة إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات التتبع وفحوصات الجودة (Stock UI State).
  */
 data class StockUiState(
     val stockItems: List<StockItem> = emptyList(),
@@ -27,15 +28,18 @@ data class StockUiState(
     val isAddStockDialogOpen: Boolean = false,
     val isAddLocationDialogOpen: Boolean = false,
     val isAddLocationTypeDialogOpen: Boolean = false,
+    val isAddTestResultDialogOpen: Boolean = false,
     val selectedItemForSplit: StockItem? = null,
     val selectedItemForHistory: StockItem? = null,
     val trackingLogsForSelected: List<StockItemTracking> = emptyList(),
+    val selectedItemForTests: StockItem? = null,
+    val testResultsForSelected: List<StockItemTestResult> = emptyList(),
     val errorMessage: String? = null,
     val successMessage: String? = null
 )
 
 /**
- * نموذج العرض (ViewModel) لشاشة إدارة المخزون الفعلي والمواقع والأنواع وسجلات الحركة والتتبع (Stock Management).
+ * نموذج العرض (ViewModel) لشاشة إدارة المخزون الفعلي والمواقع والأنواع وفحوصات الجودة (Stock Management).
  */
 class StockViewModel(
     private val stockRepository: StockRepository = StockRepository(),
@@ -90,6 +94,10 @@ class StockViewModel(
         _uiState.update { it.copy(isAddLocationTypeDialogOpen = isOpen, errorMessage = null) }
     }
 
+    fun setAddTestResultDialogOpen(isOpen: Boolean) {
+        _uiState.update { it.copy(isAddTestResultDialogOpen = isOpen, errorMessage = null) }
+    }
+
     fun setSelectedItemForSplit(item: StockItem?) {
         _uiState.update { it.copy(selectedItemForSplit = item, errorMessage = null) }
     }
@@ -111,6 +119,60 @@ class StockViewModel(
                 selectedItemForHistory = null,
                 trackingLogsForSelected = emptyList()
             )
+        }
+    }
+
+    fun openTestResults(item: StockItem) {
+        val results = stockRepository.getTestResultsForStockItem(item.id)
+        _uiState.update {
+            it.copy(
+                selectedItemForTests = item,
+                testResultsForSelected = results,
+                errorMessage = null
+            )
+        }
+    }
+
+    fun closeTestResults() {
+        _uiState.update {
+            it.copy(
+                selectedItemForTests = null,
+                testResultsForSelected = emptyList()
+            )
+        }
+    }
+
+    fun addTestResult(
+        stockItemId: Long,
+        test: String,
+        result: Boolean,
+        value: String,
+        attachment: String = "",
+        notes: String = ""
+    ) {
+        try {
+            val testResult = StockItemTestResult(
+                stockItemId = stockItemId,
+                test = test,
+                result = result,
+                value = value,
+                attachment = attachment,
+                notes = notes
+            )
+            stockRepository.addTestResult(testResult)
+            _uiState.update {
+                it.copy(
+                    isAddTestResultDialogOpen = false,
+                    errorMessage = null,
+                    successMessage = "تم إضافة نتيجة الفحص الفني بنجاح"
+                )
+            }
+            if (_uiState.value.selectedItemForTests?.id == stockItemId) {
+                openTestResults(_uiState.value.selectedItemForTests!!)
+            }
+            loadData()
+        } catch (e: IllegalArgumentException) {
+            _uiState.update { it.copy(errorMessage = e.message) }
         }
     }
 
