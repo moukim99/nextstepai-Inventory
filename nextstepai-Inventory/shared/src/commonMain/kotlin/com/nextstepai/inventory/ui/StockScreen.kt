@@ -1,31 +1,40 @@
 package com.nextstepai.inventory.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.StockItem
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockStatus
-import com.nextstepai.inventory.ui.theme.AppIcons
 import nextstepai_inventory.shared.generated.resources.Res
 import nextstepai_inventory.shared.generated.resources.add_new_stock
-import nextstepai_inventory.shared.generated.resources.back
 import nextstepai_inventory.shared.generated.resources.cancel
 import nextstepai_inventory.shared.generated.resources.card_stock_title
 import nextstepai_inventory.shared.generated.resources.save
@@ -33,6 +42,7 @@ import nextstepai_inventory.shared.generated.resources.stock_items_count
 
 /**
  * شاشة إدارة المخزون الفعلي (StockItem Management Screen).
+ * مطابقة تماماً للتصميم الهيكلي الموحد مع الترويسة العلوية، البحث والباركود المدمج، والفلترة بحسب مواقع التخزين.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,60 +52,75 @@ fun StockScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var searchQuery by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(Res.string.card_stock_title)) },
-                navigationIcon = {
-                    TextButton(onClick = onBackClick) {
-                        Icon(
-                            painter = painterResource(AppIcons.Back),
-                            contentDescription = stringResource(Res.string.back),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(Res.string.back))
-                    }
-                },
-                actions = {
-                    Button(
-                        onClick = { viewModel.setAddDialogOpen(true) },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(AppIcons.Add),
-                            contentDescription = stringResource(Res.string.add_new_stock),
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(Res.string.add_new_stock))
-                    }
-                }
+            StockTopBar(
+                onBackClick = onBackClick,
+                onAddClick = { viewModel.setAddDialogOpen(true) }
             )
         },
         modifier = modifier
     ) { paddingValues ->
-        BoxWithConstraints(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            val isWide = this@BoxWithConstraints.maxWidth > 600.dp
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
-                Text(
-                    text = "تصفية حسب موقع التخزين في المستودع:",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.SemiBold
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // شريط البحث المطور مع زر الباركود المدمج
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = {
+                        Text(
+                            text = "البحث باسم القطعة، الرقم التسلسلي، أو موقع التخزين...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.outline
+                        )
+                    },
+                    trailingIcon = {
+                        IconButton(
+                            onClick = { },
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "مسح الباركود",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
                 )
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // اختيار موقع التخزين عبر LazyRow مع المفاتيح المستقرة key()
+                // شريط اختيار موقع التخزين عبر LazyRow
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -104,14 +129,16 @@ fun StockScreen(
                         FilterChip(
                             selected = uiState.selectedLocationId == null,
                             onClick = { viewModel.filterByLocation(null) },
-                            label = { Text("كافة المواقع") }
+                            label = { Text("كافة المواقع", fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(50)
                         )
                     }
                     items(uiState.locations, key = { "location-${it.id}" }) { loc ->
                         FilterChip(
                             selected = uiState.selectedLocationId == loc.id,
                             onClick = { viewModel.filterByLocation(if (uiState.selectedLocationId == loc.id) null else loc.id) },
-                            label = { Text(loc.name) }
+                            label = { Text("📍 ${loc.name}", fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(50)
                         )
                     }
                 }
@@ -121,19 +148,24 @@ fun StockScreen(
                 if (uiState.errorMessage != null) {
                     Surface(
                         color = MaterialTheme.colorScheme.errorContainer,
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
                     ) {
                         Text(
                             text = "⚠️ ${uiState.errorMessage}",
                             color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.padding(10.dp),
+                            modifier = Modifier.padding(12.dp),
                             fontSize = 12.sp
                         )
                     }
                 }
 
-                if (uiState.stockItems.isEmpty()) {
+                val filteredStock = uiState.stockItems.filter { item ->
+                    val part = uiState.parts.find { it.id == item.partId }
+                    searchQuery.isBlank() || (part?.name?.contains(searchQuery, ignoreCase = true) == true) || item.serial.contains(searchQuery, ignoreCase = true)
+                }
+
+                if (filteredStock.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -147,18 +179,26 @@ fun StockScreen(
                         )
                     }
                 } else {
-                    Text(
-                        text = pluralStringResource(Res.plurals.stock_items_count, uiState.stockItems.size, uiState.stockItems.size),
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = pluralStringResource(Res.plurals.stock_items_count, filteredStock.size, filteredStock.size),
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
 
                     LazyColumn(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 16.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
-                        items(uiState.stockItems, key = { "stock-${it.id}" }) { item ->
+                        items(filteredStock, key = { "stock-${it.id}" }) { item ->
                             val part = uiState.parts.find { it.id == item.partId }
                             val loc = uiState.locations.find { it.id == item.locationId }
                             StockItemCard(
@@ -195,7 +235,84 @@ fun StockScreen(
 }
 
 /**
- * بطاقة عرض الوحدة المخزنية المادية في المستودع.
+ * الترويسة العلوية لشاشة إدارة المخزون
+ */
+@Composable
+private fun StockTopBar(
+    onBackClick: () -> Unit,
+    onAddClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding(),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 2.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // اليمين: زر الرجوع وعنوان الشاشة
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                IconButton(onClick = onBackClick) {
+                    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "رجوع",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.scale(if (isRtl) -1f else 1f, 1f)
+                    )
+                }
+
+                Text(
+                    text = "إدارة المخزون الفعلي",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 17.sp
+                    ),
+                    color = Color(0xFF0F172A)
+                )
+            }
+
+            // اليسار: زر "+ إضافة وحدة مخزنية"
+            Button(
+                onClick = onAddClick,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(Res.string.add_new_stock),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "إضافة وحدة",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * بطاقة عرض الوحدة المخزنية المادية
  */
 @Composable
 private fun StockItemCard(
@@ -206,92 +323,151 @@ private fun StockItemCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Column(
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier.padding(16.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = part?.name ?: "قطعة #${stockItem.partId}",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFEEF2FF))
+                            .border(1.dp, Color(0xFFE0E7FF), RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Inventory,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Text(
+                        text = part?.name ?: "قطعة #${stockItem.partId}",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
 
                 Surface(
                     color = when (stockItem.status) {
-                        StockStatus.OK -> MaterialTheme.colorScheme.primaryContainer
-                        StockStatus.QUARANTINE -> MaterialTheme.colorScheme.tertiaryContainer
-                        StockStatus.DAMAGED, StockStatus.DESTROYED, StockStatus.REJECTED, StockStatus.EXPIRED -> MaterialTheme.colorScheme.errorContainer
+                        StockStatus.OK -> Color(0xFFECFDF5)
+                        StockStatus.QUARANTINE -> Color(0xFFFFFBEB)
+                        else -> MaterialTheme.colorScheme.errorContainer
                     },
-                    shape = RoundedCornerShape(6.dp)
+                    shape = RoundedCornerShape(50),
+                    border = BorderStroke(1.dp, when (stockItem.status) {
+                        StockStatus.OK -> Color(0xFFA7F3D0)
+                        else -> Color.Transparent
+                    })
                 ) {
                     Text(
                         text = stockItem.status.label,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = when (stockItem.status) {
+                            StockStatus.OK -> Color(0xFF059669)
+                            StockStatus.QUARANTINE -> Color(0xFFB45309)
+                            else -> MaterialTheme.colorScheme.error
+                        },
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            Row(
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
             ) {
-                Text(
-                    text = "الكمية المادية: ${stockItem.quantity} ${part?.units ?: "pcs"}",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "الكمية المادية المتوفرة:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        Text(
+                            text = "${stockItem.quantity} ${part?.units ?: "pcs"}",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
 
-                Text(
-                    text = "الموقع: ${location?.name ?: "غير محدد"}",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "موقع التخزين:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        Text(
+                            text = "📍 ${location?.name ?: "غير محدد"}",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
             }
 
-            if (stockItem.serial.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "الرقم التسلسلي (SN): ${stockItem.serial}",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.secondary
-                )
+            if (stockItem.serial.isNotBlank() || stockItem.batch.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    if (stockItem.serial.isNotBlank()) {
+                        Text(
+                            text = "SN: ${stockItem.serial}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
+                    if (stockItem.batch.isNotBlank()) {
+                        Text(
+                            text = "Batch: ${stockItem.batch}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
 
-            if (stockItem.batch.isNotBlank()) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "تشغيلة الدفعة (Batch): ${stockItem.batch}",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                if (stockItem.serial.isBlank() && stockItem.quantity > 1.0) {
+            if (stockItem.serial.isBlank() && stockItem.quantity > 1.0) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
                     OutlinedButton(
                         onClick = onSplitClick,
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
-                        Text("تجزئة الكمية (Split)", fontSize = 11.sp)
+                        Text("تجزئة الكمية (Split)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
                     }
                 }
             }
@@ -326,7 +502,19 @@ private fun AddStockItemDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(Res.string.add_new_stock), fontWeight = FontWeight.Bold) },
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(stringResource(Res.string.add_new_stock), fontWeight = FontWeight.Bold)
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                }
+            }
+        },
         confirmButton = {
             Button(
                 onClick = {
@@ -336,9 +524,10 @@ private fun AddStockItemDialog(
                         onConfirm(pId, selectedLocationId, qty, serial, batch, packaging, selectedStatus, notes)
                     }
                 },
-                enabled = selectedPartId != null && (quantityText.toDoubleOrNull() ?: 0.0) > 0.0
+                enabled = selectedPartId != null && (quantityText.toDoubleOrNull() ?: 0.0) > 0.0,
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text(stringResource(Res.string.save))
+                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -346,7 +535,9 @@ private fun AddStockItemDialog(
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text("اختر القطعة المراد استلامها:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
@@ -356,7 +547,8 @@ private fun AddStockItemDialog(
                         FilterChip(
                             selected = selectedPartId == p.id,
                             onClick = { selectedPartId = p.id },
-                            label = { Text(p.name) }
+                            label = { Text(p.name, fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(12.dp)
                         )
                     }
                 }
@@ -366,8 +558,9 @@ private fun AddStockItemDialog(
                     onValueChange = { quantityText = it },
                     label = { Text("الكمية المادية") },
                     singleLine = true,
-                    enabled = serial.isBlank(), // إجبار الكمية إلى 1.0 عند إدخال الرقم التسلسلي
-                    modifier = Modifier.fillMaxWidth()
+                    enabled = serial.isBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -378,7 +571,8 @@ private fun AddStockItemDialog(
                     },
                     label = { Text("الرقم التسلسلي الفريد (Serial Number)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -386,7 +580,8 @@ private fun AddStockItemDialog(
                     onValueChange = { batch = it },
                     label = { Text("رقم التشغيلة/الدفعة (Batch Code)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -394,14 +589,16 @@ private fun AddStockItemDialog(
                     onValueChange = { packaging = it },
                     label = { Text("نوع التغليف (Box / Reel / Tray)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
                     label = { Text("ملاحظات الفحص والاستلام") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
             }
         }
@@ -418,7 +615,19 @@ private fun SplitStockDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("تجزئة الكمية المخزنية (Split Stock)", fontWeight = FontWeight.Bold) },
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("تجزئة الكمية المخزنية (Split Stock)", fontWeight = FontWeight.Bold)
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                }
+            }
+        },
         confirmButton = {
             Button(
                 onClick = {
@@ -427,9 +636,10 @@ private fun SplitStockDialog(
                         onConfirm(qty)
                     }
                 },
-                enabled = (splitQtyText.toDoubleOrNull() ?: 0.0) in 0.1..<item.quantity
+                enabled = (splitQtyText.toDoubleOrNull() ?: 0.0) in 0.1..<item.quantity,
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text("تأكيد التجزئة")
+                Text("تأكيد التجزئة", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -447,7 +657,8 @@ private fun SplitStockDialog(
                     onValueChange = { splitQtyText = it },
                     label = { Text("الكمية المقتطعة للدفعة الفرعية (أقل من ${item.quantity})") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
             }
         }

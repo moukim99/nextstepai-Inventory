@@ -1,6 +1,7 @@
 package com.nextstepai.inventory
 
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -58,7 +59,9 @@ fun App() {
     AppTheme(themeMode = themeMode) {
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
             Surface(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding(),
                 color = MaterialTheme.colorScheme.background
             ) {
                 val loginViewModel = remember { LoginViewModel() }

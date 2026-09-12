@@ -1,31 +1,40 @@
 package com.nextstepai.inventory.ui
 
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.BomItem
 import com.nextstepai.inventory.data.BomItemSubstituteView
 import com.nextstepai.inventory.data.Part
-import com.nextstepai.inventory.ui.theme.AppIcons
 import nextstepai_inventory.shared.generated.resources.Res
 import nextstepai_inventory.shared.generated.resources.add_bom_item
-import nextstepai_inventory.shared.generated.resources.back
 import nextstepai_inventory.shared.generated.resources.bom_items_count
 import nextstepai_inventory.shared.generated.resources.cancel
 import nextstepai_inventory.shared.generated.resources.card_bom_title
@@ -33,6 +42,7 @@ import nextstepai_inventory.shared.generated.resources.save
 
 /**
  * شاشة إدارة بنود قائمة مواد التصنيع (BOM Items Screen).
+ * مطابقة للهيكل القياسي الموحد للتطبيق مع الترويسة العلوية التكيفية واختيار المنتجات المجمعة والبدائل.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,57 +55,33 @@ fun BomScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(Res.string.card_bom_title)) },
-                navigationIcon = {
-                    TextButton(onClick = onBackClick) {
-                        Icon(
-                            painter = painterResource(AppIcons.Back),
-                            contentDescription = stringResource(Res.string.back),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(Res.string.back))
-                    }
-                },
-                actions = {
-                    Button(
-                        onClick = { viewModel.setAddDialogOpen(true) },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(AppIcons.Add),
-                            contentDescription = stringResource(Res.string.add_bom_item),
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(Res.string.add_bom_item))
-                    }
-                }
+            BomTopBar(
+                onBackClick = onBackClick,
+                onAddClick = { viewModel.setAddDialogOpen(true) }
             )
         },
         modifier = modifier
     ) { paddingValues ->
-        BoxWithConstraints(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            val isWide = this@BoxWithConstraints.maxWidth > 600.dp
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
+                Spacer(modifier = Modifier.height(12.dp))
+
                 Text(
-                    text = "اختر المنتج الأب (Assembly) لعرض قائمة مواده:",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold
+                    text = "اختر المنتج الأب المجمع (Assembly) لعرض قائمة مواده:",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // اختيار المنتج الأب عبر LazyRow مع المفاتيح الثابتة المستقرة key()
+                // اختيار المنتج الأب عبر LazyRow
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -104,18 +90,18 @@ fun BomScreen(
                         FilterChip(
                             selected = uiState.selectedPartId == parent.id,
                             onClick = { viewModel.selectParentPart(parent.id) },
-                            label = { Text(parent.name) }
+                            label = { Text("🛠️ ${parent.name}", fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(50)
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // عرض رسائل الخطأ إن وجدت
                 if (uiState.errorMessage != null) {
                     Surface(
                         color = MaterialTheme.colorScheme.errorContainer,
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
                     ) {
                         Text(
@@ -127,7 +113,6 @@ fun BomScreen(
                     }
                 }
 
-                // عرض قائمة بنود BOM للقطعة المختارة
                 if (uiState.bomItems.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -142,16 +127,24 @@ fun BomScreen(
                         )
                     }
                 } else {
-                    Text(
-                        text = pluralStringResource(Res.plurals.bom_items_count, uiState.bomItems.size, uiState.bomItems.size),
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = pluralStringResource(Res.plurals.bom_items_count, uiState.bomItems.size, uiState.bomItems.size),
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
 
                     LazyColumn(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 16.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
                         items(uiState.bomItems, key = { "bom-${it.id}" }) { bomItem ->
                             val component = uiState.availableComponents.find { it.id == bomItem.subPartId }
@@ -194,7 +187,84 @@ fun BomScreen(
 }
 
 /**
- * بطاقة عرض بند قائمة المواد المجمعة BOM ومعلوماته الفنية والبدائل المعتمدة.
+ * الترويسة العلوية لشاشة إدارة بنود BOM
+ */
+@Composable
+private fun BomTopBar(
+    onBackClick: () -> Unit,
+    onAddClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding(),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 2.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // اليمين: زر الرجوع وعنوان الشاشة
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                IconButton(onClick = onBackClick) {
+                    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "رجوع",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.scale(if (isRtl) -1f else 1f, 1f)
+                    )
+                }
+
+                Text(
+                    text = "جدول بنود قائمة المواد (BOM)",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 17.sp
+                    ),
+                    color = Color(0xFF0F172A)
+                )
+            }
+
+            // اليسار: زر "+ إضافة مكون"
+            Button(
+                onClick = onAddClick,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF7C3AED),
+                    contentColor = Color.White
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(Res.string.add_bom_item),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "إضافة مكون",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * بطاقة عرض بند قائمة المواد المجمعة BOM
  */
 @Composable
 private fun BomItemCard(
@@ -205,31 +275,65 @@ private fun BomItemCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Column(
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier.padding(16.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = component?.name ?: "مكون #${bomItem.subPartId}",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "الكمية المطلوبة: ${bomItem.quantity} ${component?.units ?: "pcs"}",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFF3E8FF))
+                            .border(1.dp, Color(0xFFE9D5FF), RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AccountTree,
+                            contentDescription = null,
+                            tint = Color(0xFF7C3AED),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Text(
+                        text = component?.name ?: "مكون #${bomItem.subPartId}",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Surface(
+                    color = Color(0xFFF3E8FF),
+                    shape = RoundedCornerShape(50),
+                    border = BorderStroke(1.dp, Color(0xFFE9D5FF))
+                ) {
+                    Text(
+                        text = "الكمية: ${bomItem.quantity} ${component?.units ?: "pcs"}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFF7C3AED),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
             }
 
             if (bomItem.reference.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "المرجع الهندسي (Ref): ${bomItem.reference}",
                     style = MaterialTheme.typography.bodySmall,
@@ -240,22 +344,26 @@ private fun BomItemCard(
             if (bomItem.note.isNotBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "ملاحظات: ${bomItem.note}",
+                    text = "ملاحظات التركيب: ${bomItem.note}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // الشروط المنطقية المعتمدة
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (bomItem.optional) Badge("اختياري (Optional)", MaterialTheme.colorScheme.secondaryContainer)
-                if (bomItem.consumable) Badge("مستهلك (Consumable)", MaterialTheme.colorScheme.errorContainer)
-                if (bomItem.allowVariants) Badge("يسمح ببدائل المتغيرات", MaterialTheme.colorScheme.tertiaryContainer)
+                if (bomItem.optional) BadgeTag("اختياري (Optional)", Color(0xFFF0F9FF), Color(0xFF0284C7))
+                if (bomItem.consumable) BadgeTag("مستهلك (Consumable)", Color(0xFFFFE4E6), Color(0xFFE11D48))
+                if (bomItem.allowVariants) BadgeTag("يسمح ببدائل المتغيرات", Color(0xFFECFDF5), Color(0xFF059669))
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -267,41 +375,43 @@ private fun BomItemCard(
             ) {
                 Text(
                     text = "البدائل المعتمدة (${substitutes.size}):",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
                 TextButton(
                     onClick = onAddSubstituteClick,
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Text("+ إضافة بديل", fontSize = 11.sp)
+                    Text("+ إضافة بديل", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Color(0xFF7C3AED))
                 }
             }
 
             if (substitutes.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     for (sub in substitutes) {
                         Surface(
-                            color = MaterialTheme.colorScheme.surface,
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     text = "• ${sub.substitutePart.name}",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                                 )
                                 Text(
                                     text = "IPN: ${sub.substitutePart.ipn.ifBlank { "-" }}",
-                                    fontSize = 10.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -314,15 +424,17 @@ private fun BomItemCard(
 }
 
 @Composable
-private fun Badge(text: String, color: Color) {
+private fun BadgeTag(text: String, bgColor: Color, textColor: Color) {
     Surface(
-        color = color,
-        shape = RoundedCornerShape(4.dp)
+        color = bgColor,
+        shape = RoundedCornerShape(6.dp),
+        border = BorderStroke(1.dp, textColor.copy(alpha = 0.2f))
     ) {
         Text(
             text = text,
-            fontSize = 10.sp,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+            color = textColor,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
         )
     }
 }
@@ -352,7 +464,19 @@ private fun AddBomItemDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(Res.string.add_bom_item), fontWeight = FontWeight.Bold) },
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(stringResource(Res.string.add_bom_item), fontWeight = FontWeight.Bold)
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                }
+            }
+        },
         confirmButton = {
             Button(
                 onClick = {
@@ -362,9 +486,10 @@ private fun AddBomItemDialog(
                         onConfirm(subId, qty, reference, optional, consumable, allowVariants, false, note)
                     }
                 },
-                enabled = selectedSubPartId != null && (quantityText.toDoubleOrNull() ?: 0.0) > 0.0
+                enabled = selectedSubPartId != null && (quantityText.toDoubleOrNull() ?: 0.0) > 0.0,
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text(stringResource(Res.string.save))
+                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -372,7 +497,9 @@ private fun AddBomItemDialog(
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text("اختر القطعة المكونة الفرعية (SubPart):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
@@ -382,7 +509,8 @@ private fun AddBomItemDialog(
                         FilterChip(
                             selected = selectedSubPartId == comp.id,
                             onClick = { selectedSubPartId = comp.id },
-                            label = { Text(comp.name) }
+                            label = { Text(comp.name, fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(12.dp)
                         )
                     }
                 }
@@ -392,7 +520,8 @@ private fun AddBomItemDialog(
                     onValueChange = { quantityText = it },
                     label = { Text("الكمية المطلوبة (quantity > 0)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -400,14 +529,16 @@ private fun AddBomItemDialog(
                     onValueChange = { reference = it },
                     label = { Text("المرجع الهندسي على البوردة (Reference/Designator)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
                     value = note,
                     onValueChange = { note = it },
                     label = { Text("ملاحظات تركيبية (Note)") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -440,7 +571,19 @@ private fun AddSubstituteDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("إضافة قطعة بديلة معتمدة (BomItemSubstitute)", fontWeight = FontWeight.Bold) },
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("إضافة قطعة بديلة معتمدة", fontWeight = FontWeight.Bold)
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                }
+            }
+        },
         confirmButton = {
             Button(
                 onClick = {
@@ -449,9 +592,10 @@ private fun AddSubstituteDialog(
                         onConfirm(pId)
                     }
                 },
-                enabled = selectedPartId != null
+                enabled = selectedPartId != null,
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text(stringResource(Res.string.save))
+                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -459,7 +603,9 @@ private fun AddSubstituteDialog(
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text("اختر القطعة البديلة المعتمدة:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
@@ -469,7 +615,8 @@ private fun AddSubstituteDialog(
                         FilterChip(
                             selected = selectedPartId == p.id,
                             onClick = { selectedPartId = p.id },
-                            label = { Text(p.name) }
+                            label = { Text(p.name, fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(12.dp)
                         )
                     }
                 }

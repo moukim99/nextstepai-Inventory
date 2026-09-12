@@ -2,48 +2,48 @@
 <resources>
     <string name="app_name">تطبيق إدارة المخزون NextStep AI</string>
     <string name="dashboard_title">نظام إدارة المخزون</string>
-    <string name="welcome_message">مرحباً بك! 👋</string>
-    <string name="login_success_subtitle">تم التحقق وتسجيل الدخول بنجاح.</string>
-    <string name="logout">تسجيل الخروج</string>
+    <string name="welcome_message">مرحباً بك مجدداً!</string>
+    <string name="login_success_subtitle">تم التحقق وتسجيل الدخول بنجاح. جاهز لمتابعة تدفق الإنتاج والمخزون اللحظي.</string>
+    <string name="logout">خروج</string>
     <string name="login">تسجيل الدخول</string>
     <string name="username">اسم المستخدم</string>
     <string name="password">كلمة المرور</string>
-    <string name="guest_login">دخول كضيف</string>
+    <string name="guest_login">دخول مباشر</string>
 
     <string name="nav_dashboard">الرئيسية</string>
-    <string name="nav_builds">أوامر التصنيع</string>
+    <string name="nav_stock">المخزون</string>
+    <string name="nav_builds">الإنتاج</string>
+    <string name="nav_companies">الموردين</string>
+    <string name="nav_parts">الإعدادات</string>
     <string name="nav_orders">أوامر الشراء</string>
-    <string name="nav_companies">الشركات</string>
-    <string name="nav_stock">المخزون الفعلي</string>
-    <string name="nav_parts">إدارة القطع</string>
-    <string name="nav_bom">قائمة المواد (BOM)</string>
+    <string name="nav_bom">قائمة المواد</string>
     <string name="nav_theme">المظهر</string>
 
-    <string name="card_builds_title">🏭 جدول أوامر الإنتاج والتصنيع (Build)</string>
-    <string name="card_builds_subtitle">إدارة وتتبع دورة تصنيع المكونات وتحويل الـ BOM إلى منتجات مكتملة.</string>
-    <string name="open_builds">فتح الإنتاج ⬅</string>
+    <string name="card_builds_title">جدول أوامر الإنتاج والتصنيع</string>
+    <string name="card_builds_subtitle">إدارة وتتبع دورة تصنيع المكونات وتحويل قائمة المواد (BOM) إلى منتجات تامة الصنع.</string>
+    <string name="open_builds">فتح الإنتاج</string>
 
-    <string name="card_orders_title">📄 جدول أوامر الشراء وبنودها (PurchaseOrder)</string>
-    <string name="card_orders_subtitle">إدارة طلبات الموردين وبنود الشراء والأسعار والاعتماد والاستلام.</string>
-    <string name="open_orders">فتح الطلبات ⬅</string>
+    <string name="card_orders_title">جدول أوامر الشراء وبنودها</string>
+    <string name="card_orders_subtitle">إدارة طلبات التوريد، تسعير البنود، دورة اعتمادات الشراء، ومطابقة استلام الشحنات.</string>
+    <string name="open_orders">فتح الطلبات</string>
 
-    <string name="card_companies_title">🏢 جدول إدارة الشركات والعلاقات (Company)</string>
-    <string name="card_companies_subtitle">إدارة بيانات الموردين والمصنعين والعملاء والعملات التجارية.</string>
-    <string name="open_companies">فتح الشركات ⬅</string>
+    <string name="card_companies_title">جدول الشركات والعلاقات</string>
+    <string name="card_companies_subtitle">سجلات الموردين، المصنعين الخارجيين، جهات الشحن، ومحددات العملات والاتفاقيات.</string>
+    <string name="open_companies">فتح الشركات</string>
 
-    <string name="card_stock_title">📦 جدول إدارة المخزون الفعلي (StockItem)</string>
-    <string name="card_stock_subtitle">تتبع الوحدات المادية على الرفوف والأرقام التسلسلية والشحنات والمواقع.</string>
-    <string name="open_stock">فتح المخزون ⬅</string>
+    <string name="card_stock_title">إدارة المخزون الفعلي</string>
+    <string name="card_stock_subtitle">تتبع الوحدات المادية على الأرفف، الأرقام التسلسلية، الشحنات، والمستودعات الفرعية.</string>
+    <string name="open_stock">فتح المخزون</string>
 
-    <string name="card_parts_title">⚙️ جدول إدارة القطع والمكونات (Part)</string>
-    <string name="card_parts_subtitle">عرض وتصفية وبحث وحفظ بيانات جدول Part المستوحى من InvenTree.</string>
-    <string name="open_parts">فتح الجدول ⬅</string>
+    <string name="card_parts_title">دليل القطع والمكونات</string>
+    <string name="card_parts_subtitle">تصفية وبحث وحفظ مواصفات القطع المعيارية وقوائم الـ IPN وخصائص التجميع.</string>
+    <string name="open_parts">فتح الجدول</string>
 
-    <string name="card_bom_title">🛠️ جدول بنود قائمة المواد والتجميع (BomItem)</string>
+    <string name="card_bom_title">جدول بنود قائمة المواد (BOM)</string>
     <string name="card_bom_subtitle">إدارة العلاقة التركيبية والكميات والشروط الفنية للقطع المجمعة.</string>
-    <string name="open_bom">فتح BOM ⬅</string>
+    <string name="open_bom">فتح قائمة المواد</string>
 
-    <string name="session_info_header">بيانات الجلسة الحالية (Login Table Record):</string>
+    <string name="session_info_header">بيانات الجلسة الحالية:</string>
     <string name="session_id">رقم السجل: #%1$d</string>
     <string name="session_user">اسم المستخدم: %1$s</string>
     <string name="session_status">حالة التحقق: %1$s</string>

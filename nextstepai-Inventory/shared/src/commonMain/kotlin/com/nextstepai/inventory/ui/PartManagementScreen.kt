@@ -1,23 +1,34 @@
 package com.nextstepai.inventory.ui
 
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.BomItem
@@ -32,10 +43,8 @@ import com.nextstepai.inventory.data.db.PartInternalPriceEntity
 import com.nextstepai.inventory.data.db.PartPricingEntity
 import com.nextstepai.inventory.data.db.PartSalePriceEntity
 import com.nextstepai.inventory.repository.PartsSummary
-import com.nextstepai.inventory.ui.theme.AppIcons
 import nextstepai_inventory.shared.generated.resources.Res
 import nextstepai_inventory.shared.generated.resources.add_new_part
-import nextstepai_inventory.shared.generated.resources.back
 import nextstepai_inventory.shared.generated.resources.cancel
 import nextstepai_inventory.shared.generated.resources.card_parts_title
 import nextstepai_inventory.shared.generated.resources.filter_assembly
@@ -43,11 +52,10 @@ import nextstepai_inventory.shared.generated.resources.filter_low_stock
 import nextstepai_inventory.shared.generated.resources.filter_starred
 import nextstepai_inventory.shared.generated.resources.parts_count
 import nextstepai_inventory.shared.generated.resources.save
-import nextstepai_inventory.shared.generated.resources.search_placeholder
 
 /**
  * شاشة إدارة القطع والمكونات الأساسية (Part Management Screen).
- * تعرض شريط البحث، الفلترة حسب التصنيف والمخزون، إحصائيات القطع، تفاصيل حقول Part الحقيقية، وحوار إضافة قطعة.
+ * مطابقة للهيكل القياسي الموحد للتطبيق مع الترويسة العلوية التكيفية وحقول البحث والفلترة.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,121 +68,131 @@ fun PartManagementScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(Res.string.card_parts_title)) },
-                navigationIcon = {
-                    if (onBackClick != null) {
-                        TextButton(onClick = onBackClick) {
-                            Icon(
-                                painter = painterResource(AppIcons.Back),
-                                contentDescription = stringResource(Res.string.back),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(stringResource(Res.string.back))
-                        }
-                    }
-                },
-                actions = {
-                    Button(
-                        onClick = { viewModel.setAddPartDialogOpen(true) },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(AppIcons.Add),
-                            contentDescription = stringResource(Res.string.add_new_part),
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(Res.string.add_new_part))
-                    }
-                }
+            PartsTopBar(
+                onBackClick = onBackClick,
+                onAddClick = { viewModel.setAddPartDialogOpen(true) }
             )
         },
         modifier = modifier
     ) { paddingValues ->
-        BoxWithConstraints(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            val isWideScreen = this@BoxWithConstraints.maxWidth > 720.dp
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Spacer(modifier = Modifier.height(12.dp))
 
-            Row(modifier = Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .weight(if (isWideScreen && uiState.selectedPart != null) 1f else 1f)
-                ) {
-                    // شريط إحصائيات القطع المكون من حقول التقرير المحسوبة
-                    PartSummaryCards(summary = uiState.summary)
+                // شريط إحصائيات القطع المكون من حقول التقرير المحسوبة
+                PartSummaryCards(summary = uiState.summary)
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                    // شريط البحث المطور
-                    OutlinedTextField(
-                        value = uiState.searchQuery,
-                        onValueChange = { viewModel.onSearchQueryChanged(it) },
-                        placeholder = { Text(stringResource(Res.string.search_placeholder)) },
-                        leadingIcon = {
-                            Icon(
-                                painter = painterResource(AppIcons.Search),
-                                contentDescription = stringResource(Res.string.search_placeholder),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // شريط التصفية والفلترة بالرقاقات (Category & Filter Chips)
-                    FilterChipsRow(
-                        categories = uiState.categories,
-                        selectedCategoryId = uiState.selectedCategoryId,
-                        lowStockOnly = uiState.lowStockOnlyFilter,
-                        assemblyOnly = uiState.assemblyOnlyFilter,
-                        starredOnly = uiState.starredOnlyFilter,
-                        onCategorySelect = { viewModel.onCategorySelected(it) },
-                        onToggleLowStock = { viewModel.toggleLowStockFilter() },
-                        onToggleAssembly = { viewModel.toggleAssemblyFilter() },
-                        onToggleStarred = { viewModel.toggleStarredFilter() }
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // قائمة القطع
-                    if (uiState.parts.isEmpty()) {
-                        Box(
+                // شريط البحث المطور مع زر الباركود المدمج
+                OutlinedTextField(
+                    value = uiState.searchQuery,
+                    onValueChange = { viewModel.onSearchQueryChanged(it) },
+                    placeholder = {
+                        Text(
+                            text = "البحث باسم القطعة، الـ IPN، أو الوصف...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.outline
+                        )
+                    },
+                    trailingIcon = {
+                        IconButton(
+                            onClick = { },
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            contentAlignment = Alignment.Center
+                                .padding(end = 4.dp)
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                         ) {
-                            Text(
-                                text = pluralStringResource(Res.plurals.parts_count, 0, 0),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "مسح الباركود",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            contentPadding = PaddingValues(bottom = 16.dp)
-                        ) {
-                            items(uiState.parts, key = { "part-${it.id}" }) { part ->
-                                PartItemCard(
-                                    part = part,
-                                    isStarred = uiState.starredPartIds.contains(part.id),
-                                    onToggleStar = { viewModel.togglePartStar(part.id) },
-                                    onClick = { viewModel.selectPart(part) }
-                                )
-                            }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // شريط التصفية والفلترة بالرقاقات (Category & Filter Chips)
+                FilterChipsRow(
+                    categories = uiState.categories,
+                    selectedCategoryId = uiState.selectedCategoryId,
+                    lowStockOnly = uiState.lowStockOnlyFilter,
+                    assemblyOnly = uiState.assemblyOnlyFilter,
+                    starredOnly = uiState.starredOnlyFilter,
+                    onCategorySelect = { viewModel.onCategorySelected(it) },
+                    onToggleLowStock = { viewModel.toggleLowStockFilter() },
+                    onToggleAssembly = { viewModel.toggleAssemblyFilter() },
+                    onToggleStarred = { viewModel.toggleStarredFilter() }
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // قائمة القطع
+                if (uiState.parts.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = pluralStringResource(Res.plurals.parts_count, 0, 0),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = pluralStringResource(Res.plurals.parts_count, uiState.parts.size, uiState.parts.size),
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
+                        items(uiState.parts, key = { "part-${it.id}" }) { part ->
+                            PartItemCard(
+                                part = part,
+                                isStarred = uiState.starredPartIds.contains(part.id),
+                                onToggleStar = { viewModel.togglePartStar(part.id) },
+                                onClick = { viewModel.selectPart(part) }
+                            )
                         }
                     }
                 }
@@ -229,7 +247,86 @@ fun PartManagementScreen(
 }
 
 /**
- * شريط الإحصائيات لمكونات جدول Part باستخدام plurals.
+ * الترويسة العلوية لشاشة دليل القطع والمكونات
+ */
+@Composable
+private fun PartsTopBar(
+    onBackClick: (() -> Unit)?,
+    onAddClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding(),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 2.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // اليمين: زر الرجوع وعنوان الشاشة
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (onBackClick != null) {
+                    IconButton(onClick = onBackClick) {
+                        val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "رجوع",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.scale(if (isRtl) -1f else 1f, 1f)
+                        )
+                    }
+                }
+
+                Text(
+                    text = "دليل القطع والمكونات",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 17.sp
+                    ),
+                    color = Color(0xFF0F172A)
+                )
+            }
+
+            // اليسار: زر "+ إضافة قطعة جديدة"
+            Button(
+                onClick = onAddClick,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF0D9488),
+                    contentColor = Color.White
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(Res.string.add_new_part),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "إضافة قطعة",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * شريط الإحصائيات لمكونات جدول Part
  */
 @Composable
 private fun PartSummaryCards(summary: PartsSummary) {
@@ -238,26 +335,26 @@ private fun PartSummaryCards(summary: PartsSummary) {
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         SummaryCard(
-            title = pluralStringResource(Res.plurals.parts_count, summary.totalParts, summary.totalParts),
+            title = "إجمالي القطع",
             value = summary.totalParts.toString(),
             containerColor = MaterialTheme.colorScheme.primaryContainer,
             modifier = Modifier.weight(1f)
         )
         SummaryCard(
-            title = stringResource(Res.string.filter_low_stock),
+            title = "نقص بالمخزون",
             value = summary.lowStockParts.toString(),
             containerColor = if (summary.lowStockParts > 0) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant,
             contentColor = if (summary.lowStockParts > 0) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f)
         )
         SummaryCard(
-            title = stringResource(Res.string.filter_assembly),
+            title = "تجميعات BOM",
             value = summary.assemblyParts.toString(),
             containerColor = MaterialTheme.colorScheme.secondaryContainer,
             modifier = Modifier.weight(1f)
         )
         SummaryCard(
-            title = "Templates",
+            title = "قوالب القياس",
             value = summary.templateParts.toString(),
             containerColor = MaterialTheme.colorScheme.tertiaryContainer,
             modifier = Modifier.weight(1f)
@@ -276,7 +373,7 @@ private fun SummaryCard(
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = containerColor, contentColor = contentColor),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(14.dp)
     ) {
         Column(
             modifier = Modifier.padding(10.dp),
@@ -289,9 +386,8 @@ private fun SummaryCard(
 }
 
 /**
- * صف تصفية الفئات والفلاتر المباشرة.
+ * صف تصفية الفئات والفلاتر المباشرة
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FilterChipsRow(
     categories: List<PartCategory>,
@@ -312,7 +408,8 @@ private fun FilterChipsRow(
             FilterChip(
                 selected = selectedCategoryId == null && !starredOnly,
                 onClick = { onCategorySelect(null) },
-                label = { Text("الكل") }
+                label = { Text("الكل", fontWeight = FontWeight.Bold) },
+                shape = RoundedCornerShape(50)
             )
         }
         item {
@@ -321,20 +418,22 @@ private fun FilterChipsRow(
                 onClick = onToggleStarred,
                 leadingIcon = {
                     Icon(
-                        painter = painterResource(AppIcons.StarFilled),
+                        imageVector = if (starredOnly) Icons.Default.Star else Icons.Default.StarBorder,
                         contentDescription = stringResource(Res.string.filter_starred),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(16.dp)
                     )
                 },
-                label = { Text(stringResource(Res.string.filter_starred)) }
+                label = { Text(stringResource(Res.string.filter_starred), fontWeight = FontWeight.Bold) },
+                shape = RoundedCornerShape(50)
             )
         }
         item {
             FilterChip(
                 selected = lowStockOnly,
                 onClick = onToggleLowStock,
-                label = { Text(stringResource(Res.string.filter_low_stock)) },
+                label = { Text(stringResource(Res.string.filter_low_stock), fontWeight = FontWeight.Bold) },
+                shape = RoundedCornerShape(50),
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.errorContainer
                 )
@@ -344,21 +443,23 @@ private fun FilterChipsRow(
             FilterChip(
                 selected = assemblyOnly,
                 onClick = onToggleAssembly,
-                label = { Text(stringResource(Res.string.filter_assembly)) }
+                label = { Text(stringResource(Res.string.filter_assembly), fontWeight = FontWeight.Bold) },
+                shape = RoundedCornerShape(50)
             )
         }
         items(categories, key = { "category-${it.id}" }) { category ->
             FilterChip(
                 selected = selectedCategoryId == category.id,
                 onClick = { onCategorySelect(if (selectedCategoryId == category.id) null else category.id) },
-                label = { Text(category.name) }
+                label = { Text(category.name, fontWeight = FontWeight.Bold) },
+                shape = RoundedCornerShape(50)
             )
         }
     }
 }
 
 /**
- * بطاقة عرض القطعة القابلة للنقر لتفاصيل Part مع زر التفضيل والمتابعة ⭐ (PartStar).
+ * بطاقة عرض القطعة PartItemCard
  */
 @Composable
 private fun PartItemCard(
@@ -371,14 +472,15 @@ private fun PartItemCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp)
+                .padding(16.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -387,19 +489,23 @@ private fun PartItemCard(
             ) {
                 Row(
                     modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     IconButton(onClick = onToggleStar, modifier = Modifier.size(28.dp)) {
                         Icon(
-                            painter = painterResource(if (isStarred) AppIcons.StarFilled else AppIcons.Star),
+                            imageVector = if (isStarred) Icons.Default.Star else Icons.Default.StarBorder,
                             contentDescription = stringResource(Res.string.filter_starred),
                             tint = if (isStarred) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
+
                     Text(
                         text = part.name,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        ),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -407,14 +513,14 @@ private fun PartItemCard(
 
                 if (part.ipn.isNotBlank()) {
                     Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = RoundedCornerShape(6.dp)
+                        color = Color(0xFFF0FDFA),
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(1.dp, Color(0xFFCCFBF1))
                     ) {
                         Text(
                             text = "IPN: ${part.ipn}",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = Color(0xFF0D9488),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
@@ -422,7 +528,7 @@ private fun PartItemCard(
             }
 
             if (part.description.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = part.description,
                     style = MaterialTheme.typography.bodySmall,
@@ -432,7 +538,7 @@ private fun PartItemCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // العلامات المنطقية للقطعة (Flags & Tags)
             Row(
@@ -440,41 +546,46 @@ private fun PartItemCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (part.isTemplate) {
-                    BadgeTag("قالب (Template)", MaterialTheme.colorScheme.tertiaryContainer)
+                    BadgeTag("قالب (Template)", Color(0xFFF3E8FF), Color(0xFF7C3AED))
                 }
                 if (part.variantOfId != null) {
-                    BadgeTag("مشتق (Variant)", MaterialTheme.colorScheme.secondaryContainer)
+                    BadgeTag("مشتق (Variant)", Color(0xFFF0F9FF), Color(0xFF0284C7))
                 }
                 if (part.assembly) {
-                    BadgeTag("تجميعة (Assembly)", MaterialTheme.colorScheme.surfaceVariant)
+                    BadgeTag("تجميعة (Assembly)", Color(0xFFFFF1F2), Color(0xFFE11D48))
                 }
                 if (part.trackable) {
-                    BadgeTag("تتبع أرقام تسلسلية", MaterialTheme.colorScheme.primaryContainer)
+                    BadgeTag("تتبع أرقام تسلسلية", Color(0xFFEEF2FF), Color(0xFF4F46E5))
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // مؤشر كمية المخزون المتاح والتنبيهات
-            Row(
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
             ) {
-                Text(
-                    text = "المخزون المتاح: ${part.availableStock} ${part.units} (من أصل ${part.totalInStock})",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = if (part.isLowStock) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                )
-
-                if (part.isLowStock) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = "⚠️ نقص في المخزون (< ${part.minimumStock})",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.error
+                        text = "المخزون المتاح: ${part.availableStock} ${part.units} (من أصل ${part.totalInStock})",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = if (part.isLowStock) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                     )
+
+                    if (part.isLowStock) {
+                        Text(
+                            text = "⚠️ نقص في المخزون (< ${part.minimumStock})",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
         }
@@ -482,21 +593,23 @@ private fun PartItemCard(
 }
 
 @Composable
-private fun BadgeTag(text: String, color: Color) {
+private fun BadgeTag(text: String, bgColor: Color, textColor: Color) {
     Surface(
-        color = color,
-        shape = RoundedCornerShape(4.dp)
+        color = bgColor,
+        shape = RoundedCornerShape(6.dp),
+        border = BorderStroke(1.dp, textColor.copy(alpha = 0.2f))
     ) {
         Text(
             text = text,
-            fontSize = 10.sp,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+            color = textColor,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
         )
     }
 }
 
 /**
- * حوار عرض تفاصيل السجل الكاملة المتبوبة المباشرة لجدول Part وكافة الجداول والكيانات الفرعية الثمانية (بما فيها التسعير PartPricing والشرائح PartInternalPrice).
+ * حوار عرض تفاصيل السجل الكاملة المتبوبة المباشرة لجدول Part
  */
 @Composable
 private fun PartDetailsDialog(
@@ -531,9 +644,10 @@ private fun PartDetailsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(Res.string.cancel))
+                Text(stringResource(Res.string.cancel), fontWeight = FontWeight.Bold)
             }
         },
         title = {
@@ -563,7 +677,7 @@ private fun PartDetailsDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 when (selectedTabIndex) {
-                    0 -> { // البيانات العامة والتجارية
+                    0 -> {
                         DetailRow("رقم السجل (id):", "#${part.id}")
                         DetailRow("الاسم (name):", part.name)
                         DetailRow("رقم القطعة الداخلي (IPN):", part.ipn.ifBlank { "-" })
@@ -578,7 +692,7 @@ private fun PartDetailsDialog(
                         DetailRow("تتبع متسلسل (trackable):", if (part.trackable) "نعم" else "لا")
                         DetailRow("قابل للشراء (purchaseable):", if (part.purchaseable) "نعم" else "لا")
                         DetailRow("قابل للبيع (salable):", if (part.salable) "نعم" else "لا")
-                        DetailRow("افتراضي/افتراضي (virtual):", if (part.virtual) "نعم" else "لا")
+                        DetailRow("افتراضي (virtual):", if (part.virtual) "نعم" else "لا")
                         DetailRow("حالة النشاط (active):", if (part.active) "نشط" else "مؤرشف")
                         HorizontalDivider()
                         DetailRow("إجمالي المخزون (totalInStock):", "${part.totalInStock} ${part.units}")
@@ -589,7 +703,7 @@ private fun PartDetailsDialog(
                         DetailRow("الحد الأقصى للمخزون (maximumStock):", part.maximumStock?.let { "$it ${part.units}" } ?: "-")
                         DetailRow("تاريخ الإنشاء (creation_date):", part.creationDate.ifBlank { "2025-02-15" })
                     }
-                    1 -> { // قائمة التركيب والتصنيع BOM & Substitutes
+                    1 -> {
                         Text("بنود قائمة المواد (Bill of Materials):", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         if (bomItems.isEmpty()) {
                             Text("لا توجد مكونات فرعية مسجلة لهذه القطعة.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -609,7 +723,7 @@ private fun PartDetailsDialog(
                             }
                         }
                     }
-                    2 -> { // المعاملات والمواصفات الفنية
+                    2 -> {
                         Text("المعاملات الفنية للقطعة (Part Parameters):", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         if (parameters.isEmpty()) {
                             Text("لا توجد مواصفات فنية مسجلة لهذه القطعة.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -619,8 +733,8 @@ private fun PartDetailsDialog(
                             }
                         }
                     }
-                    3 -> { // قوالب اختبارات الجودة
-                        Text("قوالب الفحوصات واختبارات الجودة (PartTestTemplate):", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    3 -> {
+                        Text("قوالب الفحوصات وااختبارات الجودة (PartTestTemplate):", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         if (testTemplates.isEmpty()) {
                             Text("لا توجد قوالب فحوصات مسجلة لهذه القطعة.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
@@ -632,7 +746,7 @@ private fun PartDetailsDialog(
                             }
                         }
                     }
-                    4 -> { // القطع ذات الصلة
+                    4 -> {
                         Text("القطع ذات الصلة والبدائل الشبيهة (PartRelated):", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         if (relatedParts.isEmpty()) {
                             Text("لا توجد قطع ذات صلة مقترنة بهذه القطعة.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -642,7 +756,7 @@ private fun PartDetailsDialog(
                             }
                         }
                     }
-                    5 -> { // المرفقات والوثائق
+                    5 -> {
                         Text("المرفقات والوثائق الفنية (PartAttachment):", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         if (attachments.isEmpty()) {
                             Text("لا توجد ملفات أو وثائق مرفقة بهذه القطعة.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -653,7 +767,7 @@ private fun PartDetailsDialog(
                             }
                         }
                     }
-                    6 -> { // الملاحظات وسجل التدقيق
+                    6 -> {
                         Text("الملاحظات والتوجيهات التفصيلية (PartNotes):", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         if (partNotes != null && partNotes.notes.isNotBlank()) {
                             Text(
@@ -671,7 +785,7 @@ private fun PartDetailsDialog(
                             Text("لا توجد ملاحظات تفصيلية مسجلة لهذه القطعة.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    7 -> { // التكاليف والأسعار المحسوبة PartPricing وشرائح الأسعار PartInternalPrice
+                    7 -> {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -783,9 +897,6 @@ private fun DetailRow(label: String, value: String) {
     }
 }
 
-/**
- * حوار إضافة قطعة جديدة بالحقوق والخيارات الأساسية.
- */
 @Composable
 private fun AddPartDialog(
     categories: List<PartCategory>,
@@ -821,7 +932,19 @@ private fun AddPartDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(Res.string.add_new_part), fontWeight = FontWeight.Bold) },
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(stringResource(Res.string.add_new_part), fontWeight = FontWeight.Bold)
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                }
+            }
+        },
         confirmButton = {
             Button(
                 onClick = {
@@ -842,9 +965,10 @@ private fun AddPartDialog(
                         )
                     }
                 },
-                enabled = name.isNotBlank()
+                enabled = name.isNotBlank(),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text(stringResource(Res.string.save))
+                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -864,7 +988,8 @@ private fun AddPartDialog(
                     onValueChange = { name = it },
                     label = { Text("اسم القطعة (name) *") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -872,14 +997,16 @@ private fun AddPartDialog(
                     onValueChange = { ipn = it },
                     label = { Text("رقم القطعة الداخلي (IPN)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
                     label = { Text("وصف القطعة (description)") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 Row(
@@ -891,21 +1018,24 @@ private fun AddPartDialog(
                         onValueChange = { units = it },
                         label = { Text("وحدة القياس") },
                         modifier = Modifier.weight(1f),
-                        singleLine = true
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
                         value = minimumStockText,
                         onValueChange = { minimumStockText = it },
                         label = { Text("الحد الأدنى") },
                         modifier = Modifier.weight(1f),
-                        singleLine = true
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
                         value = maximumStockText,
                         onValueChange = { maximumStockText = it },
                         label = { Text("الحد الأقصى") },
                         modifier = Modifier.weight(1f),
-                        singleLine = true
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
                     )
                 }
 
@@ -914,10 +1044,10 @@ private fun AddPartDialog(
                     onValueChange = { initialStockText = it },
                     label = { Text("المخزون الأولي (totalInStock)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
-                // الخيارات المنطقية (Flags)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = assembly, onCheckedChange = { assembly = it })
                     Text("منتج مجمع (assembly / BOM)", fontSize = 12.sp)
@@ -935,9 +1065,6 @@ private fun AddPartDialog(
     )
 }
 
-/**
- * حوار إضافة شريحة سعرية بيع/تحويل داخلي جديدة (PartInternalPrice Modal).
- */
 @Composable
 private fun AddInternalPriceDialog(
     onDismiss: () -> Unit,
@@ -949,6 +1076,7 @@ private fun AddInternalPriceDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
         title = { Text("إضافة شريحة سعرية (PartInternalPrice)", fontWeight = FontWeight.Bold) },
         confirmButton = {
             Button(
@@ -959,9 +1087,10 @@ private fun AddInternalPriceDialog(
                         onConfirm(q, p, currency)
                     }
                 },
-                enabled = (quantityText.toDoubleOrNull() ?: 0.0) >= 1.0 && (priceText.toDoubleOrNull() ?: 0.0) > 0.0
+                enabled = (quantityText.toDoubleOrNull() ?: 0.0) >= 1.0 && (priceText.toDoubleOrNull() ?: 0.0) > 0.0,
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text(stringResource(Res.string.save))
+                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -969,7 +1098,9 @@ private fun AddInternalPriceDialog(
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(
@@ -977,7 +1108,8 @@ private fun AddInternalPriceDialog(
                     onValueChange = { quantityText = it },
                     label = { Text("الحد الأدنى للكمية (quantity >= 1) *") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -985,7 +1117,8 @@ private fun AddInternalPriceDialog(
                     onValueChange = { priceText = it },
                     label = { Text("سعر الوحدة الواحدة (price) *") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -993,16 +1126,14 @@ private fun AddInternalPriceDialog(
                     onValueChange = { currency = it },
                     label = { Text("العملة (price_currency)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
             }
         }
     )
 }
 
-/**
- * حوار إضافة شريحة سعر بيع للعملاء جديدة (PartSalePrice Modal).
- */
 @Composable
 private fun AddSalePriceDialog(
     onDismiss: () -> Unit,
@@ -1014,6 +1145,7 @@ private fun AddSalePriceDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
         title = { Text("إضافة شريحة سعر بيع للعملاء (PartSalePrice)", fontWeight = FontWeight.Bold) },
         confirmButton = {
             Button(
@@ -1024,9 +1156,10 @@ private fun AddSalePriceDialog(
                         onConfirm(q, p, currency)
                     }
                 },
-                enabled = (quantityText.toDoubleOrNull() ?: 0.0) >= 1.0 && (priceText.toDoubleOrNull() ?: 0.0) > 0.0
+                enabled = (quantityText.toDoubleOrNull() ?: 0.0) >= 1.0 && (priceText.toDoubleOrNull() ?: 0.0) > 0.0,
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text(stringResource(Res.string.save))
+                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -1034,7 +1167,9 @@ private fun AddSalePriceDialog(
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(
@@ -1042,7 +1177,8 @@ private fun AddSalePriceDialog(
                     onValueChange = { quantityText = it },
                     label = { Text("الحد الأدنى للكمية (quantity >= 1) *") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -1050,7 +1186,8 @@ private fun AddSalePriceDialog(
                     onValueChange = { priceText = it },
                     label = { Text("سعر بيع الوحدة الواحدة للعميل (price) *") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -1058,7 +1195,8 @@ private fun AddSalePriceDialog(
                     onValueChange = { currency = it },
                     label = { Text("العملة (price_currency)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
             }
         }

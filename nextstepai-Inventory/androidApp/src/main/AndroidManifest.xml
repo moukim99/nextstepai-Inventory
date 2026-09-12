@@ -7,10 +7,18 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:resizeableActivity="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity
+            android:name=".MainActivity"
             android:exported="true"
-            android:name=".MainActivity">
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density">
+            <layout
+                android:defaultWidth="1280dp"
+                android:defaultHeight="800dp"
+                android:minWidth="360dp"
+                android:minHeight="480dp" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

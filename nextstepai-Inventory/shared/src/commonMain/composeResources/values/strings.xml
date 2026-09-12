@@ -1,70 +1,70 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">NextStep AI Inventory</string>
-    <string name="dashboard_title">Inventory Management System</string>
-    <string name="welcome_message">Welcome!</string>
-    <string name="login_success_subtitle">Session verified and logged in successfully.</string>
-    <string name="logout">Logout</string>
-    <string name="login">Login</string>
-    <string name="username">Username</string>
-    <string name="password">Password</string>
-    <string name="guest_login">Guest Login</string>
+    <string name="dashboard_title">نظام إدارة المخزون</string>
+    <string name="welcome_message">مرحباً بك مجدداً!</string>
+    <string name="login_success_subtitle">تم التحقق وتسجيل الدخول بنجاح. جاهز لمتابعة تدفق الإنتاج والمخزون اللحظي.</string>
+    <string name="logout">خروج</string>
+    <string name="login">تسجيل الدخول</string>
+    <string name="username">اسم المستخدم</string>
+    <string name="password">كلمة المرور</string>
+    <string name="guest_login">دخول مباشر</string>
 
-    <string name="nav_dashboard">Dashboard</string>
-    <string name="nav_builds">Build Orders</string>
-    <string name="nav_orders">Purchase Orders</string>
-    <string name="nav_companies">Companies</string>
-    <string name="nav_stock">Physical Stock</string>
-    <string name="nav_parts">Part Management</string>
-    <string name="nav_bom">Bill of Materials</string>
-    <string name="nav_theme">Theme</string>
+    <string name="nav_dashboard">الرئيسية</string>
+    <string name="nav_stock">المخزون</string>
+    <string name="nav_builds">الإنتاج</string>
+    <string name="nav_companies">الموردين</string>
+    <string name="nav_parts">الإعدادات</string>
+    <string name="nav_orders">أوامر الشراء</string>
+    <string name="nav_bom">قائمة المواد</string>
+    <string name="nav_theme">المظهر</string>
 
-    <string name="card_builds_title">Build Orders (Build)</string>
-    <string name="card_builds_subtitle">Track manufacturing cycles and convert BOM into finished goods.</string>
-    <string name="open_builds">Open Production</string>
+    <string name="card_builds_title">جدول أوامر الإنتاج والتصنيع</string>
+    <string name="card_builds_subtitle">إدارة وتتبع دورة تصنيع المكونات وتحويل قائمة المواد (BOM) إلى منتجات تامة الصنع.</string>
+    <string name="open_builds">فتح الإنتاج</string>
 
-    <string name="card_orders_title">Purchase Orders (PurchaseOrder)</string>
-    <string name="card_orders_subtitle">Manage supplier purchase orders, line items, pricing, and receipts.</string>
-    <string name="open_orders">Open Orders</string>
+    <string name="card_orders_title">جدول أوامر الشراء وبنودها</string>
+    <string name="card_orders_subtitle">إدارة طلبات التوريد، تسعير البنود، دورة اعتمادات الشراء، ومطابقة استلام الشحنات.</string>
+    <string name="open_orders">فتح الطلبات</string>
 
-    <string name="card_companies_title">Companies &amp; Relations (Company)</string>
-    <string name="card_companies_subtitle">Manage suppliers, manufacturers, customers, and commercial currencies.</string>
-    <string name="open_companies">Open Companies</string>
+    <string name="card_companies_title">جدول الشركات والعلاقات</string>
+    <string name="card_companies_subtitle">سجلات الموردين، المصنعين الخارجيين، جهات الشحن، ومحددات العملات والاتفاقيات.</string>
+    <string name="open_companies">فتح الشركات</string>
 
-    <string name="card_stock_title">Physical Stock Items (StockItem)</string>
-    <string name="card_stock_subtitle">Track physical shelf units, serial numbers, batches, and locations.</string>
-    <string name="open_stock">Open Stock</string>
+    <string name="card_stock_title">إدارة المخزون الفعلي</string>
+    <string name="card_stock_subtitle">تتبع الوحدات المادية على الأرفف، الأرقام التسلسلية، الشحنات، والمستودعات الفرعية.</string>
+    <string name="open_stock">فتح المخزون</string>
 
-    <string name="card_parts_title">Parts &amp; Components (Part)</string>
-    <string name="card_parts_subtitle">Browse, filter, search, and manage InvenTree-inspired part records.</string>
-    <string name="open_parts">Open Parts</string>
+    <string name="card_parts_title">دليل القطع والمكونات</string>
+    <string name="card_parts_subtitle">تصفية وبحث وحفظ مواصفات القطع المعيارية وقوائم الـ IPN وخصائص التجميع.</string>
+    <string name="open_parts">فتح الجدول</string>
 
-    <string name="card_bom_title">Bill of Materials (BomItem)</string>
-    <string name="card_bom_subtitle">Manage structural relationships, quantities, and variants for assemblies.</string>
-    <string name="open_bom">Open BOM</string>
+    <string name="card_bom_title">جدول بنود قائمة المواد (BOM)</string>
+    <string name="card_bom_subtitle">إدارة العلاقة التركيبية والكميات والشروط الفنية للقطع المجمعة.</string>
+    <string name="open_bom">فتح قائمة المواد</string>
 
-    <string name="session_info_header">Active Session Record:</string>
-    <string name="session_id">Record ID: #%1$d</string>
-    <string name="session_user">Username: %1$s</string>
-    <string name="session_status">Verification Status: %1$s</string>
-    <string name="session_active">Status: Active Session</string>
+    <string name="session_info_header">بيانات الجلسة الحالية:</string>
+    <string name="session_id">رقم السجل: #%1$d</string>
+    <string name="session_user">اسم المستخدم: %1$s</string>
+    <string name="session_status">حالة التحقق: %1$s</string>
+    <string name="session_active">الحالة: نشط ومسجل الدخول</string>
 
-    <string name="search_placeholder">Search records...</string>
-    <string name="filter_low_stock">Low Stock Only</string>
-    <string name="filter_assembly">Assemblies Only</string>
-    <string name="filter_starred">Starred Only</string>
+    <string name="search_placeholder">البحث في السجلات...</string>
+    <string name="filter_low_stock">منخفض المخزون فقط</string>
+    <string name="filter_assembly">قطع مجمعة فقط</string>
+    <string name="filter_starred">المفضلة فقط</string>
 
-    <string name="add_new_part">Add New Part</string>
-    <string name="add_new_stock">Add Stock Unit</string>
-    <string name="add_new_company">Add Company</string>
-    <string name="add_new_order">Add Purchase Order</string>
-    <string name="add_new_build">Add Build Order</string>
-    <string name="add_bom_item">Add Component to BOM</string>
+    <string name="add_new_part">إضافة قطعة جديدة</string>
+    <string name="add_new_stock">إضافة وحدة مخزنية</string>
+    <string name="add_new_company">تسجيل شركة جديدة</string>
+    <string name="add_new_order">إنشاء أمر شراء</string>
+    <string name="add_new_build">إنشاء أمر تصنيع</string>
+    <string name="add_bom_item">إضافة مكون لقائمة المواد</string>
 
-    <string name="back">Back</string>
-    <string name="save">Save</string>
-    <string name="cancel">Cancel</string>
-    <string name="theme_system">System Default Theme</string>
-    <string name="theme_light">Light Mode</string>
-    <string name="theme_dark">Dark Mode</string>
+    <string name="back">الرجوع</string>
+    <string name="save">حفظ</string>
+    <string name="cancel">إلغاء</string>
+    <string name="theme_system">تلقائي مع النظام</string>
+    <string name="theme_light">الوضع الفاتح</string>
+    <string name="theme_dark">الوضع الداكن</string>
 </resources>

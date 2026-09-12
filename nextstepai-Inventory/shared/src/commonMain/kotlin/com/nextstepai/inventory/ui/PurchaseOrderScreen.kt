@@ -1,41 +1,49 @@
 package com.nextstepai.inventory.ui
 
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.Company
 import com.nextstepai.inventory.data.POStatus
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.PurchaseOrder
-import com.nextstepai.inventory.data.PurchaseOrderLineItem
-import com.nextstepai.inventory.ui.theme.AppIcons
 import nextstepai_inventory.shared.generated.resources.Res
 import nextstepai_inventory.shared.generated.resources.add_new_order
-import nextstepai_inventory.shared.generated.resources.back
 import nextstepai_inventory.shared.generated.resources.cancel
-import nextstepai_inventory.shared.generated.resources.card_orders_title
 import nextstepai_inventory.shared.generated.resources.orders_count
 import nextstepai_inventory.shared.generated.resources.save
-import nextstepai_inventory.shared.generated.resources.search_placeholder
 
 /**
  * شاشة إدارة أوامر الشراء (PurchaseOrder Management Screen).
+ * تم تحديثها لتتبع الهيكل القياسي للتطبيق، شريط البحث والباركود المدمج، وشريط التصفية التفاعلي.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,68 +56,71 @@ fun PurchaseOrderScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(Res.string.card_orders_title)) },
-                navigationIcon = {
-                    TextButton(onClick = onBackClick) {
-                        Icon(
-                            painter = painterResource(AppIcons.Back),
-                            contentDescription = stringResource(Res.string.back),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(Res.string.back))
-                    }
-                },
-                actions = {
-                    Button(
-                        onClick = { viewModel.setAddOrderDialogOpen(true) },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(AppIcons.Add),
-                            contentDescription = stringResource(Res.string.add_new_order),
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(Res.string.add_new_order))
-                    }
-                }
+            PurchaseOrdersTopBar(
+                onBackClick = onBackClick,
+                onAddClick = { viewModel.setAddOrderDialogOpen(true) }
             )
         },
         modifier = modifier
     ) { paddingValues ->
-        BoxWithConstraints(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            val isWide = this@BoxWithConstraints.maxWidth > 600.dp
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
-                // شريط البحث المطور
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // شريط البحث المطور مع زر الباركود المدمج
                 OutlinedTextField(
                     value = uiState.searchQuery,
                     onValueChange = { viewModel.onSearchQueryChanged(it) },
-                    placeholder = { Text(stringResource(Res.string.search_placeholder)) },
+                    placeholder = {
+                        Text(
+                            text = "البحث بالرمز المرجعي، المورد، أو الوصف...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    },
                     leadingIcon = {
                         Icon(
-                            painter = painterResource(AppIcons.Search),
-                            contentDescription = stringResource(Res.string.search_placeholder),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            imageVector = Icons.Default.Search,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.outline
                         )
+                    },
+                    trailingIcon = {
+                        IconButton(
+                            onClick = { },
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "مسح الباركود",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // شريط تصفية حالات أمر الشراء (Status Filter Chips)
+                // شريط تصفية حالات أمر الشراء (POStatus Filter Chips)
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -118,19 +129,69 @@ fun PurchaseOrderScreen(
                         FilterChip(
                             selected = uiState.statusFilter == null,
                             onClick = { viewModel.setStatusFilter(null) },
-                            label = { Text("الكل") }
+                            label = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("كافة الحالات")
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = if (uiState.statusFilter == null) Color.White.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant
+                                    ) {
+                                        Text(
+                                            text = "${uiState.orders.size}",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(50)
                         )
                     }
+
                     items(POStatus.entries, key = { "po-status-${it.code}" }) { status ->
+                        val count = uiState.orders.count { it.status == status }
                         FilterChip(
                             selected = uiState.statusFilter == status,
                             onClick = { viewModel.setStatusFilter(if (uiState.statusFilter == status) null else status) },
-                            label = { Text(status.label) }
+                            label = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    val statusDotColor = when (status) {
+                                        POStatus.COMPLETE -> Color(0xFF10B981)
+                                        POStatus.PLACED -> Color(0xFF0284C7)
+                                        POStatus.CANCELLED -> MaterialTheme.colorScheme.error
+                                        else -> Color(0xFFF59E0B)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .clip(CircleShape)
+                                            .background(statusDotColor)
+                                    )
+                                    Text(status.label)
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = if (uiState.statusFilter == status) Color.White.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant
+                                    ) {
+                                        Text(
+                                            text = "$count",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(50)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 if (uiState.orders.isEmpty()) {
                     Box(
@@ -146,16 +207,24 @@ fun PurchaseOrderScreen(
                         )
                     }
                 } else {
-                    Text(
-                        text = pluralStringResource(Res.plurals.orders_count, uiState.orders.size, uiState.orders.size),
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = pluralStringResource(Res.plurals.orders_count, uiState.orders.size, uiState.orders.size),
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
 
                     LazyColumn(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 16.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
                         items(uiState.orders, key = { "po-${it.id}" }) { order ->
                             PurchaseOrderCard(
@@ -200,6 +269,86 @@ fun PurchaseOrderScreen(
     }
 }
 
+/**
+ * الترويسة العلوية لشاشة أوامر الشراء Top App Bar
+ */
+@Composable
+private fun PurchaseOrdersTopBar(
+    onBackClick: () -> Unit,
+    onAddClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding(),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 2.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // اليمين: زر الرجوع وعنوان الشاشة
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                IconButton(onClick = onBackClick) {
+                    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "رجوع",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.scale(if (isRtl) -1f else 1f, 1f)
+                    )
+                }
+
+                Text(
+                    text = "جدول أوامر الشراء وبنودها",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 17.sp
+                    ),
+                    color = Color(0xFF0F172A)
+                )
+            }
+
+            // اليسار: زر "+ أمر شراء جديد"
+            Button(
+                onClick = onAddClick,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF0284C7),
+                    contentColor = Color.White
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(Res.string.add_new_order),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "أمر شراء جديد",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * بطاقة امر الشراء التفاعلية المطورة
+ */
 @Composable
 private fun PurchaseOrderCard(
     order: PurchaseOrder,
@@ -209,85 +358,172 @@ private fun PurchaseOrderCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Column(
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier.padding(16.dp)
         ) {
+            // السطر العلوي: الكود المرجعي والشارة
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "الرمز المرجعي: ${order.reference}",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-
+                // اليسار: شارة الحالة
                 Surface(
+                    shape = RoundedCornerShape(50),
                     color = when (order.status) {
-                        POStatus.COMPLETE -> MaterialTheme.colorScheme.primaryContainer
-                        POStatus.PLACED -> MaterialTheme.colorScheme.secondaryContainer
+                        POStatus.COMPLETE -> Color(0xFFECFDF5)
+                        POStatus.PLACED -> Color(0xFFF0F9FF)
                         POStatus.CANCELLED -> MaterialTheme.colorScheme.errorContainer
-                        else -> MaterialTheme.colorScheme.surfaceVariant
+                        else -> Color(0xFFFFFBEB)
                     },
-                    shape = RoundedCornerShape(6.dp)
+                    border = BorderStroke(1.dp, when (order.status) {
+                        POStatus.COMPLETE -> Color(0xFFA7F3D0)
+                        POStatus.PLACED -> Color(0xFFE0F2FE)
+                        else -> Color.Transparent
+                    })
                 ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val statusDotColor = when (order.status) {
+                            POStatus.COMPLETE -> Color(0xFF10B981)
+                            POStatus.PLACED -> Color(0xFF0284C7)
+                            POStatus.CANCELLED -> MaterialTheme.colorScheme.error
+                            else -> Color(0xFFF59E0B)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(statusDotColor)
+                        )
+                        Text(
+                            text = order.status.label,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = when (order.status) {
+                                POStatus.COMPLETE -> Color(0xFF059669)
+                                POStatus.PLACED -> Color(0xFF0284C7)
+                                POStatus.CANCELLED -> MaterialTheme.colorScheme.error
+                                else -> Color(0xFFB45309)
+                            }
+                        )
+                    }
+                }
+
+                // اليمين: الرمز المرجعي
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFFF0F9FF)
+                    ) {
+                        Text(
+                            text = "PO",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = Color(0xFF0284C7),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+
                     Text(
-                        text = order.status.label,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        text = order.reference,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 16.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            Text(
-                text = "المورد: ${order.supplierName}",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            // اسم المورد
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Description,
+                    contentDescription = null,
+                    tint = Color(0xFF0284C7),
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = order.supplierName,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
 
             if (order.description.isNotBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = order.description,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            Row(
+            // التكلفة الإجمالية وعدد البنود
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
             ) {
-                Text(
-                    text = "التكلفة الإجمالية: ${order.totalCost} ${order.orderCurrency}",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "التكلفة الإجمالية للطلب:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        Text(
+                            text = "${order.totalCost} ${order.orderCurrency}",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color(0xFF0284C7)
+                        )
+                    }
 
-                Text(
-                    text = "عدد البنود: ${order.lineItems.size}",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "عدد البنود المسجلة:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        Text(
+                            text = "${order.lineItems.size} بنود",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
             }
         }
     }
 }
 
+/**
+ * حوار تفاصيل ومتابعة امر الشراء
+ */
 @Composable
 private fun OrderDetailsDialog(
     order: PurchaseOrder,
@@ -298,8 +534,11 @@ private fun OrderDetailsDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("إغلاق") }
+            TextButton(onClick = onDismiss) {
+                Text("إغلاق", fontWeight = FontWeight.Bold)
+            }
         },
         title = {
             Row(
@@ -310,15 +549,20 @@ private fun OrderDetailsDialog(
                 Text("أمر شراء: ${order.reference}", fontWeight = FontWeight.Bold)
 
                 if (order.status == POStatus.PENDING) {
-                    Button(onClick = { onIssueOrder(order.id) }) {
-                        Text("اعتماد وإصدار ➔", fontSize = 11.sp)
+                    Button(
+                        onClick = { onIssueOrder(order.id) },
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("اعتماد وإصدار ➔", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 DetailRow("رقم الطلب:", "#${order.id}")
@@ -327,7 +571,7 @@ private fun OrderDetailsDialog(
                 DetailRow("إجمالي التكلفة:", "${order.totalCost} ${order.orderCurrency}")
                 DetailRow("تاريخ التسليم المستهدف:", order.targetDate.ifBlank { "-" })
 
-                HorizontalDivider()
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -339,9 +583,10 @@ private fun OrderDetailsDialog(
                     if (order.status == POStatus.PENDING) {
                         OutlinedButton(
                             onClick = onAddLineClick,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("+ إضافة بند", fontSize = 11.sp)
+                            Text("+ إضافة بند", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -352,7 +597,7 @@ private fun OrderDetailsDialog(
                     for (line in order.lineItems) {
                         Surface(
                             color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
@@ -380,7 +625,8 @@ private fun OrderDetailsDialog(
                                     if (order.status == POStatus.PLACED && line.receivedQuantity < line.quantity) {
                                         Button(
                                             onClick = { onReceiveLine(line.id, line.quantity - line.receivedQuantity) },
-                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                            shape = RoundedCornerShape(8.dp)
                                         ) {
                                             Text("استلام الكامل", fontSize = 10.sp)
                                         }
@@ -420,7 +666,19 @@ private fun AddOrderDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(Res.string.add_new_order), fontWeight = FontWeight.Bold) },
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("إنشاء أمر شراء جديد (PO)", fontWeight = FontWeight.Bold)
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                }
+            }
+        },
         confirmButton = {
             Button(
                 onClick = {
@@ -429,9 +687,10 @@ private fun AddOrderDialog(
                         onConfirm(reference, supId, description, targetDate, currency)
                     }
                 },
-                enabled = reference.isNotBlank() && selectedSupplierId != null
+                enabled = reference.isNotBlank() && selectedSupplierId != null,
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text(stringResource(Res.string.save))
+                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -439,7 +698,9 @@ private fun AddOrderDialog(
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(
@@ -447,7 +708,8 @@ private fun AddOrderDialog(
                     onValueChange = { reference = it },
                     label = { Text("الرمز المرجعي لأمر الشراء (Reference) *") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 Text("اختر المورد:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
@@ -460,7 +722,8 @@ private fun AddOrderDialog(
                                 selectedSupplierId = sup.id
                                 currency = sup.currency
                             },
-                            label = { Text(sup.name) }
+                            label = { Text(sup.name, fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(12.dp)
                         )
                     }
                 }
@@ -469,7 +732,8 @@ private fun AddOrderDialog(
                     value = description,
                     onValueChange = { description = it },
                     label = { Text("وصف الطلب وملاحظاته") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -477,7 +741,8 @@ private fun AddOrderDialog(
                     onValueChange = { targetDate = it },
                     label = { Text("تاريخ التسليم المتوقع (YYYY-MM-DD)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -485,7 +750,8 @@ private fun AddOrderDialog(
                     onValueChange = { currency = it },
                     label = { Text("العملة المعتمدة للطلب") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
             }
         }
@@ -505,7 +771,19 @@ private fun AddLineItemDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("إضافة بند جديد لأمر الشراء", fontWeight = FontWeight.Bold) },
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("إضافة بند جديد لأمر الشراء", fontWeight = FontWeight.Bold)
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                }
+            }
+        },
         confirmButton = {
             Button(
                 onClick = {
@@ -516,9 +794,10 @@ private fun AddLineItemDialog(
                         onConfirm(pId, qty, prc, notes)
                     }
                 },
-                enabled = selectedPartId != null && (quantityText.toDoubleOrNull() ?: 0.0) > 0.0
+                enabled = selectedPartId != null && (quantityText.toDoubleOrNull() ?: 0.0) > 0.0,
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text(stringResource(Res.string.save))
+                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -526,7 +805,9 @@ private fun AddLineItemDialog(
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text("اختر القطعة المطلوبة:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
@@ -536,7 +817,8 @@ private fun AddLineItemDialog(
                         FilterChip(
                             selected = selectedPartId == p.id,
                             onClick = { selectedPartId = p.id },
-                            label = { Text(p.name) }
+                            label = { Text(p.name, fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(12.dp)
                         )
                     }
                 }
@@ -546,7 +828,8 @@ private fun AddLineItemDialog(
                     onValueChange = { quantityText = it },
                     label = { Text("الكمية المطلوبة للشراء") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -554,14 +837,16 @@ private fun AddLineItemDialog(
                     onValueChange = { priceText = it },
                     label = { Text("سعر شراء الوحدة") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
                     label = { Text("ملاحظات البند") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
             }
         }

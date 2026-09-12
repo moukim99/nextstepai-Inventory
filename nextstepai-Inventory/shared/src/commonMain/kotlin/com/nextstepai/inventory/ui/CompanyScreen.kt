@@ -1,38 +1,46 @@
 package com.nextstepai.inventory.ui
 
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.Company
-import com.nextstepai.inventory.ui.theme.AppIcons
 import nextstepai_inventory.shared.generated.resources.Res
 import nextstepai_inventory.shared.generated.resources.add_new_company
-import nextstepai_inventory.shared.generated.resources.back
 import nextstepai_inventory.shared.generated.resources.cancel
-import nextstepai_inventory.shared.generated.resources.card_companies_title
 import nextstepai_inventory.shared.generated.resources.companies_count
 import nextstepai_inventory.shared.generated.resources.save
-import nextstepai_inventory.shared.generated.resources.search_placeholder
 
 /**
  * شاشة إدارة الشركات والعلاقات التجارية (Company Management Screen).
+ * مطابقة للهيكل القياسي الموحد للتطبيق مع الترويسة العلوية التكيفية وحقول البحث والفلترة.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,68 +53,71 @@ fun CompanyScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(Res.string.card_companies_title)) },
-                navigationIcon = {
-                    TextButton(onClick = onBackClick) {
-                        Icon(
-                            painter = painterResource(AppIcons.Back),
-                            contentDescription = stringResource(Res.string.back),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(Res.string.back))
-                    }
-                },
-                actions = {
-                    Button(
-                        onClick = { viewModel.setAddDialogOpen(true) },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(AppIcons.Add),
-                            contentDescription = stringResource(Res.string.add_new_company),
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(Res.string.add_new_company))
-                    }
-                }
+            CompaniesTopBar(
+                onBackClick = onBackClick,
+                onAddClick = { viewModel.setAddDialogOpen(true) }
             )
         },
         modifier = modifier
     ) { paddingValues ->
-        BoxWithConstraints(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            val isWide = this@BoxWithConstraints.maxWidth > 600.dp
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
-                // شريط البحث المطور
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // شريط البحث المطور مع زر الباركود المدمج
                 OutlinedTextField(
                     value = uiState.searchQuery,
                     onValueChange = { viewModel.onSearchQueryChanged(it) },
-                    placeholder = { Text(stringResource(Res.string.search_placeholder)) },
+                    placeholder = {
+                        Text(
+                            text = "البحث باسم الشركة، الوصف، أو الهاتف...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    },
                     leadingIcon = {
                         Icon(
-                            painter = painterResource(AppIcons.Search),
-                            contentDescription = stringResource(Res.string.search_placeholder),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            imageVector = Icons.Default.Search,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.outline
                         )
+                    },
+                    trailingIcon = {
+                        IconButton(
+                            onClick = { },
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "مسح الباركود",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // شريط تصفية الأدوار (All, Suppliers, Manufacturers, Customers)
+                // شريط تصفية أدوار الشركات (All, Suppliers, Manufacturers, Customers)
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -115,33 +126,37 @@ fun CompanyScreen(
                         FilterChip(
                             selected = uiState.roleFilter == CompanyRoleFilter.ALL,
                             onClick = { viewModel.setRoleFilter(CompanyRoleFilter.ALL) },
-                            label = { Text("الكل") }
+                            label = { Text("الكل", fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(50)
                         )
                     }
                     item(key = "filter-role-suppliers") {
                         FilterChip(
                             selected = uiState.roleFilter == CompanyRoleFilter.SUPPLIER_ONLY,
                             onClick = { viewModel.setRoleFilter(CompanyRoleFilter.SUPPLIER_ONLY) },
-                            label = { Text("🚚 الموردون") }
+                            label = { Text("🚚 الموردون", fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(50)
                         )
                     }
                     item(key = "filter-role-manufacturers") {
                         FilterChip(
                             selected = uiState.roleFilter == CompanyRoleFilter.MANUFACTURER_ONLY,
                             onClick = { viewModel.setRoleFilter(CompanyRoleFilter.MANUFACTURER_ONLY) },
-                            label = { Text("🏭 المصنّعون") }
+                            label = { Text("🏭 المصنّعون", fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(50)
                         )
                     }
                     item(key = "filter-role-customers") {
                         FilterChip(
                             selected = uiState.roleFilter == CompanyRoleFilter.CUSTOMER_ONLY,
                             onClick = { viewModel.setRoleFilter(CompanyRoleFilter.CUSTOMER_ONLY) },
-                            label = { Text("🛒 العملاء") }
+                            label = { Text("🛒 العملاء", fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(50)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 if (uiState.companies.isEmpty()) {
                     Box(
@@ -157,16 +172,24 @@ fun CompanyScreen(
                         )
                     }
                 } else {
-                    Text(
-                        text = pluralStringResource(Res.plurals.companies_count, uiState.companies.size, uiState.companies.size),
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = pluralStringResource(Res.plurals.companies_count, uiState.companies.size, uiState.companies.size),
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
 
                     LazyColumn(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 16.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
                         items(uiState.companies, key = { "company-${it.id}" }) { company ->
                             CompanyCard(
@@ -197,6 +220,86 @@ fun CompanyScreen(
     }
 }
 
+/**
+ * الترويسة العلوية لشاشة إدارة الشركات
+ */
+@Composable
+private fun CompaniesTopBar(
+    onBackClick: () -> Unit,
+    onAddClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding(),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 2.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // اليمين: زر الرجوع وعنوان الشاشة
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                IconButton(onClick = onBackClick) {
+                    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "رجوع",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.scale(if (isRtl) -1f else 1f, 1f)
+                    )
+                }
+
+                Text(
+                    text = "جدول الشركات والعلاقات",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 17.sp
+                    ),
+                    color = Color(0xFF0F172A)
+                )
+            }
+
+            // اليسار: زر "+ تسجيل شركة جديد"
+            Button(
+                onClick = onAddClick,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF475569),
+                    contentColor = Color.White
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(Res.string.add_new_company),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "تسجيل شركة",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * بطاقة عرض الشركة
+ */
 @Composable
 private fun CompanyCard(
     company: Company,
@@ -206,22 +309,48 @@ private fun CompanyCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Column(
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier.padding(16.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = company.name,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFF1F5F9))
+                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CorporateFare,
+                            contentDescription = null,
+                            tint = Color(0xFF475569),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Text(
+                        text = company.name,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
 
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer,
@@ -229,8 +358,7 @@ private fun CompanyCard(
                 ) {
                     Text(
                         text = company.currency,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                     )
@@ -238,7 +366,7 @@ private fun CompanyCard(
             }
 
             if (company.description.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = company.description,
                     style = MaterialTheme.typography.bodySmall,
@@ -248,18 +376,20 @@ private fun CompanyCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (company.isSupplier) Badge("مورد (Supplier)", MaterialTheme.colorScheme.primaryContainer)
-                if (company.isManufacturer) Badge("مصنع (Manufacturer)", MaterialTheme.colorScheme.tertiaryContainer)
-                if (company.isCustomer) Badge("عميل (Customer)", MaterialTheme.colorScheme.secondaryContainer)
+                if (company.isSupplier) BadgeTag("مورد (Supplier)", Color(0xFFECFDF5), Color(0xFF059669))
+                if (company.isManufacturer) BadgeTag("مصنع (Manufacturer)", Color(0xFFEEF2FF), Color(0xFF4F46E5))
+                if (company.isCustomer) BadgeTag("عميل (Customer)", Color(0xFFF0F9FF), Color(0xFF0284C7))
             }
 
             if (company.phone.isNotBlank() || company.email.isNotBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -277,15 +407,17 @@ private fun CompanyCard(
 }
 
 @Composable
-private fun Badge(text: String, color: Color) {
+private fun BadgeTag(text: String, bgColor: Color, textColor: Color) {
     Surface(
-        color = color,
-        shape = RoundedCornerShape(4.dp)
+        color = bgColor,
+        shape = RoundedCornerShape(6.dp),
+        border = BorderStroke(1.dp, textColor.copy(alpha = 0.2f))
     ) {
         Text(
             text = text,
-            fontSize = 10.sp,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+            color = textColor,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
         )
     }
 }
@@ -297,13 +429,16 @@ private fun CompanyDetailsDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("إغلاق") }
+            TextButton(onClick = onDismiss) { Text("إغلاق", fontWeight = FontWeight.Bold) }
         },
         title = { Text("بيانات الشركة: ${company.name}", fontWeight = FontWeight.Bold) },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 DetailRow("رقم الشركة:", "#${company.id}")
@@ -315,7 +450,7 @@ private fun CompanyDetailsDialog(
                 DetailRow("العنوان:", company.address.ifBlank { "-" })
                 DetailRow("جهة الاتصال:", company.contact.ifBlank { "-" })
                 DetailRow("العملة المعتمدة:", company.currency)
-                HorizontalDivider()
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 DetailRow("مورد (Supplier):", if (company.isSupplier) "نعم" else "لا")
                 DetailRow("مصنع (Manufacturer):", if (company.isManufacturer) "نعم" else "لا")
                 DetailRow("عميل (Customer):", if (company.isCustomer) "نعم" else "لا")
@@ -366,7 +501,19 @@ private fun AddCompanyDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(Res.string.add_new_company), fontWeight = FontWeight.Bold) },
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(stringResource(Res.string.add_new_company), fontWeight = FontWeight.Bold)
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                }
+            }
+        },
         confirmButton = {
             Button(
                 onClick = {
@@ -374,9 +521,10 @@ private fun AddCompanyDialog(
                         onConfirm(name, description, website, phone, email, address, contact, isSupplier, isManufacturer, isCustomer, currency)
                     }
                 },
-                enabled = name.isNotBlank()
+                enabled = name.isNotBlank(),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text(stringResource(Res.string.save))
+                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -384,7 +532,9 @@ private fun AddCompanyDialog(
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(
@@ -392,14 +542,16 @@ private fun AddCompanyDialog(
                     onValueChange = { name = it },
                     label = { Text("اسم الشركة *") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
                     label = { Text("وصف نشاط الشركة") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -407,7 +559,8 @@ private fun AddCompanyDialog(
                     onValueChange = { phone = it },
                     label = { Text("رقم الهاتف") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -415,7 +568,8 @@ private fun AddCompanyDialog(
                     onValueChange = { email = it },
                     label = { Text("البريد الإلكتروني") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 OutlinedTextField(
@@ -423,7 +577,8 @@ private fun AddCompanyDialog(
                     onValueChange = { currency = it },
                     label = { Text("رمز العملة المعتمدة (USD / EUR / SAR)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
