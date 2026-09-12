@@ -67,4 +67,30 @@
     <string name="theme_system">تلقائي مع النظام</string>
     <string name="theme_light">الوضع الفاتح</string>
     <string name="theme_dark">الوضع الداكن</string>
+
+    <string name="build_orders_title">أوامر التصنيع والإنتاج</string>
+    <string name="search_build_hint">البحث بالرمز المرجعي، العنوان، المنتج، أو رقم التشغيلة...</string>
+    <string name="urgent">عاجل</string>
+    <string name="normal">عادي</string>
+    <string name="target_date">التاريخ المستهدف:</string>
+    <string name="batch_number">رقم التشغيلة:</string>
+    <string name="bom_available_full">المكونات متوفرة بالكامل (100%)</string>
+    <string name="bom_shortage">نقص في المكونات (مطلوبة)</string>
+    <string name="btn_update_progress">تحديث الإنجاز</string>
+    <string name="btn_start_details">بدء / تفاصيل</string>
+    <string name="btn_bom_list">قائمة القطع (BOM)</string>
+    <string name="dialog_close">إغلاق</string>
+    <string name="btn_start_production">بدء التصنيع 🏭</string>
+    <string name="btn_cancel_build">إلغاء ❌</string>
+    <string name="btn_auto_allocate">تخصيص أوتوماتيكي للمخزون (Auto-Allocate) ⚡</string>
+    <string name="allocated_stock_title">سجلات المخزون المحجوزة والمخصصة (Stock Allocations):</string>
+    <string name="line_items_title">بنود ومكونات التصنيع المطلوبة (Line Items):</string>
+    <string name="build_output_title">توريد مخرجات تصنيع جديدة (Build Output):</string>
+    <string name="output_qty_label">الكمية المخرجة</string>
+    <string name="btn_supply_output">توريد 📦</string>
+    <string name="btn_allocate_plus">تخصيص +10 📦</string>
+    <string name="btn_consume_plus">استهلاك +10 🔥</string>
+    <string name="add_build_dialog_title">إنشاء أمر إنتاج جديد (Build)</string>
+    <string name="build_order_ref_label">أمر تصنيع: %1$s</string>
 </resources>
+

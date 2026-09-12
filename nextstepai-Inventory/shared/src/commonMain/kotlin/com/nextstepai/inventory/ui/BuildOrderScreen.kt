@@ -40,11 +40,7 @@ import com.nextstepai.inventory.data.BuildOrderLineItem
 import com.nextstepai.inventory.data.BuildStatus
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.StockLocation
-import nextstepai_inventory.shared.generated.resources.Res
-import nextstepai_inventory.shared.generated.resources.add_new_build
-import nextstepai_inventory.shared.generated.resources.builds_count
-import nextstepai_inventory.shared.generated.resources.cancel
-import nextstepai_inventory.shared.generated.resources.save
+import nextstepai_inventory.shared.generated.resources.*
 
 /**
  * شاشة أوامر التصنيع والإنتاج (BuildOrder Screen).
@@ -85,7 +81,7 @@ fun BuildOrderScreen(
                     onValueChange = { viewModel.onSearchQueryChanged(it) },
                     placeholder = {
                         Text(
-                            text = "البحث بالرمز المرجعي، العنوان، المنتج، أو رقم التشغيلة...",
+                            text = stringResource(Res.string.search_build_hint),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -108,7 +104,7 @@ fun BuildOrderScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.QrCodeScanner,
-                                contentDescription = "مسح الباركود",
+                                contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -142,7 +138,7 @@ fun BuildOrderScreen(
                                     Text("كافة الحالات")
                                     Surface(
                                         shape = RoundedCornerShape(50),
-                                        color = if (uiState.statusFilter == null) Color.White.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant
+                                        color = if (uiState.statusFilter == null) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                                     ) {
                                         Text(
                                             text = "${uiState.builds.size}",
@@ -168,7 +164,7 @@ fun BuildOrderScreen(
                                 ) {
                                     val statusDotColor = when (status) {
                                         BuildStatus.IN_PRODUCTION -> MaterialTheme.colorScheme.primary
-                                        BuildStatus.COMPLETE -> Color(0xFF10B981)
+                                        BuildStatus.COMPLETE -> MaterialTheme.colorScheme.secondary
                                         BuildStatus.CANCELLED -> MaterialTheme.colorScheme.error
                                         else -> MaterialTheme.colorScheme.outline
                                     }
@@ -181,7 +177,7 @@ fun BuildOrderScreen(
                                     Text(status.label)
                                     Surface(
                                         shape = RoundedCornerShape(50),
-                                        color = if (uiState.statusFilter == status) Color.White.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant
+                                        color = if (uiState.statusFilter == status) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                                     ) {
                                         Text(
                                             text = "$count",
@@ -220,7 +216,7 @@ fun BuildOrderScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "build order ${uiState.builds.size}",
+                            text = pluralStringResource(Res.plurals.builds_count, uiState.builds.size, uiState.builds.size),
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 12.sp
@@ -325,19 +321,19 @@ private fun BuildOrdersTopBar(
                     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = "رجوع",
+                        contentDescription = stringResource(Res.string.back),
                         tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.scale(if (isRtl) -1f else 1f, 1f)
                     )
                 }
 
                 Text(
-                    text = "أوامر التصنيع والإنتاج (Build)",
+                    text = stringResource(Res.string.build_orders_title),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 17.sp
                     ),
-                    color = Color(0xFF1E1B4B)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
@@ -361,7 +357,7 @@ private fun BuildOrdersTopBar(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "أمر إنتاج جديد",
+                        text = stringResource(Res.string.add_new_build),
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                     )
                 }
@@ -402,14 +398,14 @@ private fun BuildOrderRichCard(
                 Surface(
                     shape = RoundedCornerShape(50),
                     color = when (build.status) {
-                        BuildStatus.IN_PRODUCTION -> Color(0xFFEEF2FF)
-                        BuildStatus.COMPLETE -> Color(0xFFECFDF5)
+                        BuildStatus.IN_PRODUCTION -> MaterialTheme.colorScheme.primaryContainer
+                        BuildStatus.COMPLETE -> MaterialTheme.colorScheme.secondaryContainer
                         BuildStatus.CANCELLED -> MaterialTheme.colorScheme.errorContainer
                         else -> MaterialTheme.colorScheme.surfaceVariant
                     },
                     border = BorderStroke(1.dp, when (build.status) {
-                        BuildStatus.IN_PRODUCTION -> Color(0xFFE0E7FF)
-                        BuildStatus.COMPLETE -> Color(0xFFA7F3D0)
+                        BuildStatus.IN_PRODUCTION -> MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                        BuildStatus.COMPLETE -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f)
                         else -> Color.Transparent
                     })
                 ) {
@@ -422,7 +418,7 @@ private fun BuildOrderRichCard(
                             PulsingDot(color = MaterialTheme.colorScheme.primary)
                         } else {
                             val dotColor = when (build.status) {
-                                BuildStatus.COMPLETE -> Color(0xFF10B981)
+                                BuildStatus.COMPLETE -> MaterialTheme.colorScheme.secondary
                                 BuildStatus.CANCELLED -> MaterialTheme.colorScheme.error
                                 else -> MaterialTheme.colorScheme.outline
                             }
@@ -434,11 +430,11 @@ private fun BuildOrderRichCard(
                             )
                         }
                         Text(
-                            text = "${build.status.label} (${if (build.status == BuildStatus.IN_PRODUCTION) "In Production" else if (build.status == BuildStatus.COMPLETE) "Complete" else "Pending"})",
+                            text = build.status.label,
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                             color = when (build.status) {
                                 BuildStatus.IN_PRODUCTION -> MaterialTheme.colorScheme.primary
-                                BuildStatus.COMPLETE -> Color(0xFF059669)
+                                BuildStatus.COMPLETE -> MaterialTheme.colorScheme.secondary
                                 BuildStatus.CANCELLED -> MaterialTheme.colorScheme.error
                                 else -> MaterialTheme.colorScheme.onSurfaceVariant
                             }
@@ -453,12 +449,12 @@ private fun BuildOrderRichCard(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFFE0F2FE)
+                        color = MaterialTheme.colorScheme.tertiaryContainer
                     ) {
                         Text(
-                            text = if (build.reference.contains("001")) "عاجل" else "عادي",
+                            text = if (build.reference.contains("001")) stringResource(Res.string.urgent) else stringResource(Res.string.normal),
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = Color(0xFF0369A1),
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
@@ -507,7 +503,7 @@ private fun BuildOrderRichCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // صندوق تفاصيل رقم التشغيلة والموعد (التاريخ على اليمين | رقم التشغيلة على اليسار)
+            // صندوق تفاصيل رقم التشغيلة والموعد
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -518,10 +514,9 @@ private fun BuildOrderRichCard(
                     modifier = Modifier.padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // اليمين: التاريخ المستهدف
                     Column {
                         Text(
-                            text = "التاريخ المستهدف:",
+                            text = stringResource(Res.string.target_date),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -532,10 +527,9 @@ private fun BuildOrderRichCard(
                         )
                     }
 
-                    // اليسار: رقم التشغيلة
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            text = "رقم التشغيلة:",
+                            text = stringResource(Res.string.batch_number),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -554,8 +548,8 @@ private fun BuildOrderRichCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f) else Color(0xFFECFDF5),
-                border = BorderStroke(1.dp, if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.error.copy(alpha = 0.2f) else Color(0xFFA7F3D0))
+                color = if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f) else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                border = BorderStroke(1.dp, if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.error.copy(alpha = 0.2f) else MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f))
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -569,18 +563,18 @@ private fun BuildOrderRichCard(
                         Icon(
                             imageVector = if (build.status == BuildStatus.CANCELLED) Icons.Default.Warning else Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.error else Color(0xFF065F46),
+                            tint = if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = if (build.status == BuildStatus.CANCELLED) "نقص في المكونات (مطلوبة)" else "المكونات متوفرة بالكامل (100%)",
+                            text = if (build.status == BuildStatus.CANCELLED) stringResource(Res.string.bom_shortage) else stringResource(Res.string.bom_available_full),
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.error else Color(0xFF065F46)
+                            color = if (build.status == BuildStatus.CANCELLED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
 
                     Text(
-                        text = "12/12 عنصر BOM",
+                        text = pluralStringResource(Res.plurals.bom_items_count, 12, 12),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -654,7 +648,7 @@ private fun BuildOrderRichCard(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = if (build.status == BuildStatus.IN_PRODUCTION) "تحديث الإنجاز" else "بدء / تفاصيل",
+                            text = if (build.status == BuildStatus.IN_PRODUCTION) stringResource(Res.string.btn_update_progress) else stringResource(Res.string.btn_start_details),
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                         )
                     }
@@ -677,7 +671,7 @@ private fun BuildOrderRichCard(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "قائمة القطع (BOM)",
+                            text = stringResource(Res.string.btn_bom_list),
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -714,7 +708,7 @@ private fun BuildDetailsDialog(
         shape = RoundedCornerShape(24.dp),
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("إغلاق", fontWeight = FontWeight.Bold)
+                Text(stringResource(Res.string.dialog_close), fontWeight = FontWeight.Bold)
             }
         },
         title = {
@@ -723,7 +717,7 @@ private fun BuildDetailsDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("أمر تصنيع: ${build.reference}", fontWeight = FontWeight.Bold)
+                Text(stringResource(Res.string.build_order_ref_label, build.reference), fontWeight = FontWeight.Bold)
 
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (build.status == BuildStatus.PENDING) {
@@ -731,7 +725,7 @@ private fun BuildDetailsDialog(
                             onClick = { onStartProduction(build.id) },
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Text("بدء التصنيع 🏭", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(stringResource(Res.string.btn_start_production), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -741,7 +735,7 @@ private fun BuildDetailsDialog(
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                         ) {
-                            Text("إلغاء ❌", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(stringResource(Res.string.btn_cancel_build), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -784,14 +778,14 @@ private fun BuildDetailsDialog(
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                     ) {
-                        Text("تخصيص أوتوماتيكي للمخزون (Auto-Allocate) ⚡", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(Res.string.btn_auto_allocate), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
                 // قسم سجلات التخصيص المحجوزة من المخزون (BuildItems Stock Allocations)
                 if (allocatedBuildItems.isNotEmpty()) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                    Text("سجلات المخزون المحجوزة والمخصصة (Stock Allocations):", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+                    Text(stringResource(Res.string.allocated_stock_title), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
 
                     allocatedBuildItems.forEach { alloc ->
                         Surface(
@@ -815,7 +809,7 @@ private fun BuildDetailsDialog(
                 // قسم بنود ومكونات الـ BOM لأمر التصنيع (BuildOrderLineItems)
                 if (lineItems.isNotEmpty()) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                    Text("بنود ومكونات التصنيع المطلوبة (Line Items):", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                    Text(stringResource(Res.string.line_items_title), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
 
                     lineItems.forEach { line ->
                         Surface(
@@ -831,14 +825,14 @@ private fun BuildDetailsDialog(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text("مطلوب: ${line.quantity}", fontSize = 11.sp)
-                                    Text("محجوز: ${line.allocatedQuantity}", fontSize = 11.sp, color = if (line.isFullyAllocated) Color(0xFF059669) else MaterialTheme.colorScheme.primary)
+                                    Text("محجوز: ${line.allocatedQuantity}", fontSize = 11.sp, color = if (line.isFullyAllocated) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary)
                                     Text("مستهلك: ${line.consumedQuantity}", fontSize = 11.sp)
                                 }
 
                                 LinearProgressIndicator(
                                     progress = { (line.allocationPercentage / 100f).coerceIn(0f, 1f) },
                                     modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)),
-                                    color = if (line.isFullyAllocated) Color(0xFF10B981) else MaterialTheme.colorScheme.primary
+                                    color = if (line.isFullyAllocated) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
                                 )
 
                                 if (build.status != BuildStatus.CANCELLED && build.status != BuildStatus.COMPLETE) {
@@ -851,7 +845,7 @@ private fun BuildDetailsDialog(
                                             onClick = { onAllocateStock(line.id, 10.0) },
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                                         ) {
-                                            Text("تخصيص +10 📦", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            Text(stringResource(Res.string.btn_allocate_plus), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                         }
 
                                         if (line.allocatedQuantity > 0) {
@@ -859,7 +853,7 @@ private fun BuildDetailsDialog(
                                                 onClick = { onConsumeStock(line.id, 10.0) },
                                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                                             ) {
-                                                Text("استهلاك +10 🔥", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
+                                                Text(stringResource(Res.string.btn_consume_plus), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
                                             }
                                         }
                                     }
@@ -871,7 +865,7 @@ private fun BuildDetailsDialog(
 
                 if (build.status == BuildStatus.IN_PRODUCTION && (build.completedQuantity < build.quantity)) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                    Text("توريد مخرجات تصنيع جديدة (Build Output):", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text(stringResource(Res.string.build_output_title), fontWeight = FontWeight.Bold, fontSize = 12.sp)
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -881,7 +875,7 @@ private fun BuildDetailsDialog(
                         OutlinedTextField(
                             value = outputQtyText,
                             onValueChange = { outputQtyText = it },
-                            label = { Text("الكمية المخرجة") },
+                            label = { Text(stringResource(Res.string.output_qty_label)) },
                             modifier = Modifier.weight(1f),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
@@ -897,7 +891,7 @@ private fun BuildDetailsDialog(
                             enabled = (outputQtyText.toDoubleOrNull() ?: 0.0) > 0.0,
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("توريد 📦", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(stringResource(Res.string.btn_supply_output), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
