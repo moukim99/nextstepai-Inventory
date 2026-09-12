@@ -3,10 +3,13 @@ package com.nextstepai.inventory.repository
 import com.nextstepai.inventory.data.StockItem
 import com.nextstepai.inventory.data.StockItemTable
 import com.nextstepai.inventory.data.StockLocation
+import com.nextstepai.inventory.data.StockLocationType
 import com.nextstepai.inventory.data.db.StockItemDao
 import com.nextstepai.inventory.data.db.StockItemEntity
 import com.nextstepai.inventory.data.db.StockLocationDao
 import com.nextstepai.inventory.data.db.StockLocationEntity
+import com.nextstepai.inventory.data.db.StockLocationTypeDao
+import com.nextstepai.inventory.data.db.StockLocationTypeEntity
 import com.nextstepai.inventory.media.ImageProcessor
 import com.nextstepai.inventory.media.ProcessedImage
 import com.nextstepai.inventory.sync.BatchSyncService
@@ -16,13 +19,14 @@ import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 
 /**
- * المستودع (Repository) المسؤول عن إدارة المخزون الفعلي ومواقع التخزين الهيكلية (StockLocation)
+ * المستودع (Repository) المسؤول عن إدارة المخزون الفعلي ومواقع التخزين الهيكلية وأنواعها (StockLocationType)
  * وتجزئة الكميات والجرد والمزامنة المجمعة مع السحابة وضغط الصور.
  */
 class StockRepository(
     private val stockTable: StockItemTable = StockItemTable(),
     private val stockDao: StockItemDao = StockItemDao(),
     private val locationDao: StockLocationDao = StockLocationDao(),
+    private val locationTypeDao: StockLocationTypeDao = StockLocationTypeDao(),
     private val batchSyncService: BatchSyncService = BatchSyncService(),
     private val imageProcessor: ImageProcessor = ImageProcessor(maxDimension = 1024, compressionQuality = 85)
 ) {
@@ -47,6 +51,22 @@ class StockRepository(
      * جلب كافة مواقع التخزين المتاحة.
      */
     fun getLocations(): List<StockLocation> = stockTable.getAllLocations()
+
+    /**
+     * جلب كافة أنواع مواقع التخزين المتاحة.
+     */
+    fun getLocationTypes(): List<StockLocationType> = stockTable.getAllLocationTypes()
+
+    /**
+     * إضافة أو تحديث نوع موقع تخزيني جديد (StockLocationType).
+     */
+    fun addLocationType(locationType: StockLocationType): StockLocationType {
+        val inserted = stockTable.insertLocationType(locationType)
+        runBlocking {
+            locationTypeDao.insertOrUpdate(inserted.toEntity())
+        }
+        return inserted
+    }
 
     /**
      * إضافة أو تحديث موقع تخزيني جديد في الشجرة الهرمية لمواقع التخزين (StockLocation).
@@ -119,6 +139,19 @@ class StockRepository(
         val response = batchSyncService.performBatchSync(payloads, Clock.System.now().toEpochMilliseconds() - 86400000)
         stockDao.updateSyncStatusForUuids(response.acceptedUuids, SyncStatus.SYNCED)
         return response.acceptedUuids.size
+    }
+
+    private fun StockLocationType.toEntity(): StockLocationTypeEntity {
+        return StockLocationTypeEntity(
+            uuid = "location-type-$id",
+            typeId = id,
+            name = name,
+            description = description,
+            icon = icon,
+            customIcon = customIcon,
+            metadata = metadata,
+            syncStatus = SyncStatus.PENDING
+        )
     }
 
     private fun StockLocation.toEntity(): StockLocationEntity {

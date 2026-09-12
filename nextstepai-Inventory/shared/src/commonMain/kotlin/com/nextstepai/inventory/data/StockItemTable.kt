@@ -84,21 +84,27 @@ data class StockItem(
 }
 
 /**
- * محاكاة جدول إدارة المخزون الفعلي (StockItem Table) والقيود المنطقية المرافقة.
+ * محاكاة جدول إدارة المخزون الفعلي (StockItem Table) ومواقع التخزين وأنواعها مع القيود المنطقية.
  */
 class StockItemTable {
     private val stockItems = mutableListOf<StockItem>()
     private val locations = mutableListOf<StockLocation>()
+    private val locationTypes = mutableListOf<StockLocationType>()
     private var nextStockId = 1L
     private var nextLocationId = 1L
+    private var nextLocationTypeId = 1L
 
     init {
         seedSampleStockData()
     }
 
     private fun seedSampleStockData() {
-        val loc1 = insertLocation("المستودع الرئيسي - رف A1", "مستودع المكونات الإلكترونية")
-        val loc2 = insertLocation("مستودع التجميع - رف B3", "مستودع المنتجات النهائية")
+        val typeWarehouse = insertLocationType("مستودع رئيسي", "مستودعات تخزين ضخمة وخامات", "warehouse")
+        val typeCleanRoom = insertLocationType("غرفة نظيفة", "بيئة نظيفة ومراقبة حرارياً", "cleanroom")
+        val typeShelf = insertLocationType("رف تخزين", "أرفف لتخزين المكونات الإلكترونية", "shelf")
+
+        val loc1 = insertLocation("المستودع الرئيسي - رف A1", "مستودع المكونات الإلكترونية", locationTypeId = typeShelf.id)
+        val loc2 = insertLocation("مستودع التجميع - رف B3", "مستودع المنتجات النهائية", locationTypeId = typeWarehouse.id)
 
         insertStockItem(
             StockItem(
@@ -151,6 +157,53 @@ class StockItemTable {
     }
 
     /**
+     * إدراج نوع موقع تخزيني جديد مع التحقق من فرادة الاسم.
+     */
+    fun insertLocationType(
+        name: String,
+        description: String = "",
+        icon: String = "warehouse",
+        customIcon: String = ""
+    ): StockLocationType {
+        return insertLocationType(
+            StockLocationType(
+                name = name,
+                description = description,
+                icon = icon,
+                customIcon = customIcon
+            )
+        )
+    }
+
+    /**
+     * إدراج كائن نوع موقع تخزيني.
+     */
+    fun insertLocationType(locationType: StockLocationType): StockLocationType {
+        val trimmedName = locationType.name.trim()
+        require(trimmedName.isNotBlank()) { "اسم نوع الموقع التخزيني لا يمكن أن يكون فارغاً" }
+
+        val duplicateName = locationTypes.any {
+            it.id != locationType.id && it.name.trim().equals(trimmedName, ignoreCase = true)
+        }
+        require(!duplicateName) {
+            "اسم نوع الموقع التخزيني '$trimmedName' مستخدم بالفعل في النظام."
+        }
+
+        val newType = locationType.copy(
+            id = if (locationType.id == 0L) nextLocationTypeId++ else locationType.id,
+            name = trimmedName
+        )
+        locationTypes.removeAll { it.id == newType.id }
+        locationTypes.add(newType)
+        return newType
+    }
+
+    /**
+     * جلب كافة أنواع مواقع التخزين المتاحة.
+     */
+    fun getAllLocationTypes(): List<StockLocationType> = locationTypes.toList()
+
+    /**
      * إدراج موقع تخزين جديد مع تطبيق قيود الشجرة الهرمية والأسماء المكررة.
      */
     fun insertLocation(
@@ -159,6 +212,7 @@ class StockItemTable {
         parentId: Long? = null,
         structural: Boolean = false,
         external: Boolean = false,
+        locationTypeId: Long? = null,
         icon: String = "warehouse"
     ): StockLocation {
         return insertLocation(
@@ -168,6 +222,7 @@ class StockItemTable {
                 parentId = parentId,
                 structural = structural,
                 external = external,
+                locationTypeId = locationTypeId,
                 icon = icon
             )
         )

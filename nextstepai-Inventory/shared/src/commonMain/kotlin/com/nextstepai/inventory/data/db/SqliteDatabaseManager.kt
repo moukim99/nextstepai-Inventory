@@ -151,6 +151,21 @@ object SqliteDatabaseManager {
         """.trimIndent()).use { it.step() }
 
         conn.prepare("""
+            CREATE TABLE IF NOT EXISTS stock_location_types (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                typeId INTEGER NOT NULL,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT NOT NULL DEFAULT '',
+                icon TEXT NOT NULL DEFAULT 'warehouse',
+                customIcon TEXT NOT NULL DEFAULT '',
+                metadata TEXT NOT NULL DEFAULT '{}',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
             CREATE TABLE IF NOT EXISTS companies (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 name TEXT NOT NULL,

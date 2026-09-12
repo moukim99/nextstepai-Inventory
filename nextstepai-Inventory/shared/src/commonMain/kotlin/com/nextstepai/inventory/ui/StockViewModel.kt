@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.StockItem
 import com.nextstepai.inventory.data.StockLocation
+import com.nextstepai.inventory.data.StockLocationType
 import com.nextstepai.inventory.data.StockStatus
 import com.nextstepai.inventory.repository.PartRepository
 import com.nextstepai.inventory.repository.StockRepository
@@ -13,23 +14,25 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /**
- * حالة واجهة إدارة المخزون الفعلي ومواقع التخزين (Stock UI State).
+ * حالة واجهة إدارة المخزون الفعلي ومواقع التخزين وأنواعها (Stock UI State).
  */
 data class StockUiState(
     val stockItems: List<StockItem> = emptyList(),
     val locations: List<StockLocation> = emptyList(),
+    val locationTypes: List<StockLocationType> = emptyList(),
     val parts: List<Part> = emptyList(),
     val selectedLocationId: Long? = null,
     val selectedPartId: Long? = null,
     val isAddStockDialogOpen: Boolean = false,
     val isAddLocationDialogOpen: Boolean = false,
+    val isAddLocationTypeDialogOpen: Boolean = false,
     val selectedItemForSplit: StockItem? = null,
     val errorMessage: String? = null,
     val successMessage: String? = null
 )
 
 /**
- * نموذج العرض (ViewModel) لشاشة إدارة المخزون الفعلي والمواقع (Stock Management).
+ * نموذج العرض (ViewModel) لشاشة إدارة المخزون الفعلي والمواقع والأنواع (Stock Management).
  */
 class StockViewModel(
     private val stockRepository: StockRepository = StockRepository(),
@@ -46,6 +49,7 @@ class StockViewModel(
     fun loadData() {
         val allParts = partRepository.getParts()
         val locations = stockRepository.getLocations()
+        val locationTypes = stockRepository.getLocationTypes()
         val allStock = stockRepository.getStockItems().filter { item ->
             (_uiState.value.selectedLocationId == null || item.locationId == _uiState.value.selectedLocationId) &&
                     (_uiState.value.selectedPartId == null || item.partId == _uiState.value.selectedPartId)
@@ -55,6 +59,7 @@ class StockViewModel(
             it.copy(
                 stockItems = allStock,
                 locations = locations,
+                locationTypes = locationTypes,
                 parts = allParts
             )
         }
@@ -78,8 +83,39 @@ class StockViewModel(
         _uiState.update { it.copy(isAddLocationDialogOpen = isOpen, errorMessage = null) }
     }
 
+    fun setAddLocationTypeDialogOpen(isOpen: Boolean) {
+        _uiState.update { it.copy(isAddLocationTypeDialogOpen = isOpen, errorMessage = null) }
+    }
+
     fun setSelectedItemForSplit(item: StockItem?) {
         _uiState.update { it.copy(selectedItemForSplit = item, errorMessage = null) }
+    }
+
+    fun addLocationType(
+        name: String,
+        description: String = "",
+        icon: String = "warehouse",
+        customIcon: String = ""
+    ) {
+        try {
+            val type = StockLocationType(
+                name = name,
+                description = description,
+                icon = icon,
+                customIcon = customIcon
+            )
+            stockRepository.addLocationType(type)
+            _uiState.update {
+                it.copy(
+                    isAddLocationTypeDialogOpen = false,
+                    errorMessage = null,
+                    successMessage = "تم إضافة نوع موقع التخزين بنجاح"
+                )
+            }
+            loadData()
+        } catch (e: IllegalArgumentException) {
+            _uiState.update { it.copy(errorMessage = e.message) }
+        }
     }
 
     fun addLocation(
@@ -88,6 +124,7 @@ class StockViewModel(
         parentId: Long? = null,
         structural: Boolean = false,
         external: Boolean = false,
+        locationTypeId: Long? = null,
         icon: String = "warehouse"
     ) {
         try {
@@ -97,6 +134,7 @@ class StockViewModel(
                 parentId = parentId,
                 structural = structural,
                 external = external,
+                locationTypeId = locationTypeId,
                 icon = icon
             )
             stockRepository.addLocation(loc)
