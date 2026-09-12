@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
+import com.nextstepai.inventory.data.BuildItem
 import com.nextstepai.inventory.data.BuildOrder
 import com.nextstepai.inventory.data.BuildOrderLineItem
 import com.nextstepai.inventory.data.BuildStatus
@@ -251,8 +252,10 @@ fun BuildOrderScreen(
             build = uiState.selectedBuild!!,
             stockLocations = uiState.stockLocations,
             lineItems = uiState.selectedLineItems,
+            allocatedBuildItems = uiState.allocatedBuildItems,
             onStartProduction = { viewModel.startProduction(it) },
             onCancelBuild = { viewModel.cancelBuildOrder(it) },
+            onAutoAllocate = { viewModel.autoAllocateBuildOrder(it) },
             onCompleteOutput = { buildId, qty -> viewModel.completeBuildOutput(buildId, qty) },
             onAllocateStock = { id, qty -> viewModel.allocateLineItemStock(id, qty) },
             onConsumeStock = { id, qty -> viewModel.consumeLineItemStock(id, qty) },
@@ -693,8 +696,10 @@ private fun BuildDetailsDialog(
     build: BuildOrder,
     stockLocations: List<StockLocation> = emptyList(),
     lineItems: List<BuildOrderLineItem> = emptyList(),
+    allocatedBuildItems: List<BuildItem> = emptyList(),
     onStartProduction: (buildId: Long) -> Unit,
     onCancelBuild: (buildId: Long) -> Unit,
+    onAutoAllocate: (buildId: Long) -> Unit = {},
     onCompleteOutput: (buildId: Long, qty: Double) -> Unit,
     onAllocateStock: (lineItemId: Long, qty: Double) -> Unit = { _, _ -> },
     onConsumeStock: (lineItemId: Long, qty: Double) -> Unit = { _, _ -> },
@@ -769,6 +774,43 @@ private fun BuildDetailsDialog(
                 DetailRow("نسبة الإنجاز:", "${build.completionPercentage}%")
                 if (build.link.isNotBlank()) DetailRow("رابط الوثائق الخارجي Link:", build.link)
                 if (build.notes.isNotBlank()) DetailRow("الملاحظات والتعليمات Notes:", build.notes)
+
+                // زر التخصيص التلقائي للمخزون Auto-Allocate
+                if (build.status != BuildStatus.CANCELLED && build.status != BuildStatus.COMPLETE) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Button(
+                        onClick = { onAutoAllocate(build.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                    ) {
+                        Text("تخصيص أوتوماتيكي للمخزون (Auto-Allocate) ⚡", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // قسم سجلات التخصيص المحجوزة من المخزون (BuildItems Stock Allocations)
+                if (allocatedBuildItems.isNotEmpty()) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Text("سجلات المخزون المحجوزة والمخصصة (Stock Allocations):", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+
+                    allocatedBuildItems.forEach { alloc ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f))
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(alloc.stockItemName, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("الكمية المحجوزة: ${alloc.quantity}", fontSize = 10.sp)
+                                    if (alloc.installIntoStockItemId != null) Text("مركّبة في الوحدة: #${alloc.installIntoStockItemId}", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+                                }
+                                if (alloc.notes.isNotBlank()) Text(alloc.notes, fontSize = 10.sp, color = MaterialTheme.colorScheme.outline)
+                            }
+                        }
+                    }
+                }
 
                 // قسم بنود ومكونات الـ BOM لأمر التصنيع (BuildOrderLineItems)
                 if (lineItems.isNotEmpty()) {

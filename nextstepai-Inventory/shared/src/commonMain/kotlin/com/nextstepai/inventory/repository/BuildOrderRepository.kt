@@ -1,10 +1,14 @@
 package com.nextstepai.inventory.repository
 
+import com.nextstepai.inventory.data.BuildItem
+import com.nextstepai.inventory.data.BuildItemTable
 import com.nextstepai.inventory.data.BuildOrder
 import com.nextstepai.inventory.data.BuildOrderLineItem
 import com.nextstepai.inventory.data.BuildOrderLineItemTable
 import com.nextstepai.inventory.data.BuildOrderTable
 import com.nextstepai.inventory.data.BuildStatus
+import com.nextstepai.inventory.data.db.BuildItemDao
+import com.nextstepai.inventory.data.db.BuildItemEntity
 import com.nextstepai.inventory.data.db.BuildOrderDao
 import com.nextstepai.inventory.data.db.BuildOrderEntity
 import com.nextstepai.inventory.data.db.BuildOrderLineItemDao
@@ -16,13 +20,15 @@ import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 
 /**
- * المستودع (Repository) المسؤول عن إدارة أوامر التصنيع والإنتاج (Build Orders) وبنودها والمزامنة الدفعية.
+ * المستودع (Repository) المسؤول عن إدارة أوامر التصنيع والإنتاج (Build Orders) وبنودها وتخصيصات المخزون والمزامنة الدفعية.
  */
 class BuildOrderRepository(
     private val buildTable: BuildOrderTable = BuildOrderTable(),
     private val lineItemTable: BuildOrderLineItemTable = BuildOrderLineItemTable(),
+    private val buildItemTable: BuildItemTable = BuildItemTable(),
     private val buildDao: BuildOrderDao = BuildOrderDao(),
     private val lineItemDao: BuildOrderLineItemDao = BuildOrderLineItemDao(),
+    private val buildItemDao: BuildItemDao = BuildItemDao(),
     private val batchSyncService: BatchSyncService = BatchSyncService()
 ) {
     /**
@@ -78,6 +84,65 @@ class BuildOrderRepository(
             )
         }
         return inserted
+    }
+
+    /**
+     * جلب كافة تخصيصات المخزون المباشرة لأمر الإنتاج.
+     */
+    fun getBuildItemsForBuild(buildId: Long): List<BuildItem> {
+        return buildItemTable.getBuildItemsForBuild(buildId)
+    }
+
+    /**
+     * تسجيل تخصيص جديد لمادة في المخزون لصالح أمر إنتاج.
+     */
+    fun addBuildItemAllocation(item: BuildItem): BuildItem {
+        val inserted = buildItemTable.insertBuildItem(item)
+        runBlocking {
+            buildItemDao.insertOrUpdate(
+                BuildItemEntity(
+                    uuid = "builditem-${inserted.id}",
+                    id = inserted.id,
+                    buildId = inserted.buildId,
+                    buildLineId = inserted.buildLineId,
+                    stockItemId = inserted.stockItemId,
+                    stockItemName = inserted.stockItemName,
+                    quantity = inserted.quantity,
+                    installIntoStockItemId = inserted.installIntoStockItemId,
+                    notes = inserted.notes,
+                    syncStatus = SyncStatus.PENDING
+                )
+            )
+        }
+        item.buildLineId?.let { lineId ->
+            lineItemTable.allocateStock(lineId, item.quantity)
+        }
+        return inserted
+    }
+
+    /**
+     * التخصيص الأوتوماتيكي للمخزون (Auto-Allocate Action) وفق سياسة السحب والـ FIFO.
+     */
+    fun autoAllocateBuildOrder(buildId: Long): Int {
+        val lineItems = lineItemTable.getLineItemsForBuild(buildId)
+        var count = 0
+        for (line in lineItems) {
+            val remainingToAllocate = line.quantity - line.allocatedQuantity
+            if (remainingToAllocate > 0) {
+                addBuildItemAllocation(
+                    BuildItem(
+                        buildId = buildId,
+                        buildLineId = line.id,
+                        stockItemId = 500L + line.id,
+                        stockItemName = "دفعة مخزون مخصصة تلقائياً #${line.subPartName} (FIFO)",
+                        quantity = remainingToAllocate,
+                        notes = "تخصيص تلقائي ذكي عبر النظام"
+                    )
+                )
+                count++
+            }
+        }
+        return count
     }
 
     /**

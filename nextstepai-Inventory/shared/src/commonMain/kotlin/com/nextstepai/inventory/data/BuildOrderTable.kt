@@ -204,16 +204,3 @@ class BuildOrderTable {
     fun getAllBuilds(): List<BuildOrder> = builds.toList()
 }
 
-/**
- * تمثيل بند التخصيص والاستهلاك من المخزون لأمر الإنتاج (Build Item Allocation).
- */
-data class BuildItem(
-    val id: Long = 0L,
-    val buildId: Long,
-    val bomItemId: Long? = null,
-    val stockItemId: Long,
-    val stockItemName: String = "",
-    val quantity: Double = 1.0,
-    val notes: String = ""
-)
-

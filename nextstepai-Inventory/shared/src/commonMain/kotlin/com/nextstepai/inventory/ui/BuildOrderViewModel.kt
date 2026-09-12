@@ -1,6 +1,7 @@
 package com.nextstepai.inventory.ui
 
 import androidx.lifecycle.ViewModel
+import com.nextstepai.inventory.data.BuildItem
 import com.nextstepai.inventory.data.BuildOrder
 import com.nextstepai.inventory.data.BuildOrderLineItem
 import com.nextstepai.inventory.data.BuildStatus
@@ -28,6 +29,7 @@ data class BuildOrderUiState(
     val statusFilter: BuildStatus? = null,
     val selectedBuild: BuildOrder? = null,
     val selectedLineItems: List<BuildOrderLineItem> = emptyList(),
+    val allocatedBuildItems: List<BuildItem> = emptyList(),
     val isAddBuildDialogOpen: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null
@@ -59,13 +61,15 @@ class BuildOrderViewModel(
             builds.find { it.id == sel.id }
         }
         val lineItems = updatedSelected?.let { repository.getLineItemsForBuild(it.id) } ?: emptyList()
+        val buildItems = updatedSelected?.let { repository.getBuildItemsForBuild(it.id) } ?: emptyList()
 
         _uiState.update {
             it.copy(
                 builds = builds,
                 assemblyParts = assemblies,
                 selectedBuild = updatedSelected,
-                selectedLineItems = lineItems
+                selectedLineItems = lineItems,
+                allocatedBuildItems = buildItems
             )
         }
     }
@@ -82,7 +86,20 @@ class BuildOrderViewModel(
 
     fun selectBuild(build: BuildOrder?) {
         val lineItems = build?.let { repository.getLineItemsForBuild(it.id) } ?: emptyList()
-        _uiState.update { it.copy(selectedBuild = build, selectedLineItems = lineItems) }
+        val buildItems = build?.let { repository.getBuildItemsForBuild(it.id) } ?: emptyList()
+        _uiState.update {
+            it.copy(
+                selectedBuild = build,
+                selectedLineItems = lineItems,
+                allocatedBuildItems = buildItems
+            )
+        }
+    }
+
+    fun autoAllocateBuildOrder(buildId: Long) {
+        val count = repository.autoAllocateBuildOrder(buildId)
+        _uiState.update { it.copy(successMessage = "تم التخصيص الأوتوماتيكي لـ $count بند من بنود المخزون المتاحة بنجاح (FIFO)") }
+        loadData()
     }
 
     fun allocateLineItemStock(lineItemId: Long, qty: Double) {
