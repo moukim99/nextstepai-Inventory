@@ -27,46 +27,62 @@ data class StockLocation(
 )
 
 /**
- * تمثيل سجل الوحدة المخزنية الفعلية (StockItem) المادية الموجودة على الرفوف وفق تحليل InvenTree.
+ * تمثيل سجل الوحدة المخزنية الفعلية (StockItem) المادية الموجودة على الرفوف وفق تحليل InvenTree (24 حقل).
  *
  * @property id المعرف الرقمي الفريد للوحدة المخزنية
- * @property partId معرف القطعة المرجعية التجريدية
- * @property supplierPartId ربط ببيانات التوريد المعتمدة
- * @property locationId معرف موقع التخزين في المستودع
+ * @property partId معرف القطعة المرجعية التجريدية (ForeignKey)
+ * @property locationId معرف موقع التخزين في المستودع (ForeignKey)
  * @property quantity الكمية الفعلية المتوفرة
  * @property serial الرقم التسلسلي المميز (إذا كانت القطعة trackable)
  * @property batch رقم الشحنة أو التشغيلة (Batch/Lot)
- * @property status كود الحالة التشغيلية
+ * @property status كود الحالة التشغيلية (OK, Damaged, Destroyed, Rejected, Quarantine, Expired)
  * @property packaging طريقة التغليف الفيزيائي (مثل: Reel, Box, Tray)
- * @property expiryDate تاريخ انتهاء الصلاحية
- * @property purchasePrice سعر الشراء والعملة
+ * @property purchasePrice سعر الشراء الفعلي للوحدة
+ * @property purchasePriceCurrency عملة سعر الشراء (مثل USD, SAR)
+ * @property purchaseOrderId رابط أمر الشراء الذاتي (ForeignKey)
+ * @property supplierPartId ربط ببيانات التوريد المعتمدة (SupplierPart)
+ * @property salesOrderId رابط أمر البيع المخصص له هذه الكمية (ForeignKey)
+ * @property customerId العميل المستلم للقطعة (ForeignKey)
+ * @property buildId رابط أمر التصنيع المُنْتِج لهذا العنصر (ForeignKey)
+ * @property isBuilding يحدد ما إذا كانت الوحدة ما زالت تحت التجميع والإنتاج
  * @property parentId معرف السجل الأب في حالات تجزئة المخزون (Split)
- * @property isBuilding يحدد ما إذا كانت الوحدة قيد التجميع والإنتاج حالياً
- * @property reviewNeeded مؤشر يفرض إعادة مراجعة الجودة
- * @property deleteOnDeplete حذف السجل آلياً عند وصول الكمية للصفر
- * @property link رابط خارجي للوحدة
+ * @property expiryDate تاريخ انتهاء الصلاحية
+ * @property stocktakeDate تاريخ آخر جرد فعلي أُجري على الكمية
+ * @property stocktakeUserId المستخدم الذي أجرى آخر جرد
+ * @property reviewNeeded مؤشر يفرض إعادة مراجعة الجودة فنيًا
+ * @property deleteOnDeplete حذف السجل تلقائيًا أو أرشفته عند وصول الكمية للصفر
+ * @property link رابط خارجي أو توثيق للدفعة
  * @property notes ملاحظات تشغيلية
+ * @property metadata بيانات ديناميكية إضافية (JSON)
  * @property updated الطابع الزمني لآخر تحديث
  * @property allocatedQuantity الكميات المحجوزة لأوامر الإنتاج أو البيع
  */
 data class StockItem(
     val id: Long = 0L,
     val partId: Long,
-    val supplierPartId: Long? = null,
     val locationId: Long? = null,
     val quantity: Double = 1.0,
     val serial: String = "",
     val batch: String = "",
     val status: StockStatus = StockStatus.OK,
     val packaging: String = "Box",
-    val expiryDate: String = "",
     val purchasePrice: Double = 0.0,
-    val parentId: Long? = null,
+    val purchasePriceCurrency: String = "USD",
+    val purchaseOrderId: Long? = null,
+    val supplierPartId: Long? = null,
+    val salesOrderId: Long? = null,
+    val customerId: Long? = null,
+    val buildId: Long? = null,
     val isBuilding: Boolean = false,
+    val parentId: Long? = null,
+    val expiryDate: String = "",
+    val stocktakeDate: String = "",
+    val stocktakeUserId: Long? = null,
     val reviewNeeded: Boolean = false,
     val deleteOnDeplete: Boolean = false,
     val link: String = "",
     val notes: String = "",
+    val metadata: String = "{}",
     val updated: String = "",
     val allocatedQuantity: Double = 0.0
 ) {
@@ -203,8 +219,12 @@ class StockItemTable {
         val parentItem = stockItems[parentIndex]
         require(parentItem.availableQuantity >= splitQuantity) { "الكمية المتاحة لا تكفي للتجزئة" }
 
-        // خصم الكمية من السجل الأصلي
-        stockItems[parentIndex] = parentItem.copy(quantity = parentItem.quantity - splitQuantity)
+        val newParentQty = parentItem.quantity - splitQuantity
+        if (newParentQty <= 0.0 && parentItem.deleteOnDeplete) {
+            stockItems.removeAt(parentIndex)
+        } else {
+            stockItems[parentIndex] = parentItem.copy(quantity = newParentQty)
+        }
 
         // إنشاء سجل فرعي مشتق ومربوط بالأب
         val childItem = parentItem.copy(
@@ -215,6 +235,43 @@ class StockItemTable {
         )
         stockItems.add(childItem)
         return childItem
+    }
+
+    /**
+     * إجراء عملية جرد فعلي (Stocktake) على وحدة مخزنية وتحديث تاريخ الجرد والمستخدم.
+     */
+    fun performStocktake(stockId: Long, userId: Long, stocktakeDate: String = "2025-02-15"): StockItem {
+        val index = stockItems.indexOfFirst { it.id == stockId }
+        require(index != -1) { "الوحدة المخزنية غير موجودة" }
+
+        val updatedItem = stockItems[index].copy(
+            stocktakeDate = stocktakeDate,
+            stocktakeUserId = userId,
+            reviewNeeded = false
+        )
+        stockItems[index] = updatedItem
+        return updatedItem
+    }
+
+    /**
+     * تقليل أو استهلاك كمية مخزنية مع تطبيق قاعدة deleteOnDeplete عند وصول الكمية للصفر.
+     */
+    fun consumeStockQuantity(stockId: Long, consumeQty: Double): StockItem? {
+        val index = stockItems.indexOfFirst { it.id == stockId }
+        require(index != -1) { "الوحدة المخزنية غير موجودة" }
+
+        val item = stockItems[index]
+        require(item.availableQuantity >= consumeQty) { "الكمية المتاحة لا تكفي للاستهلاك" }
+
+        val remainingQty = item.quantity - consumeQty
+        if (remainingQty <= 0.0 && item.deleteOnDeplete) {
+            stockItems.removeAt(index)
+            return null
+        } else {
+            val updated = item.copy(quantity = remainingQty.coerceAtLeast(0.0))
+            stockItems[index] = updated
+            return updated
+        }
     }
 
     /**

@@ -13,11 +13,9 @@ import com.nextstepai.inventory.sync.SyncStatus
 import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 
-import com.nextstepai.inventory.data.db.getRoomDatabase
-
 /**
  * المستودع (Repository) المسؤول عن إدارة المخزون الفعلي (Stock Management) وتجزئة الكميات
- * والمزامنة المجمعة مع السحابة وضغط الصور.
+ * والجرد والمزامنة المجمعة مع السحابة وضغط الصور.
  */
 class StockRepository(
     private val stockTable: StockItemTable = StockItemTable(),
@@ -53,21 +51,7 @@ class StockRepository(
     fun addStockItem(item: StockItem): StockItem {
         val inserted = stockTable.insertStockItem(item)
         runBlocking {
-            stockDao.insertOrUpdate(
-                StockItemEntity(
-                    uuid = "stock-${inserted.id}",
-                    partId = inserted.partId,
-                    locationId = inserted.locationId,
-                    quantity = inserted.quantity,
-                    serial = inserted.serial,
-                    batch = inserted.batch,
-                    statusCode = inserted.status.code,
-                    packaging = inserted.packaging,
-                    expiryDate = inserted.expiryDate,
-                    notes = inserted.notes,
-                    syncStatus = SyncStatus.PENDING
-                )
-            )
+            stockDao.insertOrUpdate(inserted.toEntity())
         }
         return inserted
     }
@@ -78,19 +62,20 @@ class StockRepository(
     fun splitStockItem(parentId: Long, splitQuantity: Double): StockItem {
         val child = stockTable.splitStockItem(parentId, splitQuantity)
         runBlocking {
-            stockDao.insertOrUpdate(
-                StockItemEntity(
-                    uuid = "stock-${child.id}",
-                    partId = child.partId,
-                    locationId = child.locationId,
-                    quantity = child.quantity,
-                    serial = child.serial,
-                    batch = child.batch,
-                    syncStatus = SyncStatus.PENDING
-                )
-            )
+            stockDao.insertOrUpdate(child.toEntity())
         }
         return child
+    }
+
+    /**
+     * تنفيذ عملية الجرد الفعلي (Stocktake).
+     */
+    fun performStocktake(stockId: Long, userId: Long, stocktakeDate: String = "2025-02-15"): StockItem {
+        val updated = stockTable.performStocktake(stockId, userId, stocktakeDate)
+        runBlocking {
+            stockDao.insertOrUpdate(updated.toEntity())
+        }
+        return updated
     }
 
     /**
@@ -120,5 +105,36 @@ class StockRepository(
         val response = batchSyncService.performBatchSync(payloads, Clock.System.now().toEpochMilliseconds() - 86400000)
         stockDao.updateSyncStatusForUuids(response.acceptedUuids, SyncStatus.SYNCED)
         return response.acceptedUuids.size
+    }
+
+    private fun StockItem.toEntity(): StockItemEntity {
+        return StockItemEntity(
+            uuid = "stock-$id",
+            partId = partId,
+            locationId = locationId,
+            quantity = quantity,
+            serial = serial,
+            batch = batch,
+            statusCode = status.code,
+            packaging = packaging,
+            purchasePrice = purchasePrice,
+            purchasePriceCurrency = purchasePriceCurrency,
+            purchaseOrderId = purchaseOrderId,
+            supplierPartId = supplierPartId,
+            salesOrderId = salesOrderId,
+            customerId = customerId,
+            buildId = buildId,
+            isBuilding = isBuilding,
+            parentId = parentId,
+            expiryDate = expiryDate,
+            stocktakeDate = stocktakeDate,
+            stocktakeUserId = stocktakeUserId,
+            reviewNeeded = reviewNeeded,
+            deleteOnDeplete = deleteOnDeplete,
+            link = link,
+            notes = notes,
+            metadata = metadata,
+            syncStatus = SyncStatus.PENDING
+        )
     }
 }

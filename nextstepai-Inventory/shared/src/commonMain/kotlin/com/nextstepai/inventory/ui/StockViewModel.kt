@@ -81,11 +81,17 @@ class StockViewModel(
         partId: Long,
         locationId: Long?,
         quantity: Double,
-        serial: String,
-        batch: String,
-        packaging: String,
-        status: StockStatus,
-        notes: String
+        serial: String = "",
+        batch: String = "",
+        packaging: String = "Box",
+        status: StockStatus = StockStatus.OK,
+        purchasePrice: Double = 0.0,
+        purchasePriceCurrency: String = "USD",
+        expiryDate: String = "",
+        reviewNeeded: Boolean = false,
+        deleteOnDeplete: Boolean = false,
+        link: String = "",
+        notes: String = ""
     ) {
         try {
             val item = StockItem(
@@ -96,6 +102,12 @@ class StockViewModel(
                 batch = batch,
                 packaging = packaging.ifBlank { "Box" },
                 status = status,
+                purchasePrice = purchasePrice,
+                purchasePriceCurrency = purchasePriceCurrency,
+                expiryDate = expiryDate,
+                reviewNeeded = reviewNeeded,
+                deleteOnDeplete = deleteOnDeplete,
+                link = link,
                 notes = notes
             )
             stockRepository.addStockItem(item)
@@ -120,6 +132,21 @@ class StockViewModel(
                     selectedItemForSplit = null,
                     errorMessage = null,
                     successMessage = "تمت تجزئة الكمية المخزنية بنجاح"
+                )
+            }
+            loadData()
+        } catch (e: IllegalArgumentException) {
+            _uiState.update { it.copy(errorMessage = e.message) }
+        }
+    }
+
+    fun performStocktake(stockId: Long, userId: Long = 1L, stocktakeDate: String = "2025-02-15") {
+        try {
+            stockRepository.performStocktake(stockId, userId, stocktakeDate)
+            _uiState.update {
+                it.copy(
+                    errorMessage = null,
+                    successMessage = "تم تسجيل عملية الجرد للقطعة بنجاح"
                 )
             }
             loadData()

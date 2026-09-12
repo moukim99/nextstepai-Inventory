@@ -42,7 +42,8 @@ import nextstepai_inventory.shared.generated.resources.stock_items_count
 
 /**
  * شاشة إدارة المخزون الفعلي (StockItem Management Screen).
- * مطابقة تماماً للتصميم الهيكلي الموحد مع الترويسة العلوية، البحث والباركود المدمج، والفلترة بحسب مواقع التخزين.
+ * مطابقة تماماً للتصميم الهيكلي الموحد مع الترويسة العلوية، البحث والباركود المدمج، والفلترة بحسب مواقع التخزين،
+ * بالإضافة لمتابعة كافة حقول StockItem الـ 24 المعتمدة (جرد، سعر الشراء، الصلاحية، المراجعة الفنية...).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -162,7 +163,7 @@ fun StockScreen(
 
                 val filteredStock = uiState.stockItems.filter { item ->
                     val part = uiState.parts.find { it.id == item.partId }
-                    searchQuery.isBlank() || (part?.name?.contains(searchQuery, ignoreCase = true) == true) || item.serial.contains(searchQuery, ignoreCase = true)
+                    searchQuery.isBlank() || (part?.name?.contains(searchQuery, ignoreCase = true) == true) || item.serial.contains(searchQuery, ignoreCase = true) || item.batch.contains(searchQuery, ignoreCase = true)
                 }
 
                 if (filteredStock.isEmpty()) {
@@ -205,7 +206,8 @@ fun StockScreen(
                                 stockItem = item,
                                 part = part,
                                 location = loc,
-                                onSplitClick = { viewModel.setSelectedItemForSplit(item) }
+                                onSplitClick = { viewModel.setSelectedItemForSplit(item) },
+                                onStocktakeClick = { viewModel.performStocktake(item.id) }
                             )
                         }
                     }
@@ -219,8 +221,23 @@ fun StockScreen(
             parts = uiState.parts,
             locations = uiState.locations,
             onDismiss = { viewModel.setAddDialogOpen(false) },
-            onConfirm = { partId, locId, qty, serial, batch, pack, status, notes ->
-                viewModel.addStockItem(partId, locId, qty, serial, batch, pack, status, notes)
+            onConfirm = { partId, locId, qty, serial, batch, pack, status, price, currency, expiry, review, deleteOnDeplete, link, notes ->
+                viewModel.addStockItem(
+                    partId = partId,
+                    locationId = locId,
+                    quantity = qty,
+                    serial = serial,
+                    batch = batch,
+                    packaging = pack,
+                    status = status,
+                    purchasePrice = price,
+                    purchasePriceCurrency = currency,
+                    expiryDate = expiry,
+                    reviewNeeded = review,
+                    deleteOnDeplete = deleteOnDeplete,
+                    link = link,
+                    notes = notes
+                )
             }
         )
     }
@@ -273,7 +290,7 @@ private fun StockTopBar(
                 }
 
                 Text(
-                    text = "إدارة المخزون الفعلي",
+                    text = "إدارة المخزون الفعلي (StockItem)",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 17.sp
@@ -312,14 +329,15 @@ private fun StockTopBar(
 }
 
 /**
- * بطاقة عرض الوحدة المخزنية المادية
+ * بطاقة عرض الوحدة المخزنية المادية مع كامل تفاصيل الـ 24 حقل المعتمدة
  */
 @Composable
 private fun StockItemCard(
     stockItem: StockItem,
     part: Part?,
     location: StockLocation?,
-    onSplitClick: () -> Unit
+    onSplitClick: () -> Unit,
+    onStocktakeClick: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -366,28 +384,45 @@ private fun StockItemCard(
                     )
                 }
 
-                Surface(
-                    color = when (stockItem.status) {
-                        StockStatus.OK -> Color(0xFFECFDF5)
-                        StockStatus.QUARANTINE -> Color(0xFFFFFBEB)
-                        else -> MaterialTheme.colorScheme.errorContainer
-                    },
-                    shape = RoundedCornerShape(50),
-                    border = BorderStroke(1.dp, when (stockItem.status) {
-                        StockStatus.OK -> Color(0xFFA7F3D0)
-                        else -> Color.Transparent
-                    })
-                ) {
-                    Text(
-                        text = stockItem.status.label,
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (stockItem.reviewNeeded) {
+                        Surface(
+                            color = Color(0xFFFEF2F2),
+                            shape = RoundedCornerShape(50),
+                            border = BorderStroke(1.dp, Color(0xFFFCA5A5))
+                        ) {
+                            Text(
+                                text = "⚠️ إعادة مراجعة",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFDC2626),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
                         color = when (stockItem.status) {
-                            StockStatus.OK -> Color(0xFF059669)
-                            StockStatus.QUARANTINE -> Color(0xFFB45309)
-                            else -> MaterialTheme.colorScheme.error
+                            StockStatus.OK -> Color(0xFFECFDF5)
+                            StockStatus.QUARANTINE -> Color(0xFFFFFBEB)
+                            else -> MaterialTheme.colorScheme.errorContainer
                         },
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
+                        shape = RoundedCornerShape(50),
+                        border = BorderStroke(1.dp, when (stockItem.status) {
+                            StockStatus.OK -> Color(0xFFA7F3D0)
+                            else -> Color.Transparent
+                        })
+                    ) {
+                        Text(
+                            text = stockItem.status.label,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = when (stockItem.status) {
+                                StockStatus.OK -> Color(0xFF059669)
+                                StockStatus.QUARANTINE -> Color(0xFFB45309)
+                                else -> MaterialTheme.colorScheme.error
+                            },
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
 
@@ -432,7 +467,7 @@ private fun StockItemCard(
                 }
             }
 
-            if (stockItem.serial.isNotBlank() || stockItem.batch.isNotBlank()) {
+            if (stockItem.serial.isNotBlank() || stockItem.batch.isNotBlank() || stockItem.packaging.isNotBlank()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -452,22 +487,73 @@ private fun StockItemCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Text(
+                        text = "التغليف: ${stockItem.packaging}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
                 }
             }
 
-            if (stockItem.serial.isBlank() && stockItem.quantity > 1.0) {
-                Spacer(modifier = Modifier.height(10.dp))
+            if (stockItem.purchasePrice > 0.0 || stockItem.expiryDate.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    if (stockItem.purchasePrice > 0.0) {
+                        Text(
+                            text = "سعر الشراء: ${stockItem.purchasePrice} ${stockItem.purchasePriceCurrency}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color(0xFF047857)
+                        )
+                    }
+                    if (stockItem.expiryDate.isNotBlank()) {
+                        Text(
+                            text = "الصلاحية: ${stockItem.expiryDate}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
+            }
+
+            if (stockItem.stocktakeDate.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "📋 آخر جرد فعلي: ${stockItem.stocktakeDate}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = onStocktakeClick,
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                    modifier = Modifier.padding(end = 6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                        Text("جرد (Count)", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                    }
+                }
+
+                if (stockItem.serial.isBlank() && stockItem.quantity > 1.0) {
                     OutlinedButton(
                         onClick = onSplitClick,
                         shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
-                        Text("تجزئة الكمية (Split)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                        Text("تجزئة (Split)", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                     }
                 }
             }
@@ -488,6 +574,12 @@ private fun AddStockItemDialog(
         batch: String,
         packaging: String,
         status: StockStatus,
+        purchasePrice: Double,
+        purchasePriceCurrency: String,
+        expiryDate: String,
+        reviewNeeded: Boolean,
+        deleteOnDeplete: Boolean,
+        link: String,
         notes: String
     ) -> Unit
 ) {
@@ -498,6 +590,12 @@ private fun AddStockItemDialog(
     var batch by remember { mutableStateOf("") }
     var packaging by remember { mutableStateOf("Box") }
     var selectedStatus by remember { mutableStateOf(StockStatus.OK) }
+    var purchasePriceText by remember { mutableStateOf("0.0") }
+    var currency by remember { mutableStateOf("USD") }
+    var expiryDate by remember { mutableStateOf("") }
+    var reviewNeeded by remember { mutableStateOf(false) }
+    var deleteOnDeplete by remember { mutableStateOf(false) }
+    var link by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -520,8 +618,13 @@ private fun AddStockItemDialog(
                 onClick = {
                     val pId = selectedPartId
                     val qty = quantityText.toDoubleOrNull() ?: 1.0
+                    val price = purchasePriceText.toDoubleOrNull() ?: 0.0
                     if (pId != null && qty > 0.0) {
-                        onConfirm(pId, selectedLocationId, qty, serial, batch, packaging, selectedStatus, notes)
+                        onConfirm(
+                            pId, selectedLocationId, qty, serial, batch, packaging,
+                            selectedStatus, price, currency, expiryDate,
+                            reviewNeeded, deleteOnDeplete, link, notes
+                        )
                     }
                 },
                 enabled = selectedPartId != null && (quantityText.toDoubleOrNull() ?: 0.0) > 0.0,
@@ -588,6 +691,56 @@ private fun AddStockItemDialog(
                     value = packaging,
                     onValueChange = { packaging = it },
                     label = { Text("نوع التغليف (Box / Reel / Tray)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = purchasePriceText,
+                        onValueChange = { purchasePriceText = it },
+                        label = { Text("سعر الشراء") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    OutlinedTextField(
+                        value = currency,
+                        onValueChange = { currency = it },
+                        label = { Text("العملة") },
+                        singleLine = true,
+                        modifier = Modifier.width(90.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = expiryDate,
+                    onValueChange = { expiryDate = it },
+                    label = { Text("تاريخ انتهاء الصلاحية (YYYY-MM-DD)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = reviewNeeded, onCheckedChange = { reviewNeeded = it })
+                    Text("بحاجة لإعادة مراجعة وتقييم (Review Needed)", fontSize = 12.sp)
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = deleteOnDeplete, onCheckedChange = { deleteOnDeplete = it })
+                    Text("حذف السجل آلياً عند نفاد الكمية (= 0)", fontSize = 12.sp)
+                }
+
+                OutlinedTextField(
+                    value = link,
+                    onValueChange = { link = it },
+                    label = { Text("رابط خارجي للتوثيق (Link URL)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
