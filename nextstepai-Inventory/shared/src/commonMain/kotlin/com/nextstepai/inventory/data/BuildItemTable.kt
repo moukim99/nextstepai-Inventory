@@ -16,11 +16,15 @@ package com.nextstepai.inventory.data
 data class BuildItem(
     val id: Long = 0L,
     val buildId: Long,
+    val buildUuid: String = "",
     val buildLineId: Long? = null,
+    val buildLineUuid: String = "",
     val stockItemId: Long,
+    val stockItemUuid: String = "",
     val stockItemName: String = "",
     val quantity: Double = 1.0,
     val installIntoStockItemId: Long? = null,
+    val installIntoStockItemUuid: String = "",
     val notes: String = ""
 )
 

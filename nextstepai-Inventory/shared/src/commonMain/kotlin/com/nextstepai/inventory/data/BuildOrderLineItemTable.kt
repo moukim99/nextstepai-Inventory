@@ -17,7 +17,9 @@ package com.nextstepai.inventory.data
 data class BuildOrderLineItem(
     val id: Long = 0L,
     val buildId: Long,
+    val buildUuid: String = "",
     val bomItemId: Long,
+    val bomItemUuid: String = "",
     val subPartId: Long = 0L,
     val subPartName: String = "",
     val quantity: Double = 1.0,

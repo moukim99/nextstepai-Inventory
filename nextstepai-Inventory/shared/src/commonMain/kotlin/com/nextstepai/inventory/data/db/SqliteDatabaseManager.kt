@@ -355,11 +355,15 @@ object SqliteDatabaseManager {
                 uuid TEXT PRIMARY KEY NOT NULL,
                 id INTEGER NOT NULL DEFAULT 0,
                 buildId INTEGER NOT NULL,
+                buildUuid TEXT NOT NULL DEFAULT '',
                 buildLineId INTEGER,
+                buildLineUuid TEXT NOT NULL DEFAULT '',
                 stockItemId INTEGER NOT NULL,
+                stockItemUuid TEXT NOT NULL DEFAULT '',
                 stockItemName TEXT NOT NULL DEFAULT '',
                 quantity REAL NOT NULL DEFAULT 1.0,
                 installIntoStockItemId INTEGER,
+                installIntoStockItemUuid TEXT NOT NULL DEFAULT '',
                 notes TEXT NOT NULL DEFAULT '',
                 syncStatus TEXT NOT NULL DEFAULT 'PENDING',
                 isDeleted INTEGER NOT NULL DEFAULT 0,
@@ -369,16 +373,25 @@ object SqliteDatabaseManager {
 
         runCatching { conn.prepare("ALTER TABLE build_items ADD COLUMN buildLineId INTEGER").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE build_items ADD COLUMN installIntoStockItemId INTEGER").use { it.step() } }
-        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_items_buildId ON build_items(buildId)").use { it.step() } }
-        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_items_buildLineId ON build_items(buildLineId)").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_items ADD COLUMN buildUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_items ADD COLUMN buildLineUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_items ADD COLUMN stockItemUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_items ADD COLUMN installIntoStockItemUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
 
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_items_buildId ON build_items(buildId)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_items_buildUuid ON build_items(buildUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_items_buildLineId ON build_items(buildLineId)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_items_buildLineUuid ON build_items(buildLineUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_items_stockItemUuid ON build_items(stockItemUuid)").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS build_order_line_items (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 id INTEGER NOT NULL DEFAULT 0,
                 buildId INTEGER NOT NULL,
+                buildUuid TEXT NOT NULL DEFAULT '',
                 bomItemId INTEGER NOT NULL,
+                bomItemUuid TEXT NOT NULL DEFAULT '',
                 subPartId INTEGER NOT NULL DEFAULT 0,
                 subPartName TEXT NOT NULL DEFAULT '',
                 quantity REAL NOT NULL DEFAULT 1.0,
@@ -391,7 +404,12 @@ object SqliteDatabaseManager {
             );
         """.trimIndent()).use { it.step() }
 
+        runCatching { conn.prepare("ALTER TABLE build_order_line_items ADD COLUMN buildUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_order_line_items ADD COLUMN bomItemUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_line_items_buildId ON build_order_line_items(buildId)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_line_items_buildUuid ON build_order_line_items(buildUuid)").use { it.step() } }
+
 
 
 
