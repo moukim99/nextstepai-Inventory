@@ -400,7 +400,7 @@ private fun StockTopBar(
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 17.sp
                     ),
-                    color = Color(0xFF0F172A)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
@@ -489,8 +489,8 @@ private fun StockItemCard(
                         modifier = Modifier
                             .size(38.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFFEEF2FF))
-                            .border(1.dp, Color(0xFFE0E7FF), RoundedCornerShape(10.dp)),
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -514,14 +514,14 @@ private fun StockItemCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (stockItem.reviewNeeded) {
                         Surface(
-                            color = Color(0xFFFEF2F2),
+                            color = MaterialTheme.colorScheme.errorContainer,
                             shape = RoundedCornerShape(50),
-                            border = BorderStroke(1.dp, Color(0xFFFCA5A5))
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
                         ) {
                             Text(
                                 text = "⚠️ إعادة مراجعة",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color(0xFFDC2626),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
@@ -529,13 +529,13 @@ private fun StockItemCard(
 
                     Surface(
                         color = when (stockItem.status) {
-                            StockStatus.OK -> Color(0xFFECFDF5)
-                            StockStatus.QUARANTINE -> Color(0xFFFFFBEB)
+                            StockStatus.OK -> MaterialTheme.colorScheme.tertiaryContainer
+                            StockStatus.QUARANTINE -> MaterialTheme.colorScheme.secondaryContainer
                             else -> MaterialTheme.colorScheme.errorContainer
                         },
                         shape = RoundedCornerShape(50),
                         border = BorderStroke(1.dp, when (stockItem.status) {
-                            StockStatus.OK -> Color(0xFFA7F3D0)
+                            StockStatus.OK -> MaterialTheme.colorScheme.tertiary
                             else -> Color.Transparent
                         })
                     ) {
@@ -543,8 +543,8 @@ private fun StockItemCard(
                             text = stockItem.status.label,
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                             color = when (stockItem.status) {
-                                StockStatus.OK -> Color(0xFF059669)
-                                StockStatus.QUARANTINE -> Color(0xFFB45309)
+                                StockStatus.OK -> MaterialTheme.colorScheme.onTertiaryContainer
+                                StockStatus.QUARANTINE -> MaterialTheme.colorScheme.onSecondaryContainer
                                 else -> MaterialTheme.colorScheme.error
                             },
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
@@ -632,7 +632,7 @@ private fun StockItemCard(
                         Text(
                             text = "سعر الشراء: ${stockItem.purchasePrice} ${stockItem.purchasePriceCurrency}",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = Color(0xFF047857)
+                            color = MaterialTheme.colorScheme.tertiary
                         )
                     }
                     if (stockItem.expiryDate.isNotBlank()) {
@@ -956,8 +956,8 @@ private fun StockTestResultsDialog(
                         items(results, key = { "test-${it.id}" }) { res ->
                             Card(
                                 shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = if (res.result) Color(0xFFECFDF5) else Color(0xFFFEF2F2)),
-                                border = BorderStroke(1.dp, if (res.result) Color(0xFFA7F3D0) else Color(0xFFFCA5A5)),
+                                colors = CardDefaults.cardColors(containerColor = if (res.result) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.errorContainer),
+                                border = BorderStroke(1.dp, if (res.result) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
@@ -968,12 +968,12 @@ private fun StockTestResultsDialog(
                                     ) {
                                         Text(res.test, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                         Surface(
-                                            color = if (res.result) Color(0xFF059669) else Color(0xFFDC2626),
+                                            color = if (res.result) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onErrorContainer,
                                             shape = RoundedCornerShape(50)
                                         ) {
                                             Text(
                                                 text = if (res.result) "✅ ناجح (Pass)" else "❌ راسب (Fail)",
-                                                color = Color.White,
+                                                color = if (res.result) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.errorContainer,
                                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                             )
