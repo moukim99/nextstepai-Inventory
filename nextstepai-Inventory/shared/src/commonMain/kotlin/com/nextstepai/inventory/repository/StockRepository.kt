@@ -1,12 +1,15 @@
 package com.nextstepai.inventory.repository
 
 import com.nextstepai.inventory.data.StockItem
+import com.nextstepai.inventory.data.StockItemAttachment
 import com.nextstepai.inventory.data.StockItemTable
 import com.nextstepai.inventory.data.StockItemTestResult
 import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockLocationType
 import com.nextstepai.inventory.data.StockTrackingType
+import com.nextstepai.inventory.data.db.StockItemAttachmentDao
+import com.nextstepai.inventory.data.db.StockItemAttachmentEntity
 import com.nextstepai.inventory.data.db.StockItemDao
 import com.nextstepai.inventory.data.db.StockItemEntity
 import com.nextstepai.inventory.data.db.StockItemTestResultDao
@@ -27,7 +30,7 @@ import kotlin.time.Clock
 
 /**
  * المستودع (Repository) المسؤول عن إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات التتبع
- * ونتائج فحوصات الجودة (StockItemTestResult) وتجزئة الكميات والجرد والمزامنة مع السحابة.
+ * ونتائج فحوصات الجودة ومرفقات المخزون (StockItemAttachment) وتجزئة الكميات والجرد والمزامنة مع السحابة.
  */
 class StockRepository(
     private val stockTable: StockItemTable = StockItemTable(),
@@ -36,6 +39,7 @@ class StockRepository(
     private val locationTypeDao: StockLocationTypeDao = StockLocationTypeDao(),
     private val trackingDao: StockItemTrackingDao = StockItemTrackingDao(),
     private val testResultDao: StockItemTestResultDao = StockItemTestResultDao(),
+    private val attachmentDao: StockItemAttachmentDao = StockItemAttachmentDao(),
     private val batchSyncService: BatchSyncService = BatchSyncService(),
     private val imageProcessor: ImageProcessor = ImageProcessor(maxDimension = 1024, compressionQuality = 85)
 ) {
@@ -78,6 +82,37 @@ class StockRepository(
      */
     fun getTestResultsForStockItem(stockItemId: Long): List<StockItemTestResult> {
         return stockTable.getTestResultsForStockItem(stockItemId)
+    }
+
+    /**
+     * جلب كافة المستندات والمرفقات المرتبطة بعنصر مخزني محدد.
+     */
+    fun getAttachmentsForStockItem(stockItemId: Long): List<StockItemAttachment> {
+        return stockTable.getAttachmentsForStockItem(stockItemId)
+    }
+
+    /**
+     * إضافة مرفق أو شهادة جديدة لعنصر مخزني (StockItemAttachment).
+     */
+    fun addStockItemAttachment(attachmentItem: StockItemAttachment): StockItemAttachment {
+        val inserted = stockTable.addStockItemAttachment(attachmentItem)
+        runBlocking {
+            attachmentDao.insertOrUpdate(inserted.toEntity())
+        }
+        return inserted
+    }
+
+    /**
+     * حذف مرفق مخزني محدد.
+     */
+    fun deleteStockItemAttachment(id: Long): Boolean {
+        val deleted = stockTable.deleteStockItemAttachment(id)
+        if (deleted) {
+            runBlocking {
+                attachmentDao.deleteAttachment("attachment-$id")
+            }
+        }
+        return deleted
     }
 
     /**
@@ -198,6 +233,21 @@ class StockRepository(
         val response = batchSyncService.performBatchSync(payloads, Clock.System.now().toEpochMilliseconds() - 86400000)
         stockDao.updateSyncStatusForUuids(response.acceptedUuids, SyncStatus.SYNCED)
         return response.acceptedUuids.size
+    }
+
+    private fun StockItemAttachment.toEntity(): StockItemAttachmentEntity {
+        return StockItemAttachmentEntity(
+            uuid = "attachment-$id",
+            attachmentId = id,
+            stockItemId = stockItemId,
+            attachment = attachment,
+            link = link,
+            comment = comment,
+            uploadDate = uploadDate,
+            userId = userId,
+            metadata = metadata,
+            syncStatus = SyncStatus.PENDING
+        )
     }
 
     private fun StockItemTestResult.toEntity(): StockItemTestResultEntity {

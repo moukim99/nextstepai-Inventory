@@ -92,11 +92,13 @@ class StockItemTable {
     private val locationTypes = mutableListOf<StockLocationType>()
     private val trackingLogs = mutableListOf<StockItemTracking>()
     private val testResults = mutableListOf<StockItemTestResult>()
+    private val stockAttachments = mutableListOf<StockItemAttachment>()
     private var nextStockId = 1L
     private var nextLocationId = 1L
     private var nextLocationTypeId = 1L
     private var nextTrackingId = 1L
     private var nextTestResultId = 1L
+    private var nextAttachmentId = 1L
 
     init {
         seedSampleStockData()
@@ -374,6 +376,56 @@ class StockItemTable {
      * جلب كافة نتائج الفحوصات الفنية.
      */
     fun getAllTestResults(): List<StockItemTestResult> = testResults.toList()
+
+    /**
+     * إدراج مرفق أو وثيقة جديدة لعنصر مخزني مع التحقق من القيود المنطقية:
+     * 1. يلزم توفر أحد الحقلين (إما attachment أو link).
+     * 2. التوليد الآلي للوصف comment من اسم الملف الأصلي إذا تُرك فارغاً.
+     */
+    fun addStockItemAttachment(attachmentItem: StockItemAttachment): StockItemAttachment {
+        val hasFile = !attachmentItem.attachment.isNullOrBlank()
+        val hasLink = !attachmentItem.link.isNullOrBlank()
+        require(hasFile || hasLink) {
+            "خطأ في إدخال المرفق: يجب تقديم ملف مرفق محلي (attachment) أو رابط ويب خارجي (link) على الأقل!"
+        }
+        require(stockItems.any { it.id == attachmentItem.stockItemId }) {
+            "العنصر المخزني المرتبط بالمرفق غير موجود"
+        }
+
+        val autoComment = if (attachmentItem.comment.isBlank()) {
+            val file = attachmentItem.attachment
+            val url = attachmentItem.link
+            when {
+                !file.isNullOrBlank() -> file.substringAfterLast('/').substringAfterLast('\\')
+                !url.isNullOrBlank() -> url
+                else -> "مرفق مخزني"
+            }
+        } else {
+            attachmentItem.comment.trim()
+        }
+
+        val record = attachmentItem.copy(
+            id = if (attachmentItem.id == 0L) nextAttachmentId++ else attachmentItem.id,
+            comment = autoComment,
+            uploadDate = attachmentItem.uploadDate.ifBlank { "2025-02-15" }
+        )
+        stockAttachments.add(record)
+        return record
+    }
+
+    /**
+     * جلب كافة الوثائق والمرفقات المرتبطة بعنصر مخزني محدد.
+     */
+    fun getAttachmentsForStockItem(stockItemId: Long): List<StockItemAttachment> {
+        return stockAttachments.filter { it.stockItemId == stockItemId }
+    }
+
+    /**
+     * حذف مرفق مخزني محدد بالـ ID.
+     */
+    fun deleteStockItemAttachment(id: Long): Boolean {
+        return stockAttachments.removeIf { it.id == id }
+    }
 
     /**
      * جلب الوحدات المخزنية لقطعة محددة.

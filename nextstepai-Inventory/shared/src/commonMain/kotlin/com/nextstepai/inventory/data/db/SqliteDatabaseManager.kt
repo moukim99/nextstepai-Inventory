@@ -203,6 +203,23 @@ object SqliteDatabaseManager {
         """.trimIndent()).use { it.step() }
 
         conn.prepare("""
+            CREATE TABLE IF NOT EXISTS stock_item_attachments (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                attachmentId INTEGER NOT NULL,
+                stockItemId INTEGER NOT NULL,
+                attachment TEXT,
+                link TEXT,
+                comment TEXT NOT NULL DEFAULT '',
+                uploadDate TEXT NOT NULL DEFAULT '2025-02-15',
+                userId INTEGER,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
             CREATE TABLE IF NOT EXISTS companies (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 name TEXT NOT NULL,

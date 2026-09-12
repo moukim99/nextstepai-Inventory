@@ -3,6 +3,7 @@ package com.nextstepai.inventory.ui
 import androidx.lifecycle.ViewModel
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.StockItem
+import com.nextstepai.inventory.data.StockItemAttachment
 import com.nextstepai.inventory.data.StockItemTestResult
 import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
@@ -16,7 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /**
- * حالة واجهة إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات التتبع وفحوصات الجودة (Stock UI State).
+ * حالة واجهة إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات التتبع وفحوصات الجودة والمرفقات (Stock UI State).
  */
 data class StockUiState(
     val stockItems: List<StockItem> = emptyList(),
@@ -29,17 +30,20 @@ data class StockUiState(
     val isAddLocationDialogOpen: Boolean = false,
     val isAddLocationTypeDialogOpen: Boolean = false,
     val isAddTestResultDialogOpen: Boolean = false,
+    val isAddAttachmentDialogOpen: Boolean = false,
     val selectedItemForSplit: StockItem? = null,
     val selectedItemForHistory: StockItem? = null,
     val trackingLogsForSelected: List<StockItemTracking> = emptyList(),
     val selectedItemForTests: StockItem? = null,
     val testResultsForSelected: List<StockItemTestResult> = emptyList(),
+    val selectedItemForAttachments: StockItem? = null,
+    val attachmentsForSelected: List<StockItemAttachment> = emptyList(),
     val errorMessage: String? = null,
     val successMessage: String? = null
 )
 
 /**
- * نموذج العرض (ViewModel) لشاشة إدارة المخزون الفعلي والمواقع والأنواع وفحوصات الجودة (Stock Management).
+ * نموذج العرض (ViewModel) لشاشة إدارة المخزون والمرفقات وفحوصات الجودة (Stock Management).
  */
 class StockViewModel(
     private val stockRepository: StockRepository = StockRepository(),
@@ -98,6 +102,10 @@ class StockViewModel(
         _uiState.update { it.copy(isAddTestResultDialogOpen = isOpen, errorMessage = null) }
     }
 
+    fun setAddAttachmentDialogOpen(isOpen: Boolean) {
+        _uiState.update { it.copy(isAddAttachmentDialogOpen = isOpen, errorMessage = null) }
+    }
+
     fun setSelectedItemForSplit(item: StockItem?) {
         _uiState.update { it.copy(selectedItemForSplit = item, errorMessage = null) }
     }
@@ -139,6 +147,74 @@ class StockViewModel(
                 selectedItemForTests = null,
                 testResultsForSelected = emptyList()
             )
+        }
+    }
+
+    fun openAttachments(item: StockItem) {
+        val attachments = stockRepository.getAttachmentsForStockItem(item.id)
+        _uiState.update {
+            it.copy(
+                selectedItemForAttachments = item,
+                attachmentsForSelected = attachments,
+                errorMessage = null
+            )
+        }
+    }
+
+    fun closeAttachments() {
+        _uiState.update {
+            it.copy(
+                selectedItemForAttachments = null,
+                attachmentsForSelected = emptyList()
+            )
+        }
+    }
+
+    fun addStockItemAttachment(
+        stockItemId: Long,
+        attachmentPath: String?,
+        link: String?,
+        comment: String
+    ) {
+        try {
+            val attachmentItem = StockItemAttachment(
+                stockItemId = stockItemId,
+                attachment = attachmentPath,
+                link = link,
+                comment = comment
+            )
+            stockRepository.addStockItemAttachment(attachmentItem)
+            _uiState.update {
+                it.copy(
+                    isAddAttachmentDialogOpen = false,
+                    errorMessage = null,
+                    successMessage = "تم إضافة المرفق المخزني بنجاح"
+                )
+            }
+            if (_uiState.value.selectedItemForAttachments?.id == stockItemId) {
+                openAttachments(_uiState.value.selectedItemForAttachments!!)
+            }
+            loadData()
+        } catch (e: IllegalArgumentException) {
+            _uiState.update { it.copy(errorMessage = e.message) }
+        }
+    }
+
+    fun deleteStockItemAttachment(attachmentId: Long, stockItemId: Long) {
+        try {
+            stockRepository.deleteStockItemAttachment(attachmentId)
+            _uiState.update {
+                it.copy(
+                    errorMessage = null,
+                    successMessage = "تم حذف المرفق بنجاح"
+                )
+            }
+            if (_uiState.value.selectedItemForAttachments?.id == stockItemId) {
+                openAttachments(_uiState.value.selectedItemForAttachments!!)
+            }
+            loadData()
+        } catch (e: IllegalArgumentException) {
+            _uiState.update { it.copy(errorMessage = e.message) }
         }
     }
 

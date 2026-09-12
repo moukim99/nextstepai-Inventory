@@ -31,6 +31,7 @@ import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.StockItem
+import com.nextstepai.inventory.data.StockItemAttachment
 import com.nextstepai.inventory.data.StockItemTestResult
 import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
@@ -44,7 +45,7 @@ import nextstepai_inventory.shared.generated.resources.save
 import nextstepai_inventory.shared.generated.resources.stock_items_count
 
 /**
- * شاشة إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات التتبع وفحوص الجودة (StockScreen).
+ * شاشة إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات التتبع وفحوص الجودة والمرفقات (StockScreen).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -216,7 +217,8 @@ fun StockScreen(
                                 onSplitClick = { viewModel.setSelectedItemForSplit(item) },
                                 onStocktakeClick = { viewModel.performStocktake(item.id) },
                                 onHistoryClick = { viewModel.openTrackingHistory(item) },
-                                onTestsClick = { viewModel.openTestResults(item) }
+                                onTestsClick = { viewModel.openTestResults(item) },
+                                onAttachmentsClick = { viewModel.openAttachments(item) }
                             )
                         }
                     }
@@ -314,6 +316,31 @@ fun StockScreen(
                     value = value,
                     attachment = attach,
                     notes = notes
+                )
+            }
+        )
+    }
+
+    if (uiState.selectedItemForAttachments != null) {
+        StockAttachmentsDialog(
+            item = uiState.selectedItemForAttachments!!,
+            attachments = uiState.attachmentsForSelected,
+            onDismiss = { viewModel.closeAttachments() },
+            onAddAttachmentClick = { viewModel.setAddAttachmentDialogOpen(true) },
+            onDeleteAttachment = { attId -> viewModel.deleteStockItemAttachment(attId, uiState.selectedItemForAttachments!!.id) }
+        )
+    }
+
+    if (uiState.isAddAttachmentDialogOpen && uiState.selectedItemForAttachments != null) {
+        AddStockItemAttachmentDialog(
+            item = uiState.selectedItemForAttachments!!,
+            onDismiss = { viewModel.setAddAttachmentDialogOpen(false) },
+            onConfirm = { attachPath, link, comment ->
+                viewModel.addStockItemAttachment(
+                    stockItemId = uiState.selectedItemForAttachments!!.id,
+                    attachmentPath = attachPath,
+                    link = link,
+                    comment = comment
                 )
             }
         )
@@ -426,7 +453,7 @@ private fun StockTopBar(
 }
 
 /**
- * بطاقة عرض الوحدة المخزنية المادية مع زر فحوص الجودة والسجل التاريخي
+ * بطاقة عرض الوحدة المخزنية المادية مع كامل أزرار الفحوص والجودة والمرفقات
  */
 @Composable
 private fun StockItemCard(
@@ -436,7 +463,8 @@ private fun StockItemCard(
     onSplitClick: () -> Unit,
     onStocktakeClick: () -> Unit,
     onHistoryClick: () -> Unit,
-    onTestsClick: () -> Unit
+    onTestsClick: () -> Unit,
+    onAttachmentsClick: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -633,6 +661,19 @@ private fun StockItemCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedButton(
+                    onClick = onAttachmentsClick,
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.padding(end = 4.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Icon(Icons.Default.AttachFile, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Text("مرفقات", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                    }
+                }
+
+                OutlinedButton(
                     onClick = onTestsClick,
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
@@ -641,7 +682,7 @@ private fun StockItemCard(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                         Icon(Icons.Default.Science, contentDescription = null, modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.secondary)
-                        Text("الجودة (QC)", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                        Text("الجودة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                     }
                 }
 
@@ -684,6 +725,178 @@ private fun StockItemCard(
             }
         }
     }
+}
+
+@Composable
+private fun StockAttachmentsDialog(
+    item: StockItem,
+    attachments: List<StockItemAttachment>,
+    onDismiss: () -> Unit,
+    onAddAttachmentClick: () -> Unit,
+    onDeleteAttachment: (id: Long) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("المستندات والمرفقات (StockItemAttachment)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onAddAttachmentClick,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Text("رفع / إضافة مرفق", fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("إغلاق") }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("الوحدة المخزنية #${item.id} (الرقم التسلسلي: ${item.serial.ifBlank { "غير معرّف" }})", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
+
+                if (attachments.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text("لا توجد مستندات أو شهادات مرفقة لهذه القطعة حتى الآن", style = MaterialTheme.typography.bodyMedium)
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(attachments, key = { "att-${it.id}" }) { att ->
+                            Card(
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp).fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(att.comment, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        val source = att.attachment ?: att.link ?: "-"
+                                        Text("المصدر: $source", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                                        Text("التاريخ: ${att.uploadDate}", fontSize = 10.sp, color = MaterialTheme.colorScheme.outline)
+                                    }
+                                    IconButton(onClick = { onDeleteAttachment(att.id) }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun AddStockItemAttachmentDialog(
+    item: StockItem,
+    onDismiss: () -> Unit,
+    onConfirm: (
+        attachmentPath: String?,
+        link: String?,
+        comment: String
+    ) -> Unit
+) {
+    var attachmentPath by remember { mutableStateOf("") }
+    var link by remember { mutableStateOf("") }
+    var comment by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("إضافة مرفق/مستند جديد", fontWeight = FontWeight.Bold)
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val path = attachmentPath.trim().ifBlank { null }
+                    val url = link.trim().ifBlank { null }
+                    if (path != null || url != null) {
+                        onConfirm(path, url, comment.trim())
+                    }
+                },
+                enabled = attachmentPath.isNotBlank() || link.isNotBlank(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = attachmentPath,
+                    onValueChange = { attachmentPath = it },
+                    label = { Text("مسار الملف المرفوع محلياً (File Path)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Text("أو أدخل رابط ويب خارجي للوثيقة:", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+
+                OutlinedTextField(
+                    value = link,
+                    onValueChange = { link = it },
+                    label = { Text("الرابط الإلكتروني الخارجي (URL Link)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = comment,
+                    onValueChange = { comment = it },
+                    label = { Text("وصف/تعليق الوثيقة (مثل: شهادة منشأ، فاتورة)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        }
+    )
 }
 
 @Composable
