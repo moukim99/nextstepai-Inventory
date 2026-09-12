@@ -62,6 +62,17 @@ class BuildOrderRepository(
                     statusCode = inserted.status.code,
                     batch = inserted.batch,
                     targetDate = inserted.targetDate,
+                    startDate = inserted.startDate,
+                    completionDate = inserted.completionDate,
+                    creationDate = inserted.creationDate,
+                    parentId = inserted.parentId,
+                    salesOrderId = inserted.salesOrderId,
+                    takeFromLocationId = inserted.takeFromLocationId,
+                    destinationLocationId = inserted.destinationLocationId,
+                    issuedBy = inserted.issuedBy,
+                    responsible = inserted.responsible,
+                    notes = inserted.notes,
+                    link = inserted.link,
                     syncStatus = SyncStatus.PENDING
                 )
             )
@@ -74,6 +85,13 @@ class BuildOrderRepository(
      */
     fun startProduction(buildId: Long): Boolean {
         return buildTable.startProduction(buildId)
+    }
+
+    /**
+     * إلغاء أمر التصنيع.
+     */
+    fun cancelBuildOrder(buildId: Long): Boolean {
+        return buildTable.cancelBuildOrder(buildId)
     }
 
     /**

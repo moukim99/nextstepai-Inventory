@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import com.nextstepai.inventory.data.BuildOrder
 import com.nextstepai.inventory.data.BuildStatus
 import com.nextstepai.inventory.data.Part
+import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.repository.BuildOrderRepository
 import com.nextstepai.inventory.repository.PartRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +18,11 @@ import kotlinx.coroutines.flow.update
 data class BuildOrderUiState(
     val builds: List<BuildOrder> = emptyList(),
     val assemblyParts: List<Part> = emptyList(),
+    val stockLocations: List<StockLocation> = listOf(
+        StockLocation(id = 1L, name = "المستودع الرئيسي (Main Warehouse)"),
+        StockLocation(id = 2L, name = "خط التجميع والمكونات (Assembly Line A)"),
+        StockLocation(id = 3L, name = "مخزن المنتجات المكتملة (Finished Goods)")
+    ),
     val searchQuery: String = "",
     val statusFilter: BuildStatus? = null,
     val selectedBuild: BuildOrder? = null,
@@ -85,7 +91,14 @@ class BuildOrderViewModel(
         quantity: Double,
         batch: String,
         targetDate: String,
-        notes: String
+        takeFromLocationId: Long? = null,
+        destinationLocationId: Long? = null,
+        parentId: Long? = null,
+        salesOrderId: Long? = null,
+        issuedBy: String = "",
+        responsible: String = "",
+        notes: String = "",
+        link: String = ""
     ) {
         try {
             val part = _uiState.value.assemblyParts.find { it.id == partId }
@@ -97,7 +110,14 @@ class BuildOrderViewModel(
                 quantity = quantity,
                 batch = batch,
                 targetDate = targetDate,
-                notes = notes
+                takeFromLocationId = takeFromLocationId,
+                destinationLocationId = destinationLocationId,
+                parentId = parentId,
+                salesOrderId = salesOrderId,
+                issuedBy = issuedBy,
+                responsible = responsible,
+                notes = notes,
+                link = link
             )
             repository.addBuildOrder(build)
             _uiState.update {
@@ -119,6 +139,12 @@ class BuildOrderViewModel(
         loadData()
     }
 
+    fun cancelBuildOrder(buildId: Long) {
+        repository.cancelBuildOrder(buildId)
+        _uiState.update { it.copy(successMessage = "تم إلغاء أمر التصنيع بنجاح") }
+        loadData()
+    }
+
     fun completeBuildOutput(buildId: Long, qty: Double) {
         try {
             repository.completeBuildOutput(buildId, qty)
@@ -134,3 +160,4 @@ class BuildOrderViewModel(
         }
     }
 }
+

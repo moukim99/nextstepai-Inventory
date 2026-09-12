@@ -34,7 +34,9 @@ enum class BuildStatus(val code: Int, val label: String) {
  * @property destinationLocationId موقع التخزين لاستقبال المنتجات المكتملة
  * @property parentId معرف أمر الإنتاج الأب في حالات Sub-builds
  * @property salesOrderId ربط بأمر بيع محدد (Build-to-Order)
- * @property notes تعليمات واشتراطات التصنيع والهندسة
+ * @property issuedBy المستخدم الذي قام بإنشاء أو تعميد أمر التصنيع
+ * @property responsible الموظف أو الفريق المسؤول عن تشغيل وتنفيذ الأمر
+ * @property notes تعليمات وااشتراطات التصنيع والهندسة
  * @property link رابط خارجي للوثائق والمخططات
  */
 data class BuildOrder(
@@ -55,6 +57,8 @@ data class BuildOrder(
     val destinationLocationId: Long? = null,
     val parentId: Long? = null,
     val salesOrderId: Long? = null,
+    val issuedBy: String = "",
+    val responsible: String = "",
     val notes: String = "",
     val link: String = ""
 ) {
@@ -95,6 +99,8 @@ class BuildOrderTable {
                 batch = "BATCH-SENSOR-50",
                 startDate = "2025-02-10",
                 targetDate = "2025-02-28",
+                issuedBy = "مدير النظام (Admin)",
+                responsible = "فريق تجميع الحساسات",
                 notes = "الفحص المكتبي للمكونات قبل التجميع"
             )
         )
@@ -157,6 +163,21 @@ class BuildOrderTable {
     }
 
     /**
+     * إلغاء أمر التصنيع (Cancel Build Order).
+     */
+    fun cancelBuildOrder(buildId: Long): Boolean {
+        val index = builds.indexOfFirst { it.id == buildId }
+        if (index != -1) {
+            val current = builds[index]
+            if (current.status != BuildStatus.COMPLETE) {
+                builds[index] = current.copy(status = BuildStatus.CANCELLED)
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
      * البحث والفلترة في قائمة أوامر التصنيع.
      */
     fun searchBuilds(
@@ -172,7 +193,9 @@ class BuildOrderTable {
                     build.reference.lowercase().contains(q) ||
                     build.title.lowercase().contains(q) ||
                     build.partName.lowercase().contains(q) ||
-                    build.batch.lowercase().contains(q)
+                    build.batch.lowercase().contains(q) ||
+                    build.responsible.lowercase().contains(q) ||
+                    build.issuedBy.lowercase().contains(q)
 
             matchesPart && matchesStatus && matchesQuery
         }
@@ -180,3 +203,17 @@ class BuildOrderTable {
 
     fun getAllBuilds(): List<BuildOrder> = builds.toList()
 }
+
+/**
+ * تمثيل بند التخصيص والاستهلاك من المخزون لأمر الإنتاج (Build Item Allocation).
+ */
+data class BuildItem(
+    val id: Long = 0L,
+    val buildId: Long,
+    val bomItemId: Long? = null,
+    val stockItemId: Long,
+    val stockItemName: String = "",
+    val quantity: Double = 1.0,
+    val notes: String = ""
+)
+

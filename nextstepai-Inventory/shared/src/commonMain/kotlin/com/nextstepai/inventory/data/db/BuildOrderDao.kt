@@ -10,6 +10,12 @@ import com.nextstepai.inventory.sync.SyncStatus
 @Dao
 class BuildOrderDao {
 
+    private val selectColumns = """
+        uuid, reference, title, partId, partName, quantity, completedQuantity, statusCode, batch, targetDate,
+        startDate, completionDate, creationDate, parentId, salesOrderId, takeFromLocationId, destinationLocationId,
+        issuedBy, responsible, notes, link, syncStatus, isDeleted, updatedAt
+    """.trimIndent()
+
     suspend fun getBuildOrdersPaged(
         partId: Long? = null,
         statusCode: Int? = null,
@@ -20,7 +26,7 @@ class BuildOrderDao {
         val results = mutableListOf<BuildOrderEntity>()
 
         val sql = """
-            SELECT uuid, reference, title, partId, partName, quantity, completedQuantity, statusCode, batch, targetDate, syncStatus, isDeleted, updatedAt
+            SELECT $selectColumns
             FROM build_orders
             WHERE isDeleted = 0
               AND (? IS NULL OR partId = ?)
@@ -48,7 +54,7 @@ class BuildOrderDao {
         val results = mutableListOf<BuildOrderEntity>()
 
         conn.prepare("""
-            SELECT uuid, reference, title, partId, partName, quantity, completedQuantity, statusCode, batch, targetDate, syncStatus, isDeleted, updatedAt
+            SELECT $selectColumns
             FROM build_orders
             WHERE syncStatus = ?
             ORDER BY updatedAt ASC
@@ -67,8 +73,11 @@ class BuildOrderDao {
     suspend fun insertOrUpdate(entity: BuildOrderEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
-            INSERT OR REPLACE INTO build_orders (uuid, reference, title, partId, partName, quantity, completedQuantity, statusCode, batch, targetDate, syncStatus, isDeleted, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO build_orders (
+                uuid, reference, title, partId, partName, quantity, completedQuantity, statusCode, batch, targetDate,
+                startDate, completionDate, creationDate, parentId, salesOrderId, takeFromLocationId, destinationLocationId,
+                issuedBy, responsible, notes, link, syncStatus, isDeleted, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
             stmt.bindText(2, entity.reference)
@@ -80,9 +89,20 @@ class BuildOrderDao {
             stmt.bindLong(8, entity.statusCode.toLong())
             stmt.bindText(9, entity.batch)
             stmt.bindText(10, entity.targetDate)
-            stmt.bindText(11, entity.syncStatus.name)
-            stmt.bindLong(12, if (entity.isDeleted) 1L else 0L)
-            stmt.bindLong(13, entity.updatedAt)
+            stmt.bindText(11, entity.startDate)
+            stmt.bindText(12, entity.completionDate)
+            stmt.bindText(13, entity.creationDate)
+            if (entity.parentId != null) stmt.bindLong(14, entity.parentId) else stmt.bindNull(14)
+            if (entity.salesOrderId != null) stmt.bindLong(15, entity.salesOrderId) else stmt.bindNull(15)
+            if (entity.takeFromLocationId != null) stmt.bindLong(16, entity.takeFromLocationId) else stmt.bindNull(16)
+            if (entity.destinationLocationId != null) stmt.bindLong(17, entity.destinationLocationId) else stmt.bindNull(17)
+            stmt.bindText(18, entity.issuedBy)
+            stmt.bindText(19, entity.responsible)
+            stmt.bindText(20, entity.notes)
+            stmt.bindText(21, entity.link)
+            stmt.bindText(22, entity.syncStatus.name)
+            stmt.bindLong(23, if (entity.isDeleted) 1L else 0L)
+            stmt.bindLong(24, entity.updatedAt)
             stmt.step()
         }
     }
@@ -111,9 +131,21 @@ class BuildOrderDao {
             statusCode = stmt.getLong(7).toInt(),
             batch = stmt.getText(8),
             targetDate = stmt.getText(9),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(10)) }.getOrDefault(SyncStatus.PENDING),
-            isDeleted = stmt.getLong(11) != 0L,
-            updatedAt = stmt.getLong(12)
+            startDate = stmt.getText(10),
+            completionDate = stmt.getText(11),
+            creationDate = stmt.getText(12),
+            parentId = if (stmt.isNull(13)) null else stmt.getLong(13),
+            salesOrderId = if (stmt.isNull(14)) null else stmt.getLong(14),
+            takeFromLocationId = if (stmt.isNull(15)) null else stmt.getLong(15),
+            destinationLocationId = if (stmt.isNull(16)) null else stmt.getLong(16),
+            issuedBy = stmt.getText(17),
+            responsible = stmt.getText(18),
+            notes = stmt.getText(19),
+            link = stmt.getText(20),
+            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(21)) }.getOrDefault(SyncStatus.PENDING),
+            isDeleted = stmt.getLong(22) != 0L,
+            updatedAt = stmt.getLong(23)
         )
     }
 }
+

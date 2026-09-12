@@ -321,11 +321,50 @@ object SqliteDatabaseManager {
                 statusCode INTEGER NOT NULL DEFAULT 10,
                 batch TEXT NOT NULL DEFAULT '',
                 targetDate TEXT NOT NULL DEFAULT '',
+                startDate TEXT NOT NULL DEFAULT '',
+                completionDate TEXT NOT NULL DEFAULT '',
+                creationDate TEXT NOT NULL DEFAULT '',
+                parentId INTEGER,
+                salesOrderId INTEGER,
+                takeFromLocationId INTEGER,
+                destinationLocationId INTEGER,
+                issuedBy TEXT NOT NULL DEFAULT '',
+                responsible TEXT NOT NULL DEFAULT '',
+                notes TEXT NOT NULL DEFAULT '',
+                link TEXT NOT NULL DEFAULT '',
                 syncStatus TEXT NOT NULL DEFAULT 'PENDING',
                 isDeleted INTEGER NOT NULL DEFAULT 0,
                 updatedAt INTEGER NOT NULL DEFAULT 0
             );
         """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE build_orders ADD COLUMN startDate TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_orders ADD COLUMN completionDate TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_orders ADD COLUMN creationDate TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_orders ADD COLUMN parentId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_orders ADD COLUMN salesOrderId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_orders ADD COLUMN takeFromLocationId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_orders ADD COLUMN destinationLocationId INTEGER").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_orders ADD COLUMN issuedBy TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_orders ADD COLUMN responsible TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_orders ADD COLUMN notes TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_orders ADD COLUMN link TEXT NOT NULL DEFAULT ''").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS build_items (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                buildId INTEGER NOT NULL,
+                bomItemId INTEGER,
+                stockItemId INTEGER NOT NULL,
+                stockItemName TEXT NOT NULL DEFAULT '',
+                quantity REAL NOT NULL DEFAULT 1.0,
+                notes TEXT NOT NULL DEFAULT '',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS part_categories (

@@ -37,6 +37,7 @@ import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.BuildOrder
 import com.nextstepai.inventory.data.BuildStatus
 import com.nextstepai.inventory.data.Part
+import com.nextstepai.inventory.data.StockLocation
 import nextstepai_inventory.shared.generated.resources.Res
 import nextstepai_inventory.shared.generated.resources.add_new_build
 import nextstepai_inventory.shared.generated.resources.builds_count
@@ -247,7 +248,9 @@ fun BuildOrderScreen(
     if (uiState.selectedBuild != null) {
         BuildDetailsDialog(
             build = uiState.selectedBuild!!,
+            stockLocations = uiState.stockLocations,
             onStartProduction = { viewModel.startProduction(it) },
+            onCancelBuild = { viewModel.cancelBuildOrder(it) },
             onCompleteOutput = { buildId, qty -> viewModel.completeBuildOutput(buildId, qty) },
             onDismiss = { viewModel.selectBuild(null) }
         )
@@ -256,9 +259,26 @@ fun BuildOrderScreen(
     if (uiState.isAddBuildDialogOpen) {
         AddBuildSheetDialog(
             assemblyParts = uiState.assemblyParts,
+            stockLocations = uiState.stockLocations,
+            existingBuilds = uiState.builds,
             onDismiss = { viewModel.setAddDialogOpen(false) },
-            onConfirm = { ref, title, partId, qty, batch, date, notes ->
-                viewModel.addBuildOrder(ref, title, partId, qty, batch, date, notes)
+            onConfirm = { ref, title, partId, qty, batch, date, takeFromLoc, destLoc, parentId, salesOrderId, issuedBy, resp, notes, link ->
+                viewModel.addBuildOrder(
+                    reference = ref,
+                    title = title,
+                    partId = partId,
+                    quantity = qty,
+                    batch = batch,
+                    targetDate = date,
+                    takeFromLocationId = takeFromLoc,
+                    destinationLocationId = destLoc,
+                    parentId = parentId,
+                    salesOrderId = salesOrderId,
+                    issuedBy = issuedBy,
+                    responsible = resp,
+                    notes = notes,
+                    link = link
+                )
             }
         )
     }
@@ -667,11 +687,15 @@ private fun BuildOrderRichCard(
 @Composable
 private fun BuildDetailsDialog(
     build: BuildOrder,
+    stockLocations: List<StockLocation> = emptyList(),
     onStartProduction: (buildId: Long) -> Unit,
+    onCancelBuild: (buildId: Long) -> Unit,
     onCompleteOutput: (buildId: Long, qty: Double) -> Unit,
     onDismiss: () -> Unit
 ) {
     var outputQtyText by remember { mutableStateOf("1.0") }
+    val takeFromLocName = stockLocations.find { it.id == build.takeFromLocationId }?.name ?: (if (build.takeFromLocationId != null) "موقع #${build.takeFromLocationId}" else "المستودع الرئيسي (افتراضي)")
+    val destLocName = stockLocations.find { it.id == build.destinationLocationId }?.name ?: (if (build.destinationLocationId != null) "موقع #${build.destinationLocationId}" else "مخزن المنتجات النهائية (افتراضي)")
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -689,12 +713,24 @@ private fun BuildDetailsDialog(
             ) {
                 Text("أمر تصنيع: ${build.reference}", fontWeight = FontWeight.Bold)
 
-                if (build.status == BuildStatus.PENDING) {
-                    Button(
-                        onClick = { onStartProduction(build.id) },
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("بدء التصنيع 🏭", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (build.status == BuildStatus.PENDING) {
+                        Button(
+                            onClick = { onStartProduction(build.id) },
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("بدء التصنيع 🏭", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    if (build.status != BuildStatus.COMPLETE && build.status != BuildStatus.CANCELLED) {
+                        OutlinedButton(
+                            onClick = { onCancelBuild(build.id) },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("إلغاء ❌", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -710,11 +746,22 @@ private fun BuildDetailsDialog(
                 DetailRow("العنوان:", build.title.ifBlank { "-" })
                 DetailRow("المنتج الأب Target Part:", build.partName)
                 DetailRow("الحالة:", build.status.label)
+                DetailRow("مستودع سحب المكونات (Take From):", takeFromLocName)
+                DetailRow("مستودع الاستلام (Destination):", destLocName)
+                if (build.parentId != null) DetailRow("الأمر الأب (Parent Build):", "#${build.parentId}")
+                if (build.salesOrderId != null) DetailRow("طلب المبيعات المرتبط (Sales Order):", "#${build.salesOrderId}")
+                DetailRow("المُصدر (Issued By):", build.issuedBy.ifBlank { "مدير النظام" })
+                DetailRow("المسؤول (Responsible):", build.responsible.ifBlank { "فريق الإنتاج والتجميع" })
                 DetailRow("تشغيلة الدفعة Batch:", build.batch.ifBlank { "-" })
+                DetailRow("تاريخ الإنشاء Creation Date:", build.creationDate.ifBlank { "-" })
+                DetailRow("تاريخ بدء الإنتاج Start Date:", build.startDate.ifBlank { "-" })
                 DetailRow("تاريخ الإنجاز المستهدف Target Date:", build.targetDate.ifBlank { "-" })
+                if (build.completionDate.isNotBlank()) DetailRow("تاريخ الإكمال الفعلي Completion Date:", build.completionDate)
                 DetailRow("الكمية المطلوبة Total Qty:", "${build.quantity}")
                 DetailRow("الكمية المكتملة Completed Qty:", "${build.completedQuantity}")
                 DetailRow("نسبة الإنجاز:", "${build.completionPercentage}%")
+                if (build.link.isNotBlank()) DetailRow("رابط الوثائق الخارجي Link:", build.link)
+                if (build.notes.isNotBlank()) DetailRow("الملاحظات والتعليمات Notes:", build.notes)
 
                 if (build.status == BuildStatus.IN_PRODUCTION && (build.completedQuantity < build.quantity)) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
@@ -770,6 +817,8 @@ private fun DetailRow(label: String, value: String) {
 @Composable
 private fun AddBuildSheetDialog(
     assemblyParts: List<Part>,
+    stockLocations: List<StockLocation> = emptyList(),
+    existingBuilds: List<BuildOrder> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (
         reference: String,
@@ -778,7 +827,14 @@ private fun AddBuildSheetDialog(
         quantity: Double,
         batch: String,
         targetDate: String,
-        notes: String
+        takeFromLocationId: Long?,
+        destinationLocationId: Long?,
+        parentId: Long?,
+        salesOrderId: Long?,
+        issuedBy: String,
+        responsible: String,
+        notes: String,
+        link: String
     ) -> Unit
 ) {
     var reference by remember { mutableStateOf("BO-2025-003") }
@@ -786,7 +842,14 @@ private fun AddBuildSheetDialog(
     var selectedPartId by remember { mutableStateOf<Long?>(assemblyParts.firstOrNull()?.id) }
     var quantityText by remember { mutableStateOf("10.0") }
     var batch by remember { mutableStateOf("BATCH-2025-03") }
-    var targetDate by remember { mutableStateOf("03/25/2025") }
+    var targetDate by remember { mutableStateOf("2025-03-25") }
+    var selectedTakeFromLocationId by remember { mutableStateOf<Long?>(stockLocations.firstOrNull()?.id) }
+    var selectedDestinationLocationId by remember { mutableStateOf<Long?>(stockLocations.lastOrNull()?.id) }
+    var selectedParentId by remember { mutableStateOf<Long?>(null) }
+    var salesOrderIdText by remember { mutableStateOf("") }
+    var issuedBy by remember { mutableStateOf("مدير الإنتاج") }
+    var responsible by remember { mutableStateOf("فريق التشغيل والتجميع") }
+    var link by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -818,7 +881,12 @@ private fun AddBuildSheetDialog(
                     val pId = selectedPartId
                     val qty = quantityText.toDoubleOrNull() ?: 1.0
                     if (reference.isNotBlank() && pId != null && qty > 0.0) {
-                        onConfirm(reference, title, pId, qty, batch, targetDate, notes)
+                        onConfirm(
+                            reference, title, pId, qty, batch, targetDate,
+                            selectedTakeFromLocationId, selectedDestinationLocationId,
+                            selectedParentId, salesOrderIdText.toLongOrNull(),
+                            issuedBy, responsible, notes, link
+                        )
                     }
                 },
                 enabled = reference.isNotBlank() && selectedPartId != null && (quantityText.toDoubleOrNull() ?: 0.0) > 0.0,
@@ -881,7 +949,7 @@ private fun AddBuildSheetDialog(
                 )
 
                 // اختيار المنتج الأب المجمع
-                Text("اختر المنتج الأب المجمع (assembly = true):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text("اختر المنتج الأب المجمع (assembly = true) *:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(assemblyParts, key = { "build-assembly-${it.id}" }) { p ->
                         FilterChip(
@@ -910,7 +978,7 @@ private fun AddBuildSheetDialog(
                     }
 
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("الكمية (quantity)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text("الكمية (quantity) *", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         OutlinedTextField(
                             value = quantityText,
                             onValueChange = { quantityText = it },
@@ -922,8 +990,63 @@ private fun AddBuildSheetDialog(
                     }
                 }
 
+                // مستودع سحب المكونات
+                if (stockLocations.isNotEmpty()) {
+                    Text("مستودع سحب المكونات (take_from):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(stockLocations, key = { "take-loc-${it.id}" }) { loc ->
+                            FilterChip(
+                                selected = selectedTakeFromLocationId == loc.id,
+                                onClick = { selectedTakeFromLocationId = loc.id },
+                                label = { Text(loc.name) },
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+                    }
+
+                    Text("مستودع استلام المنتج النهائي (destination):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(stockLocations, key = { "dest-loc-${it.id}" }) { loc ->
+                            FilterChip(
+                                selected = selectedDestinationLocationId == loc.id,
+                                onClick = { selectedDestinationLocationId = loc.id },
+                                label = { Text(loc.name) },
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+                    }
+                }
+
+                // المستخدم المنشئ والمسؤول
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("المُصدر (issued_by)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        OutlinedTextField(
+                            value = issuedBy,
+                            onValueChange = { issuedBy = it },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("المسؤول (responsible)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        OutlinedTextField(
+                            value = responsible,
+                            onValueChange = { responsible = it },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                }
+
                 // التاريخ المستهدف
-                Text("التاريخ المستهدف لإنهاء الإنتاج", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text("التاريخ المستهدف لإنهاء الإنتاج (target_date)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = targetDate,
                     onValueChange = { targetDate = it },
@@ -938,10 +1061,43 @@ private fun AddBuildSheetDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
+
+                // ربط بأمر بيع رقم
+                Text("رقم أمر البيع المرتبط (sales_order)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                OutlinedTextField(
+                    value = salesOrderIdText,
+                    onValueChange = { salesOrderIdText = it },
+                    placeholder = { Text("مثال: 101") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                // رابط خارجي وملاحظات
+                Text("رابط الوثائق الخارجي (link)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                OutlinedTextField(
+                    value = link,
+                    onValueChange = { link = it },
+                    placeholder = { Text("https://...") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Text("ملاحظات وتشغيلات إضافية (notes)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    placeholder = { Text("أدخل تعليمات التجميع...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
             }
         }
     )
 }
+
 
 /**
  * نقطة نابضة تفاعلية مخصصة Pulsing Dot
