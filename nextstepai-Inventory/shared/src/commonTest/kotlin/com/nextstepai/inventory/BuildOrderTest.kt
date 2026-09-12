@@ -1,6 +1,7 @@
 package com.nextstepai.inventory
 
 import com.nextstepai.inventory.data.BuildOrder
+import com.nextstepai.inventory.data.BuildOrderLineItem
 import com.nextstepai.inventory.data.BuildOrderTable
 import com.nextstepai.inventory.data.BuildStatus
 import com.nextstepai.inventory.data.db.BuildOrderDao
@@ -108,4 +109,106 @@ class BuildOrderTest {
         val syncedCount = repository.syncPendingBuilds()
         assertTrue(syncedCount > 0)
     }
+
+    @Test
+    fun testLineItemStockAllocationAndConsumption() {
+        val repository = BuildOrderRepository()
+
+        val lineItem = repository.addLineItem(
+            BuildOrderLineItem(
+                buildId = 10L,
+                bomItemId = 201L,
+                subPartId = 15L,
+                subPartName = "حساس الحرارة المتقدم DHT22",
+                quantity = 100.0,
+                allocatedQuantity = 0.0,
+                consumedQuantity = 0.0
+            )
+        )
+
+        // تخصيص حجز 50 وحدة من المخزون
+        val allocated = repository.allocateStock(lineItem.id, 50.0)
+        assertTrue(allocated)
+
+        val updatedItems = repository.getLineItemsForBuild(10L)
+        val itemAfterAlloc = updatedItems.find { it.id == lineItem.id }!!
+        assertEquals(50.0, itemAfterAlloc.allocatedQuantity)
+        assertEquals(50f, itemAfterAlloc.allocationPercentage)
+
+        // استهلاك 30 وحدة في عملية الإنتاج
+        val consumed = repository.consumeStock(lineItem.id, 30.0)
+        assertTrue(consumed)
+
+        val itemAfterConsume = repository.getLineItemsForBuild(10L).find { it.id == lineItem.id }!!
+        assertEquals(30.0, itemAfterConsume.consumedQuantity)
+    }
+
+    @Test
+    fun testAutoAllocatePerformanceAndConsistency() {
+        val repository = BuildOrderRepository()
+
+        val build = repository.addBuildOrder(
+            BuildOrder(
+                reference = "BO-AUTO-ALLOC-001",
+                partId = 5L,
+                quantity = 10.0
+            )
+        )
+
+        repository.addLineItem(
+            BuildOrderLineItem(
+                buildId = build.id,
+                bomItemId = 301L,
+                subPartId = 20L,
+                subPartName = "معالج شريحة ESP32-WROOM",
+                quantity = 10.0,
+                allocatedQuantity = 0.0
+            )
+        )
+
+        // تنفيذ التخصيص التلقائي ذو الأداء العالي (Auto-Allocate)
+        val startTime = Clock.System.now().toEpochMilliseconds()
+        val count = repository.autoAllocateBuildOrder(build.id)
+        val duration = Clock.System.now().toEpochMilliseconds() - startTime
+
+        assertTrue(count > 0)
+        assertTrue(duration < 200, "يجب أن ينتهي التخصيص الأوتوماتيكي في أقل من 200 مللي ثانية للحفاظ على استقرار التطبيق")
+
+        val allocatedBuildItems = repository.getBuildItemsForBuild(build.id)
+        assertTrue(allocatedBuildItems.isNotEmpty())
+        assertEquals(10.0, allocatedBuildItems.sumOf { it.quantity })
+    }
+
+    @Test
+    fun testHighVolumeBuildOrderQueryPerformanceAndStability() {
+        val repository = BuildOrderRepository()
+
+        // اختبار استقرار النظام وحجم الذاكرة عند معالجة حجم كبير من البيانات (Bulk Data Stress Test)
+        val startTime = Clock.System.now().toEpochMilliseconds()
+        for (i in 1..100) {
+            repository.addBuildOrder(
+                BuildOrder(
+                    reference = "BO-STRESS-$i",
+                    partId = (1..5).random().toLong(),
+                    quantity = (10..500).random().toDouble(),
+                    status = BuildStatus.IN_PRODUCTION,
+                    issuedBy = "مختبر الأداء الذكي",
+                    responsible = "فريق الجودة واختبارات الاستقرار"
+                )
+            )
+        }
+        val insertDuration = Clock.System.now().toEpochMilliseconds() - startTime
+
+        // التحقق من أن سرعة إدراج البيانات سريعة جداً ولا تتسبب في تجميد الواجهة (Main Thread Blocking)
+        assertTrue(insertDuration < 1000, "إدراج 100 سجل يجب أن يتم في أقل من 1000 مللي ثانية")
+
+        // التصفية والبحث تحت الضغط العالي
+        val searchStartTime = Clock.System.now().toEpochMilliseconds()
+        val results = repository.searchBuilds(query = "STRESS", status = BuildStatus.IN_PRODUCTION)
+        val searchDuration = Clock.System.now().toEpochMilliseconds() - searchStartTime
+
+        assertTrue(results.size >= 100)
+        assertTrue(searchDuration < 50, "استعلام البحث والتصفية المجرى على الفهارس المخصصة يجب أن يتم في أقل من 50 مللي ثانية")
+    }
 }
+
