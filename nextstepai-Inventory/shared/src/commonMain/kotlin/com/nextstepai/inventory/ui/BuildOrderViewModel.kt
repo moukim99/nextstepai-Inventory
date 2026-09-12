@@ -2,6 +2,7 @@ package com.nextstepai.inventory.ui
 
 import androidx.lifecycle.ViewModel
 import com.nextstepai.inventory.data.BuildOrder
+import com.nextstepai.inventory.data.BuildOrderLineItem
 import com.nextstepai.inventory.data.BuildStatus
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.StockLocation
@@ -26,6 +27,7 @@ data class BuildOrderUiState(
     val searchQuery: String = "",
     val statusFilter: BuildStatus? = null,
     val selectedBuild: BuildOrder? = null,
+    val selectedLineItems: List<BuildOrderLineItem> = emptyList(),
     val isAddBuildDialogOpen: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null
@@ -56,12 +58,14 @@ class BuildOrderViewModel(
         val updatedSelected = _uiState.value.selectedBuild?.let { sel ->
             builds.find { it.id == sel.id }
         }
+        val lineItems = updatedSelected?.let { repository.getLineItemsForBuild(it.id) } ?: emptyList()
 
         _uiState.update {
             it.copy(
                 builds = builds,
                 assemblyParts = assemblies,
-                selectedBuild = updatedSelected
+                selectedBuild = updatedSelected,
+                selectedLineItems = lineItems
             )
         }
     }
@@ -77,7 +81,28 @@ class BuildOrderViewModel(
     }
 
     fun selectBuild(build: BuildOrder?) {
-        _uiState.update { it.copy(selectedBuild = build) }
+        val lineItems = build?.let { repository.getLineItemsForBuild(it.id) } ?: emptyList()
+        _uiState.update { it.copy(selectedBuild = build, selectedLineItems = lineItems) }
+    }
+
+    fun allocateLineItemStock(lineItemId: Long, qty: Double) {
+        try {
+            repository.allocateStock(lineItemId, qty)
+            _uiState.update { it.copy(successMessage = "تم حجز وتخصيص $qty وحدة من المخزون بنجاح") }
+            loadData()
+        } catch (e: IllegalArgumentException) {
+            _uiState.update { it.copy(errorMessage = e.message) }
+        }
+    }
+
+    fun consumeLineItemStock(lineItemId: Long, qty: Double) {
+        try {
+            repository.consumeStock(lineItemId, qty)
+            _uiState.update { it.copy(successMessage = "تم تسجيل استهلاك $qty وحدة في عملية التجميع بنجاح") }
+            loadData()
+        } catch (e: IllegalArgumentException) {
+            _uiState.update { it.copy(errorMessage = e.message) }
+        }
     }
 
     fun setAddDialogOpen(isOpen: Boolean) {

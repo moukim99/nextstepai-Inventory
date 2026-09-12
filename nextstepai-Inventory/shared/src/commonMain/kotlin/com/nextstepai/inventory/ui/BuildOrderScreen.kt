@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.BuildOrder
+import com.nextstepai.inventory.data.BuildOrderLineItem
 import com.nextstepai.inventory.data.BuildStatus
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.StockLocation
@@ -249,9 +250,12 @@ fun BuildOrderScreen(
         BuildDetailsDialog(
             build = uiState.selectedBuild!!,
             stockLocations = uiState.stockLocations,
+            lineItems = uiState.selectedLineItems,
             onStartProduction = { viewModel.startProduction(it) },
             onCancelBuild = { viewModel.cancelBuildOrder(it) },
             onCompleteOutput = { buildId, qty -> viewModel.completeBuildOutput(buildId, qty) },
+            onAllocateStock = { id, qty -> viewModel.allocateLineItemStock(id, qty) },
+            onConsumeStock = { id, qty -> viewModel.consumeLineItemStock(id, qty) },
             onDismiss = { viewModel.selectBuild(null) }
         )
     }
@@ -688,9 +692,12 @@ private fun BuildOrderRichCard(
 private fun BuildDetailsDialog(
     build: BuildOrder,
     stockLocations: List<StockLocation> = emptyList(),
+    lineItems: List<BuildOrderLineItem> = emptyList(),
     onStartProduction: (buildId: Long) -> Unit,
     onCancelBuild: (buildId: Long) -> Unit,
     onCompleteOutput: (buildId: Long, qty: Double) -> Unit,
+    onAllocateStock: (lineItemId: Long, qty: Double) -> Unit = { _, _ -> },
+    onConsumeStock: (lineItemId: Long, qty: Double) -> Unit = { _, _ -> },
     onDismiss: () -> Unit
 ) {
     var outputQtyText by remember { mutableStateOf("1.0") }
@@ -762,6 +769,63 @@ private fun BuildDetailsDialog(
                 DetailRow("نسبة الإنجاز:", "${build.completionPercentage}%")
                 if (build.link.isNotBlank()) DetailRow("رابط الوثائق الخارجي Link:", build.link)
                 if (build.notes.isNotBlank()) DetailRow("الملاحظات والتعليمات Notes:", build.notes)
+
+                // قسم بنود ومكونات الـ BOM لأمر التصنيع (BuildOrderLineItems)
+                if (lineItems.isNotEmpty()) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Text("بنود ومكونات التصنيع المطلوبة (Line Items):", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+
+                    lineItems.forEach { line ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(line.subPartName.ifBlank { "مكون BOM #${line.bomItemId}" }, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("مطلوب: ${line.quantity}", fontSize = 11.sp)
+                                    Text("محجوز: ${line.allocatedQuantity}", fontSize = 11.sp, color = if (line.isFullyAllocated) Color(0xFF059669) else MaterialTheme.colorScheme.primary)
+                                    Text("مستهلك: ${line.consumedQuantity}", fontSize = 11.sp)
+                                }
+
+                                LinearProgressIndicator(
+                                    progress = { (line.allocationPercentage / 100f).coerceIn(0f, 1f) },
+                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)),
+                                    color = if (line.isFullyAllocated) Color(0xFF10B981) else MaterialTheme.colorScheme.primary
+                                )
+
+                                if (build.status != BuildStatus.CANCELLED && build.status != BuildStatus.COMPLETE) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(
+                                            onClick = { onAllocateStock(line.id, 10.0) },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("تخصيص +10 📦", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+
+                                        if (line.allocatedQuantity > 0) {
+                                            TextButton(
+                                                onClick = { onConsumeStock(line.id, 10.0) },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                            ) {
+                                                Text("استهلاك +10 🔥", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 if (build.status == BuildStatus.IN_PRODUCTION && (build.completedQuantity < build.quantity)) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))

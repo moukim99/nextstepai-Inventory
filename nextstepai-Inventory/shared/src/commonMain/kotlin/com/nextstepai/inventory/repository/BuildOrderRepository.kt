@@ -1,24 +1,28 @@
 package com.nextstepai.inventory.repository
 
 import com.nextstepai.inventory.data.BuildOrder
+import com.nextstepai.inventory.data.BuildOrderLineItem
+import com.nextstepai.inventory.data.BuildOrderLineItemTable
 import com.nextstepai.inventory.data.BuildOrderTable
 import com.nextstepai.inventory.data.BuildStatus
 import com.nextstepai.inventory.data.db.BuildOrderDao
 import com.nextstepai.inventory.data.db.BuildOrderEntity
+import com.nextstepai.inventory.data.db.BuildOrderLineItemDao
+import com.nextstepai.inventory.data.db.BuildOrderLineItemEntity
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
 import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 
-import com.nextstepai.inventory.data.db.getRoomDatabase
-
 /**
- * المستودع (Repository) المسؤول عن إدارة أوامر التصنيع والإنتاج (Build Orders) والمزامنة الدفعية.
+ * المستودع (Repository) المسؤول عن إدارة أوامر التصنيع والإنتاج (Build Orders) وبنودها والمزامنة الدفعية.
  */
 class BuildOrderRepository(
     private val buildTable: BuildOrderTable = BuildOrderTable(),
+    private val lineItemTable: BuildOrderLineItemTable = BuildOrderLineItemTable(),
     private val buildDao: BuildOrderDao = BuildOrderDao(),
+    private val lineItemDao: BuildOrderLineItemDao = BuildOrderLineItemDao(),
     private val batchSyncService: BatchSyncService = BatchSyncService()
 ) {
     /**
@@ -42,6 +46,52 @@ class BuildOrderRepository(
         status: BuildStatus? = null
     ): List<BuildOrder> {
         return buildTable.searchBuilds(query = query, partId = partId, status = status)
+    }
+
+    /**
+     * جلب بنود ومخرجات أمر التصنيع المحددة.
+     */
+    fun getLineItemsForBuild(buildId: Long): List<BuildOrderLineItem> {
+        return lineItemTable.getLineItemsForBuild(buildId)
+    }
+
+    /**
+     * إضافة بند جديد لأمر التصنيع.
+     */
+    fun addLineItem(item: BuildOrderLineItem): BuildOrderLineItem {
+        val inserted = lineItemTable.insertLineItem(item)
+        runBlocking {
+            lineItemDao.insertOrUpdate(
+                BuildOrderLineItemEntity(
+                    uuid = "lineitem-${inserted.id}",
+                    id = inserted.id,
+                    buildId = inserted.buildId,
+                    bomItemId = inserted.bomItemId,
+                    subPartId = inserted.subPartId,
+                    subPartName = inserted.subPartName,
+                    quantity = inserted.quantity,
+                    allocatedQuantity = inserted.allocatedQuantity,
+                    consumedQuantity = inserted.consumedQuantity,
+                    notes = inserted.notes,
+                    syncStatus = SyncStatus.PENDING
+                )
+            )
+        }
+        return inserted
+    }
+
+    /**
+     * تخصيص مخزون لبند في أمر التصنيع (Allocate Stock).
+     */
+    fun allocateStock(lineItemId: Long, quantity: Double): Boolean {
+        return lineItemTable.allocateStock(lineItemId, quantity)
+    }
+
+    /**
+     * استهلاك مخزون مخصص للبند (Consume Stock).
+     */
+    fun consumeStock(lineItemId: Long, quantity: Double): Boolean {
+        return lineItemTable.consumeStock(lineItemId, quantity)
     }
 
     /**

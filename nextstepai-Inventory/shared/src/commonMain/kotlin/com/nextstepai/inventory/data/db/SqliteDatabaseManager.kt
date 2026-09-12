@@ -365,6 +365,27 @@ object SqliteDatabaseManager {
             );
         """.trimIndent()).use { it.step() }
 
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS build_order_line_items (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                id INTEGER NOT NULL DEFAULT 0,
+                buildId INTEGER NOT NULL,
+                bomItemId INTEGER NOT NULL,
+                subPartId INTEGER NOT NULL DEFAULT 0,
+                subPartName TEXT NOT NULL DEFAULT '',
+                quantity REAL NOT NULL DEFAULT 1.0,
+                allocatedQuantity REAL NOT NULL DEFAULT 0.0,
+                consumedQuantity REAL NOT NULL DEFAULT 0.0,
+                notes TEXT NOT NULL DEFAULT '',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_line_items_buildId ON build_order_line_items(buildId)").use { it.step() } }
+
+
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS part_categories (
