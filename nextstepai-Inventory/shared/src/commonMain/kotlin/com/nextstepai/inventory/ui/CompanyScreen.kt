@@ -4148,19 +4148,39 @@ private fun CompanyFilterBottomSheet(
     var selectedCountries by remember { mutableStateOf(uiState.selectedCountries) }
     var selectedScope by remember { mutableStateOf(uiState.selectedScope) }
 
-    val allPickerCountries = remember { CountryRepository.countries }
+    val primaryDefaultCountries = remember {
+        listOf(
+            CountryRepository.findByCode("SA"),
+            CountryData("CN", "جمهورية الصين الشعبية", "China", "+86", "🇨🇳"),
+            CountryRepository.findByCode("DE"),
+            CountryData("US", "الولايات المتحدة الأمريكية", "United States", "+1", "🇺🇸"),
+            CountryData("TW", "تايوان", "Taiwan", "+886", "🇹🇼"),
+            CountryRepository.findByCode("KR")
+        )
+    }
 
-    val filteredCountries = remember(searchQuery, allPickerCountries) {
+    val filteredCountries = remember(searchQuery) {
         val query = searchQuery.normalizeArabic()
         if (query.isBlank()) {
-            allPickerCountries
+            primaryDefaultCountries
         } else {
-            allPickerCountries.filter { country ->
+            val matches = CountryRepository.countries.filter { country ->
                 country.nameAr.normalizeArabic().contains(query) ||
                 country.nameEn.normalizeArabic().contains(query) ||
                 country.code.lowercase().contains(query) ||
                 country.dialCode.contains(query)
             }
+            if (matches.isEmpty() && searchQuery.trim().length >= 2) {
+                listOf(
+                    CountryData(
+                        code = "CUSTOM",
+                        nameAr = searchQuery.trim(),
+                        nameEn = searchQuery.trim(),
+                        dialCode = "",
+                        flagEmoji = "🌐"
+                    )
+                )
+            } else matches
         }
     }
 

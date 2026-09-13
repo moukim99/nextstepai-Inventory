@@ -66,7 +66,19 @@ object CountryRepository {
         CountryData("IN", "الهند", "India", "+91", "🇮🇳", 10, 10),
         CountryData("IT", "إيطاليا", "Italy", "+39", "🇮🇹", 9, 10),
         CountryData("ES", "إسبانيا", "Spain", "+34", "🇪🇸", 9, 9),
-        CountryData("CA", "كندا", "Canada", "+1", "🇨🇦", 10, 10)
+        CountryData("CA", "كندا", "Canada", "+1", "🇨🇦", 10, 10),
+        CountryData("KR", "كوريا الجنوبية", "South Korea", "+82", "🇰🇷", 9, 10),
+        CountryData("KP", "كوريا الشمالية", "North Korea", "+850", "🇰🇵", 8, 9),
+        CountryData("RU", "روسيا", "Russia", "+7", "🇷🇺", 10, 10),
+        CountryData("SG", "سنغافورة", "Singapore", "+65", "🇸🇬", 8, 8),
+        CountryData("MY", "ماليزيا", "Malaysia", "+60", "🇲🇾", 9, 10),
+        CountryData("VN", "فيتنام", "Vietnam", "+84", "🇻🇳", 9, 10),
+        CountryData("NL", "هولندا", "Netherlands", "+31", "🇳🇱", 9, 9),
+        CountryData("CH", "سويسرا", "Switzerland", "+41", "🇨🇭", 9, 9),
+        CountryData("SE", "السويد", "Sweden", "+46", "🇸🇪", 9, 9),
+        CountryData("BE", "بلجيكا", "Belgium", "+32", "🇧🇪", 9, 9),
+        CountryData("BR", "البرازيل", "Brazil", "+55", "🇧🇷", 10, 11),
+        CountryData("AU", "أستراليا", "Australia", "+61", "🇦🇺", 9, 9)
     )
 
     fun defaultCountry(): CountryData = countries.first()
