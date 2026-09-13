@@ -25,6 +25,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
@@ -942,6 +944,46 @@ private fun BadgeTag(text: String, bgColor: Color, textColor: Color) {
     }
 }
 
+private fun makePhoneCall(uriHandler: UriHandler, phone: String) {
+    val cleanPhone = phone.trim().replace(" ", "")
+    if (cleanPhone.isNotBlank()) {
+        try {
+            uriHandler.openUri("tel:$cleanPhone")
+        } catch (_: Exception) { }
+    }
+}
+
+private fun sendEmail(uriHandler: UriHandler, email: String, companyName: String = "") {
+    val cleanEmail = email.trim()
+    if (cleanEmail.isNotBlank()) {
+        try {
+            uriHandler.openUri("mailto:$cleanEmail")
+        } catch (_: Exception) { }
+    }
+}
+
+private fun openWebsite(uriHandler: UriHandler, url: String) {
+    var cleanUrl = url.trim()
+    if (cleanUrl.isNotBlank()) {
+        if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+            cleanUrl = "https://$cleanUrl"
+        }
+        try {
+            uriHandler.openUri(cleanUrl)
+        } catch (_: Exception) { }
+    }
+}
+
+private fun openMapLocation(uriHandler: UriHandler, address: String) {
+    val cleanAddress = address.trim()
+    if (cleanAddress.isNotBlank()) {
+        val mapUrl = "https://www.google.com/maps/search/?api=1&query=" + cleanAddress.replace(" ", "+")
+        try {
+            uriHandler.openUri(mapUrl)
+        } catch (_: Exception) { }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CompanyDetailsBottomSheet(
@@ -1123,6 +1165,8 @@ private fun CompanyDetailsBottomSheet(
 
             HorizontalDivider(color = Color(0xFFF1F5F9))
 
+            val uriHandler = LocalUriHandler.current
+
             // 2. Quick Actions Grid
             Surface(
                 color = Color(0xFFF8FAFC),
@@ -1136,7 +1180,7 @@ private fun CompanyDetailsBottomSheet(
                 ) {
                     // Call Button
                     Surface(
-                        onClick = { },
+                        onClick = { makePhoneCall(uriHandler, company.phone.ifBlank { "+966112345678" }) },
                         shape = RoundedCornerShape(12.dp),
                         color = Color.White,
                         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
@@ -1163,7 +1207,7 @@ private fun CompanyDetailsBottomSheet(
 
                     // Email Button
                     Surface(
-                        onClick = { },
+                        onClick = { sendEmail(uriHandler, company.email.ifBlank { "supply@advanced-tech.com" }, company.name) },
                         shape = RoundedCornerShape(12.dp),
                         color = Color.White,
                         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
@@ -1190,7 +1234,7 @@ private fun CompanyDetailsBottomSheet(
 
                     // Website Button
                     Surface(
-                        onClick = { },
+                        onClick = { openWebsite(uriHandler, company.website.ifBlank { "advanced-tech.com" }) },
                         shape = RoundedCornerShape(12.dp),
                         color = Color.White,
                         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
@@ -1217,7 +1261,7 @@ private fun CompanyDetailsBottomSheet(
 
                     // Navigation Map Button
                     Surface(
-                        onClick = { },
+                        onClick = { openMapLocation(uriHandler, stats.primaryAddress.ifBlank { company.address.ifBlank { "الرياض، المملكة العربية السعودية" } }) },
                         shape = RoundedCornerShape(12.dp),
                         color = Color.White,
                         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
@@ -1381,7 +1425,7 @@ private fun CompanyDetailsBottomSheet(
                                 ) {
                                     // Phone
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                        modifier = Modifier.fillMaxWidth().clickable { makePhoneCall(uriHandler, company.phone.ifBlank { "+966 11 234 5678" }) }.padding(12.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -1397,7 +1441,7 @@ private fun CompanyDetailsBottomSheet(
 
                                     // Email
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                        modifier = Modifier.fillMaxWidth().clickable { sendEmail(uriHandler, company.email.ifBlank { "supply@advanced-tech.com" }, company.name) }.padding(12.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -1413,7 +1457,7 @@ private fun CompanyDetailsBottomSheet(
 
                                     // Address
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                        modifier = Modifier.fillMaxWidth().clickable { openMapLocation(uriHandler, stats.primaryAddress.ifBlank { company.address.ifBlank { "الرياض - المنطقة الصناعية الثانية" } }) }.padding(12.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -1429,7 +1473,7 @@ private fun CompanyDetailsBottomSheet(
 
                                     // Web Link
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                        modifier = Modifier.fillMaxWidth().clickable { openWebsite(uriHandler, company.website.ifBlank { "advanced-tech.com" }) }.padding(12.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
