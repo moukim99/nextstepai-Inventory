@@ -4314,36 +4314,6 @@ private fun CompanyFilterBottomSheet(
                         }
                     }
                 }
-
-                // Section 2: Geographical Scope
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("نطاق الشحن والتسليم الجغرافي", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF0F172A))
-                    Surface(
-                        color = Color(0xFFF1F5F9),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(3.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            listOf("ALL" to "الكل", "DOMESTIC" to "محلي (Domestic)", "GLOBAL" to "دولي (Global)").forEach { (scopeKey, scopeText) ->
-                                val isSelected = selectedScope == scopeKey
-                                Surface(
-                                    onClick = { selectedScope = scopeKey },
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = if (isSelected) Color.White else Color.Transparent,
-                                    shadowElevation = if (isSelected) 2.dp else 0.dp,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
-                                        Text(scopeText, style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium, fontSize = 11.sp), color = if (isSelected) Color(0xFF4338CA) else Color(0xFF64748B), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
             }
 
             // 3. Sticky Actions Footer Bar
