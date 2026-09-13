@@ -518,8 +518,8 @@ fun CompanyScreen(
         AddCompanyAttachmentBottomSheet(
             errorMessage = uiState.errorMessage,
             onDismiss = { viewModel.setAddCompanyAttachmentDialogOpen(false) },
-            onConfirm = { path, link, comment ->
-                viewModel.addCompanyAttachment(path, link, comment)
+            onConfirm = { docType, path, link, comment, expiry, notify, notifyDays ->
+                viewModel.addCompanyAttachment(docType, path, link, comment, expiry, notify, notifyDays)
             }
         )
     }
@@ -3309,13 +3309,31 @@ private fun AddCompanyBottomSheet(
 private fun AddCompanyAttachmentBottomSheet(
     errorMessage: String?,
     onDismiss: () -> Unit,
-    onConfirm: (attachmentPath: String, link: String, comment: String) -> Unit
+    onConfirm: (documentType: String, attachmentPath: String, link: String, comment: String, expiryDate: String, notifyOnExpiry: Boolean, notificationDaysBefore: Int) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    val documentTypesList = remember {
+        listOf(
+            "سجل تجاري (Commercial Register)",
+            "شهادة تسجيل ضريبي (Tax Certificate)",
+            "عقد توريد / اتفاقية شراكة (Supply Contract / Agreement)",
+            "شهادات جودة ومطابقة (ISO / CE / RoHS)",
+            "تفويض بنكي / بيانات مصرفية (Bank Details / Authorization)",
+            "اتفاقية سرية معلومات (NDA)",
+            "كتالوج تقني / مواصفات عامة (Datasheet / Catalog)",
+            "شهادة منشأ / وكالة تجارية (Agency / Certificate of Origin)",
+            "وثيقة أخرى (Other)"
+        )
+    }
+
+    var selectedDocType by remember { mutableStateOf(documentTypesList[2]) }
+    var isDropdownExpanded by remember { mutableStateOf(false) }
+    var comment by remember { mutableStateOf("") }
     var path by remember { mutableStateOf("Contract.pdf") }
     var link by remember { mutableStateOf("") }
-    var comment by remember { mutableStateOf("عقد توريد / سجل تجاري") }
+    var expiryDate by remember { mutableStateOf("2026-12-31") }
+    var notifyDaysStr by remember { mutableStateOf("30") }
     var isOfficialValid by remember { mutableStateOf(true) }
 
     ModalBottomSheet(
@@ -3408,47 +3426,75 @@ private fun AddCompanyAttachmentBottomSheet(
                     }
                 }
 
-                // Document Title/Description Field
+                // Document Type Selection Dropdown Menu
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(
-                        value = comment,
-                        onValueChange = { comment = it },
-                        label = { Text("وصف ونوع الوثيقة *") },
-                        placeholder = { Text("مثال: سجل تجاري، عقد توريد قطع...") },
-                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
+                    Text("نوع الوثيقة والمستند المرفق *", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
 
-                    // Suggestion Tags
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("اقتراحات:", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
-                        listOf("سجل تجاري", "عقد توريد", "شهادة ضريبية", "شهادة ISO").forEach { tag ->
-                            val isSelected = comment.trim() == tag
-                            Surface(
-                                onClick = { comment = tag },
-                                shape = RoundedCornerShape(6.dp),
-                                color = if (isSelected) Color(0xFFEEF2FF) else Color(0xFFF1F5F9),
-                                border = BorderStroke(1.dp, if (isSelected) Color(0xFFC7D2FE) else Color(0xFFE2E8F0))
-                            ) {
-                                Text(
-                                    text = tag,
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        fontSize = 10.5.sp
-                                    ),
-                                    color = if (isSelected) Color(0xFF4338CA) else Color(0xFF475569),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = selectedDocType,
+                            onValueChange = { },
+                            readOnly = true,
+                            trailingIcon = {
+                                IconButton(onClick = { isDropdownExpanded = !isDropdownExpanded }) {
+                                    Icon(
+                                        imageVector = if (isDropdownExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                                        contentDescription = "فتح القائمة",
+                                        tint = Color(0xFF4F46E5)
+                                    )
+                                }
+                            },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isDropdownExpanded = !isDropdownExpanded },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            )
+                        )
+
+                        DropdownMenu(
+                            expanded = isDropdownExpanded,
+                            onDismissRequest = { isDropdownExpanded = false },
+                            modifier = Modifier
+                                .fillMaxWidth(0.9f)
+                                .background(Color.White)
+                        ) {
+                            documentTypesList.forEach { typeOption ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = typeOption,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontWeight = if (typeOption == selectedDocType) FontWeight.Bold else FontWeight.Normal,
+                                                fontSize = 12.5.sp
+                                            ),
+                                            color = if (typeOption == selectedDocType) Color(0xFF4F46E5) else Color(0xFF0F172A)
+                                        )
+                                    },
+                                    onClick = {
+                                        selectedDocType = typeOption
+                                        isDropdownExpanded = false
+                                    }
                                 )
                             }
                         }
                     }
                 }
+
+                // Optional Notes / Description
+                OutlinedTextField(
+                    value = comment,
+                    onValueChange = { comment = it },
+                    label = { Text("ملاحظات إضافية / وصف خاص للوثيقة (اختياري)") },
+                    placeholder = { Text("أدخل أية تفاصيل أو ملاحظات خاصة بالوثيقة...") },
+                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
 
                 // External Document URL
                 OutlinedTextField(
@@ -3462,7 +3508,35 @@ private fun AddCompanyAttachmentBottomSheet(
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                // Optional Validity & Status Toggle
+                // Expiry Date Field & Notification Days Before Input
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = expiryDate,
+                        onValueChange = { expiryDate = it },
+                        label = { Text("تاريخ انتهاء الصلاحية") },
+                        placeholder = { Text("2026-12-31") },
+                        leadingIcon = { Icon(Icons.Default.Event, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1.2f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = notifyDaysStr,
+                        onValueChange = { if (it.all { char -> char.isDigit() }) notifyDaysStr = it },
+                        label = { Text("الإشعار المسبق") },
+                        placeholder = { Text("30") },
+                        trailingIcon = { Text("يوم", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold), color = Color(0xFF64748B), modifier = Modifier.padding(end = 8.dp)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(0.8f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                // Optional Validity & Status Toggle Card
                 Card(
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
@@ -3491,7 +3565,7 @@ private fun AddCompanyAttachmentBottomSheet(
                             }
                             Column {
                                 Text("وثيقة رسمية سارية المفعول", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF0F172A))
-                                Text("إشعار قبل تاريخ الانتهاء بـ 30 يوماً", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
+                                Text("إشعار قبل تاريخ الانتهاء بـ ${notifyDaysStr.ifBlank { "30" }} يوماً", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
                             }
                         }
 
@@ -3601,9 +3675,12 @@ private fun AddCompanyAttachmentBottomSheet(
                 ) {
                     Button(
                         onClick = {
-                            if (path.isNotBlank() || link.isNotBlank()) onConfirm(path, link, comment)
+                            val notifyDays = notifyDaysStr.toIntOrNull() ?: 30
+                            if (path.isNotBlank() || link.isNotBlank() || selectedDocType.isNotBlank()) {
+                                onConfirm(selectedDocType, path, link, comment, expiryDate, isOfficialValid, notifyDays)
+                            }
                         },
-                        enabled = path.isNotBlank() || link.isNotBlank(),
+                        enabled = path.isNotBlank() || link.isNotBlank() || selectedDocType.isNotBlank(),
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5), contentColor = Color.White),
                         contentPadding = PaddingValues(vertical = 12.dp),

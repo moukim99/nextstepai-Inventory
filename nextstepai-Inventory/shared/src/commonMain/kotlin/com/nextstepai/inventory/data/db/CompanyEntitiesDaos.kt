@@ -77,28 +77,34 @@ class CompanyAttachmentDao {
     suspend fun getForCompany(companyUuid: String): List<CompanyAttachmentEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<CompanyAttachmentEntity>()
-        conn.prepare("""
-            SELECT uuid, companyUuid, attachmentPath, link, comment, uploadDate, userId, syncStatus, isDeleted, updatedAt
-            FROM company_attachments
-            WHERE companyUuid = ? AND isDeleted = 0
-            ORDER BY uploadDate DESC
-        """.trimIndent()).use { stmt ->
-            stmt.bindText(1, companyUuid)
-            while (stmt.step()) {
-                results.add(
-                    CompanyAttachmentEntity(
-                        uuid = stmt.getText(0),
-                        companyUuid = stmt.getText(1),
-                        attachmentPath = stmt.getText(2),
-                        link = stmt.getText(3),
-                        comment = stmt.getText(4),
-                        uploadDate = stmt.getLong(5),
-                        userId = if (stmt.isNull(6)) null else stmt.getLong(6),
-                        syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(7)) }.getOrDefault(SyncStatus.PENDING),
-                        isDeleted = stmt.getLong(8) != 0L,
-                        updatedAt = stmt.getLong(9)
+        runCatching {
+            conn.prepare("""
+                SELECT uuid, companyUuid, documentType, attachmentPath, link, comment, uploadDate, userId, expiryDate, notifyOnExpiry, notificationDaysBefore, syncStatus, isDeleted, updatedAt
+                FROM company_attachments
+                WHERE companyUuid = ? AND isDeleted = 0
+                ORDER BY uploadDate DESC
+            """.trimIndent()).use { stmt ->
+                stmt.bindText(1, companyUuid)
+                while (stmt.step()) {
+                    results.add(
+                        CompanyAttachmentEntity(
+                            uuid = stmt.getText(0),
+                            companyUuid = stmt.getText(1),
+                            documentType = runCatching { stmt.getText(2) }.getOrDefault("سجل تجاري"),
+                            attachmentPath = stmt.getText(3),
+                            link = stmt.getText(4),
+                            comment = stmt.getText(5),
+                            uploadDate = stmt.getLong(6),
+                            userId = if (stmt.isNull(7)) null else stmt.getLong(7),
+                            expiryDate = runCatching { stmt.getText(8) }.getOrDefault(""),
+                            notifyOnExpiry = runCatching { stmt.getLong(9) != 0L }.getOrDefault(true),
+                            notificationDaysBefore = runCatching { stmt.getLong(10).toInt() }.getOrDefault(30),
+                            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(11)) }.getOrDefault(SyncStatus.PENDING),
+                            isDeleted = stmt.getLong(12) != 0L,
+                            updatedAt = stmt.getLong(13)
+                        )
                     )
-                )
+                }
             }
         }
         return results
@@ -106,21 +112,27 @@ class CompanyAttachmentDao {
 
     suspend fun insertOrUpdate(entity: CompanyAttachmentEntity) {
         val conn = SqliteDatabaseManager.getConnection()
-        conn.prepare("""
-            INSERT OR REPLACE INTO company_attachments (uuid, companyUuid, attachmentPath, link, comment, uploadDate, userId, syncStatus, isDeleted, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """.trimIndent()).use { stmt ->
-            stmt.bindText(1, entity.uuid)
-            stmt.bindText(2, entity.companyUuid)
-            stmt.bindText(3, entity.attachmentPath)
-            stmt.bindText(4, entity.link)
-            stmt.bindText(5, entity.comment)
-            stmt.bindLong(6, entity.uploadDate)
-            if (entity.userId != null) stmt.bindLong(7, entity.userId) else stmt.bindNull(7)
-            stmt.bindText(8, entity.syncStatus.name)
-            stmt.bindLong(9, if (entity.isDeleted) 1L else 0L)
-            stmt.bindLong(10, entity.updatedAt)
-            stmt.step()
+        runCatching {
+            conn.prepare("""
+                INSERT OR REPLACE INTO company_attachments (uuid, companyUuid, documentType, attachmentPath, link, comment, uploadDate, userId, expiryDate, notifyOnExpiry, notificationDaysBefore, syncStatus, isDeleted, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """.trimIndent()).use { stmt ->
+                stmt.bindText(1, entity.uuid)
+                stmt.bindText(2, entity.companyUuid)
+                stmt.bindText(3, entity.documentType)
+                stmt.bindText(4, entity.attachmentPath)
+                stmt.bindText(5, entity.link)
+                stmt.bindText(6, entity.comment)
+                stmt.bindLong(7, entity.uploadDate)
+                if (entity.userId != null) stmt.bindLong(8, entity.userId) else stmt.bindNull(8)
+                stmt.bindText(9, entity.expiryDate)
+                stmt.bindLong(10, if (entity.notifyOnExpiry) 1L else 0L)
+                stmt.bindLong(11, entity.notificationDaysBefore.toLong())
+                stmt.bindText(12, entity.syncStatus.name)
+                stmt.bindLong(13, if (entity.isDeleted) 1L else 0L)
+                stmt.bindLong(14, entity.updatedAt)
+                stmt.step()
+            }
         }
     }
 

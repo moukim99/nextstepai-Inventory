@@ -37,11 +37,15 @@ data class Address(
 data class CompanyAttachment(
     val id: Long = 0L,
     val companyId: Long,
+    val documentType: String = "سجل تجاري",
     val attachmentPath: String = "",
     val link: String = "",
     val comment: String = "",
     val uploadDate: Long = Clock.System.now().toEpochMilliseconds(),
-    val userId: Long? = 1L
+    val userId: Long? = 1L,
+    val expiryDate: String = "",
+    val notifyOnExpiry: Boolean = true,
+    val notificationDaysBefore: Int = 30
 )
 
 /**

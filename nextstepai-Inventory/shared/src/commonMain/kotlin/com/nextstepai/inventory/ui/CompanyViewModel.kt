@@ -355,14 +355,26 @@ class CompanyViewModel(
         }
     }
 
-    fun addCompanyAttachment(attachmentPath: String, link: String, comment: String) {
+    fun addCompanyAttachment(
+        documentType: String,
+        attachmentPath: String,
+        link: String,
+        comment: String,
+        expiryDate: String = "",
+        notifyOnExpiry: Boolean = true,
+        notificationDaysBefore: Int = 30
+    ) {
         val currentCompany = _uiState.value.selectedCompany ?: return
         try {
             val att = CompanyAttachment(
                 companyId = currentCompany.id,
+                documentType = documentType.ifBlank { "سجل تجاري" },
                 attachmentPath = attachmentPath,
                 link = link,
-                comment = comment
+                comment = comment.ifBlank { documentType },
+                expiryDate = expiryDate,
+                notifyOnExpiry = notifyOnExpiry,
+                notificationDaysBefore = notificationDaysBefore
             )
             repository.addCompanyAttachment(att)
             _uiState.update { it.copy(isAddCompanyAttachmentDialogOpen = false, errorMessage = null) }

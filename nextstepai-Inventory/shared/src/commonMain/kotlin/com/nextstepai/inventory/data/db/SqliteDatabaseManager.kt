@@ -722,6 +722,55 @@ object SqliteDatabaseManager {
                 updatedAt TEXT NOT NULL DEFAULT ''
             );
         """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                id INTEGER PRIMARY KEY NOT NULL DEFAULT 1,
+                notificationTime TEXT NOT NULL DEFAULT '09:00',
+                soundEnabled INTEGER NOT NULL DEFAULT 1,
+                vibrationEnabled INTEGER NOT NULL DEFAULT 1,
+                docExpiryWarningDays INTEGER NOT NULL DEFAULT 30,
+                lowStockAlertsEnabled INTEGER NOT NULL DEFAULT 1,
+                themeMode TEXT NOT NULL DEFAULT 'SYSTEM',
+                language TEXT NOT NULL DEFAULT 'ar',
+                defaultCurrency TEXT NOT NULL DEFAULT 'USD',
+                scannerBeepEnabled INTEGER NOT NULL DEFAULT 1,
+                biometricLockEnabled INTEGER NOT NULL DEFAULT 0,
+                syncWifiOnly INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
+            INSERT OR IGNORE INTO app_settings (
+                id, notificationTime, soundEnabled, vibrationEnabled, docExpiryWarningDays,
+                lowStockAlertsEnabled, themeMode, language, defaultCurrency, scannerBeepEnabled,
+                biometricLockEnabled, syncWifiOnly
+            ) VALUES (1, '09:00', 1, 1, 30, 1, 'SYSTEM', 'ar', 'USD', 1, 0, 0);
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS notifications_history (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                notificationType TEXT NOT NULL DEFAULT 'COMPANY_DOC_EXPIRY',
+                targetEntityUuid TEXT NOT NULL,
+                companyUuid TEXT,
+                deepLink TEXT,
+                scheduledDate INTEGER NOT NULL,
+                isRead INTEGER NOT NULL DEFAULT 0,
+                isTriggered INTEGER NOT NULL DEFAULT 0,
+                createdAt INTEGER NOT NULL DEFAULT 0,
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_targetEntity ON notifications_history(targetEntityUuid);").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_companyUuid ON notifications_history(companyUuid);").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_triggered_schedule ON notifications_history(isTriggered, scheduledDate);").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications_history(isRead, isDeleted);").use { it.step() } }
     }
 }
 

@@ -159,11 +159,15 @@ class CompanyRepository(
                 CompanyAttachmentEntity(
                     uuid = "company-att-${inserted.id}",
                     companyUuid = "company-${inserted.companyId}",
+                    documentType = inserted.documentType,
                     attachmentPath = inserted.attachmentPath,
                     link = inserted.link,
                     comment = inserted.comment,
                     uploadDate = inserted.uploadDate,
                     userId = inserted.userId,
+                    expiryDate = inserted.expiryDate,
+                    notifyOnExpiry = inserted.notifyOnExpiry,
+                    notificationDaysBefore = inserted.notificationDaysBefore,
                     syncStatus = SyncStatus.PENDING
                 )
             )

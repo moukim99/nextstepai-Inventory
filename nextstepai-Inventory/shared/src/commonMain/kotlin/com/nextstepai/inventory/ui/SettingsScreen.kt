@@ -16,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.nextstepai.inventory.data.AppThemeMode
@@ -24,7 +23,7 @@ import org.jetbrains.compose.resources.stringResource
 import nextstepai_inventory.shared.generated.resources.*
 
 /**
- * شاشة الإعدادات المخصصة للتحكم في الحساب والجلسة والمظهر والنسخ الاحتياطي.
+ * شاشة الإعدادات المخصصة للتحكم في الحساب والجلسة والمظهر والمخزون والأمان والنسخ الاحتياطي.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,9 +32,11 @@ fun SettingsScreen(
     themeMode: AppThemeMode,
     onThemeModeChange: (AppThemeMode) -> Unit,
     onLogoutClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    settingsViewModel: SettingsViewModel = remember { SettingsViewModel() }
 ) {
-    var backupStatusMessage by remember { mutableStateOf<String?>(null) }
+    val settingsUiState by settingsViewModel.uiState.collectAsState()
+    val settings = settingsUiState.settings
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -133,7 +134,7 @@ fun SettingsScreen(
                     }
                 }
 
-                // 2. كارت اختيار المظهر (Theme Preferences)
+                // 2. كارت اختيار المظهر واللغة (Theme & Language)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
@@ -164,7 +165,10 @@ fun SettingsScreen(
                         ) {
                             FilterChip(
                                 selected = themeMode == AppThemeMode.SYSTEM,
-                                onClick = { onThemeModeChange(AppThemeMode.SYSTEM) },
+                                onClick = {
+                                    onThemeModeChange(AppThemeMode.SYSTEM)
+                                    settingsViewModel.updateThemeMode(AppThemeMode.SYSTEM)
+                                },
                                 label = { Text(stringResource(Res.string.theme_system)) },
                                 leadingIcon = {
                                     Icon(
@@ -178,7 +182,10 @@ fun SettingsScreen(
 
                             FilterChip(
                                 selected = themeMode == AppThemeMode.LIGHT,
-                                onClick = { onThemeModeChange(AppThemeMode.LIGHT) },
+                                onClick = {
+                                    onThemeModeChange(AppThemeMode.LIGHT)
+                                    settingsViewModel.updateThemeMode(AppThemeMode.LIGHT)
+                                },
                                 label = { Text(stringResource(Res.string.theme_light)) },
                                 leadingIcon = {
                                     Icon(
@@ -192,7 +199,10 @@ fun SettingsScreen(
 
                             FilterChip(
                                 selected = themeMode == AppThemeMode.DARK,
-                                onClick = { onThemeModeChange(AppThemeMode.DARK) },
+                                onClick = {
+                                    onThemeModeChange(AppThemeMode.DARK)
+                                    settingsViewModel.updateThemeMode(AppThemeMode.DARK)
+                                },
                                 label = { Text(stringResource(Res.string.theme_dark)) },
                                 leadingIcon = {
                                     Icon(
@@ -204,10 +214,276 @@ fun SettingsScreen(
                                 modifier = Modifier.weight(1f)
                             )
                         }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                        Text(
+                            text = "اللغة (Language)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val languages = listOf("ar" to "العربية", "en" to "English", "fr" to "Français")
+                            languages.forEach { (code, name) ->
+                                FilterChip(
+                                    selected = settings.language == code,
+                                    onClick = { settingsViewModel.updateLanguage(code) },
+                                    label = { Text(name) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
                     }
                 }
 
-                // 3. كارت إعدادات العملة والنسخ الاحتياطي (Currency & Backup)
+                // 3. كارت إعدادات المخزون والتوريد (Inventory & Supply Settings)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "إعدادات المخزون والتوريد",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        // العملة الافتراضية
+                        Text(
+                            text = stringResource(Res.string.settings_currency_label),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val currencies = listOf("USD", "DZD", "EUR", "SAR", "AED")
+                            currencies.forEach { curr ->
+                                FilterChip(
+                                    selected = settings.defaultCurrency == curr,
+                                    onClick = { settingsViewModel.updateDefaultCurrency(curr) },
+                                    label = { Text(curr) },
+                                    leadingIcon = {
+                                        if (settings.defaultCurrency == curr) {
+                                            Icon(
+                                                imageVector = Icons.Default.AttachMoney,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                        // تنبيهات انخفاض المخزون
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "تنبيهات انخفاض المخزون",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "إشعار عند وصول القطع للحد الأدنى للمخزون",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = settings.lowStockAlertsEnabled,
+                                onCheckedChange = { settingsViewModel.updateLowStockAlerts(it) }
+                            )
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                        // حد التنبيه المبكر لانتهاء الوثائق والعقود
+                        Text(
+                            text = "تنبيه انتهاء العقود/الوثائق (بالأيام)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val daysList = listOf(7, 15, 30, 60)
+                            daysList.forEach { days ->
+                                FilterChip(
+                                    selected = settings.docExpiryWarningDays == days,
+                                    onClick = { settingsViewModel.updateDocExpiryDays(days) },
+                                    label = { Text("$days يومًا") },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 4. كارت الأجهزة وقارئ الباركود (Hardware & Scanner)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "إعدادات الأجهزة والتنبيهات",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        // نغمة قارئ الباركود
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "صوت قارئ الباركود (Beep)",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "إصدار نغمة تأكيد عند مسح الكود بنجاح",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = settings.scannerBeepEnabled,
+                                onCheckedChange = { settingsViewModel.updateScannerBeep(it) }
+                            )
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                        // الأصوات والاهتزاز
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "الاهتزاز والتغذية الراجعة",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "تشغيل الاهتزاز عند التفاعل والملمس الرقمي",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = settings.vibrationEnabled,
+                                onCheckedChange = { settingsViewModel.updateVibration(it) }
+                            )
+                        }
+                    }
+                }
+
+                // 5. كارت الأمان والمزامنة (Security & Sync)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "الأمان والمزامنة",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        // القفل الحيوي
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "القفل الحيوي (Biometric Lock)",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "قفل فتح التطبيق بفرز البصمة/الوجه",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = settings.biometricLockEnabled,
+                                onCheckedChange = { settingsViewModel.updateBiometricLock(it) }
+                            )
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                        // المزامنة عبر Wi-Fi فقط
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "مزامنة Wi-Fi فقط",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "تقييد مزامنة البيانات عبر شبكة Wi-Fi لتوفير الباقة",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = settings.syncWifiOnly,
+                                onCheckedChange = { settingsViewModel.updateSyncWifiOnly(it) }
+                            )
+                        }
+                    }
+                }
+
+                // 6. كارت النسخ الاحتياطي (Backup)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
@@ -226,34 +502,8 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AttachMoney,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = stringResource(Res.string.settings_currency_label),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
                         Button(
-                            onClick = {
-                                backupStatusMessage = "تم إنشاء النسخة الاحتياطية بنجاح على الجهاز المحلية"
-                            },
+                            onClick = { settingsViewModel.performBackup() },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp)
                         ) {
@@ -266,7 +516,7 @@ fun SettingsScreen(
                             Text(text = stringResource(Res.string.settings_backup_btn))
                         }
 
-                        backupStatusMessage?.let { status ->
+                        settingsUiState.backupMessage?.let { status ->
                             Text(
                                 text = status,
                                 style = MaterialTheme.typography.bodySmall,
@@ -278,7 +528,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // 4. زر تسجيل الخروج (Logout Button)
+                // 7. زر تسجيل الخروج (Logout Button)
                 OutlinedButton(
                     onClick = onLogoutClick,
                     modifier = Modifier.fillMaxWidth(),

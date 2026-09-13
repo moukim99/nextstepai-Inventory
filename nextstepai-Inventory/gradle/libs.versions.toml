@@ -18,6 +18,9 @@ material3 = "1.11.0-alpha07"
 androidx-room = "2.7.1"
 androidx-sqlite = "2.7.1"
 androidx-datastore = "1.1.3"
+androidx-work = "2.11.2"
+androidx-biometric = "1.4.0-alpha02"
+accompanist-permissions = "0.37.2"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -47,6 +50,9 @@ jetbrains-adaptive = { module = "org.jetbrains.compose.material3.adaptive:adapti
 jetbrains-adaptive-layout = { module = "org.jetbrains.compose.material3.adaptive:adaptive-layout", version = "1.2.0" }
 jetbrains-adaptive-navigation = { module = "org.jetbrains.compose.material3.adaptive:adaptive-navigation", version = "1.2.0" }
 jetbrains-adaptive-navigation-suite = { module = "org.jetbrains.compose.material3:material3-adaptive-navigation-suite", version = "1.9.0" }
+androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "androidx-work" }
+androidx-biometric-ktx = { module = "androidx.biometric:biometric-ktx", version.ref = "androidx-biometric" }
+accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanist-permissions" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
