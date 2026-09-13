@@ -7,7 +7,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.nextstepai.inventory.ui.theme.AppIcons
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import nextstepai_inventory.shared.generated.resources.*
 
@@ -55,7 +54,7 @@ fun ManagementScreen(
                     },
                     icon = {
                         Icon(
-                            painter = painterResource(AppIcons.Companies),
+                            imageVector = AppIcons.Companies,
                             contentDescription = stringResource(Res.string.tab_companies),
                             modifier = Modifier.size(20.dp)
                         )
@@ -75,7 +74,7 @@ fun ManagementScreen(
                     },
                     icon = {
                         Icon(
-                            painter = painterResource(AppIcons.Orders),
+                            imageVector = AppIcons.Orders,
                             contentDescription = stringResource(Res.string.tab_orders),
                             modifier = Modifier.size(20.dp)
                         )

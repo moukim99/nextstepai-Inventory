@@ -1,42 +1,46 @@
 package com.nextstepai.inventory.ui.theme
 
-import nextstepai_inventory.shared.generated.resources.Res
-import nextstepai_inventory.shared.generated.resources.ic_add
-import nextstepai_inventory.shared.generated.resources.ic_back
-import nextstepai_inventory.shared.generated.resources.ic_bom
-import nextstepai_inventory.shared.generated.resources.ic_builds
-import nextstepai_inventory.shared.generated.resources.ic_companies
-import nextstepai_inventory.shared.generated.resources.ic_dashboard
-import nextstepai_inventory.shared.generated.resources.ic_filter
-import nextstepai_inventory.shared.generated.resources.ic_logout
-import nextstepai_inventory.shared.generated.resources.ic_orders
-import nextstepai_inventory.shared.generated.resources.ic_parts
-import nextstepai_inventory.shared.generated.resources.ic_search
-import nextstepai_inventory.shared.generated.resources.ic_star
-import nextstepai_inventory.shared.generated.resources.ic_star_filled
-import nextstepai_inventory.shared.generated.resources.ic_stock
-import nextstepai_inventory.shared.generated.resources.ic_theme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BusinessCenter
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.CorporateFare
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PrecisionManufacturing
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarOutline
+import androidx.compose.material.icons.filled.Warehouse
+import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
- * كائن مركزي لإدارة كافة أيقونات المتجهات (Vector Drawables) في التطبيق.
+ * كائن مركزي لإدارة كافة أيقونات التطبيق باستخدام حزمة أيقونات Material الرسمية الموسعة (Material Icons Extended).
  */
 object AppIcons {
-    val Warehouse = Res.drawable.ic_stock
-    val Management = Res.drawable.ic_companies
-    val Settings = Res.drawable.ic_theme
-    val Dashboard = Res.drawable.ic_dashboard
-    val Parts = Res.drawable.ic_parts
-    val Bom = Res.drawable.ic_bom
-    val Stock = Res.drawable.ic_stock
-    val Companies = Res.drawable.ic_companies
-    val Orders = Res.drawable.ic_orders
-    val Builds = Res.drawable.ic_builds
-    val Search = Res.drawable.ic_search
-    val Add = Res.drawable.ic_add
-    val Star = Res.drawable.ic_star
-    val StarFilled = Res.drawable.ic_star_filled
-    val Filter = Res.drawable.ic_filter
-    val Back = Res.drawable.ic_back
-    val Logout = Res.drawable.ic_logout
-    val Theme = Res.drawable.ic_theme
+    val Warehouse: ImageVector = Icons.Default.Warehouse
+    val Management: ImageVector = Icons.Default.BusinessCenter
+    val Settings: ImageVector = Icons.Default.Settings
+    val Dashboard: ImageVector = Icons.Default.Dashboard
+    val Parts: ImageVector = Icons.Default.Category
+    val Bom: ImageVector = Icons.Default.AccountTree
+    val Stock: ImageVector = Icons.Default.Inventory2
+    val Companies: ImageVector = Icons.Default.CorporateFare
+    val Orders: ImageVector = Icons.Default.ShoppingCart
+    val Builds: ImageVector = Icons.Default.PrecisionManufacturing
+    val Search: ImageVector = Icons.Default.Search
+    val Add: ImageVector = Icons.Default.Add
+    val Star: ImageVector = Icons.Default.StarOutline
+    val StarFilled: ImageVector = Icons.Default.Star
+    val Filter: ImageVector = Icons.Default.FilterList
+    val Back: ImageVector = Icons.AutoMirrored.Filled.ArrowBack
+    val Logout: ImageVector = Icons.AutoMirrored.Filled.ExitToApp
+    val Theme: ImageVector = Icons.Default.Palette
 }

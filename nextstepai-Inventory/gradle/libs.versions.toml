@@ -21,6 +21,8 @@ androidx-datastore = "1.1.3"
 androidx-work = "2.11.2"
 androidx-biometric = "1.4.0-alpha02"
 accompanist-permissions = "0.37.2"
+material-icons-extended = "1.7.8"
+camerak = "1.2"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -37,6 +39,7 @@ androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "composeMultiplatform" }
 compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "composeMultiplatform" }
 compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "composeMultiplatform" }
+compose-materialIconsExtended = { module = "androidx.compose.material:material-icons-extended", version.ref = "material-icons-extended" }
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMultiplatform" }
 compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "composeMultiplatform" }
 compose-uiToolingPreview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
@@ -53,6 +56,7 @@ jetbrains-adaptive-navigation-suite = { module = "org.jetbrains.compose.material
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "androidx-work" }
 androidx-biometric-ktx = { module = "androidx.biometric:biometric-ktx", version.ref = "androidx-biometric" }
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanist-permissions" }
+camerak = { module = "io.github.kashif-mehmood-km:camerak", version.ref = "camerak" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

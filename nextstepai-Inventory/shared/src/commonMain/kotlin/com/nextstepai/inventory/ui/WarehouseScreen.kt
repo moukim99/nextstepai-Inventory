@@ -20,7 +20,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.nextstepai.inventory.ui.theme.AppIcons
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import nextstepai_inventory.shared.generated.resources.*
 
@@ -192,7 +191,7 @@ fun WarehouseScreen(
                                 label = { Text(stringResource(Res.string.subtab_parts)) },
                                 leadingIcon = {
                                     Icon(
-                                        painter = painterResource(AppIcons.Parts),
+                                        imageVector = AppIcons.Parts,
                                         contentDescription = null,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -205,7 +204,7 @@ fun WarehouseScreen(
                                 label = { Text(stringResource(Res.string.subtab_stock)) },
                                 leadingIcon = {
                                     Icon(
-                                        painter = painterResource(AppIcons.Stock),
+                                        imageVector = AppIcons.Stock,
                                         contentDescription = null,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -220,7 +219,7 @@ fun WarehouseScreen(
                                 label = { Text(stringResource(Res.string.subtab_builds)) },
                                 leadingIcon = {
                                     Icon(
-                                        painter = painterResource(AppIcons.Builds),
+                                        imageVector = AppIcons.Builds,
                                         contentDescription = null,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -233,7 +232,7 @@ fun WarehouseScreen(
                                 label = { Text(stringResource(Res.string.subtab_bom)) },
                                 leadingIcon = {
                                     Icon(
-                                        painter = painterResource(AppIcons.Bom),
+                                        imageVector = AppIcons.Bom,
                                         contentDescription = null,
                                         modifier = Modifier.size(16.dp)
                                     )

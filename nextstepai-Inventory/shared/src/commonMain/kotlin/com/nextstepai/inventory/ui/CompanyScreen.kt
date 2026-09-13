@@ -33,14 +33,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import kotlin.time.Clock
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.*
 import com.nextstepai.inventory.ui.components.*
+import com.nextstepai.inventory.util.DateTimeUtils
 import kotlinx.coroutines.delay
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import nextstepai_inventory.shared.generated.resources.Res
 import nextstepai_inventory.shared.generated.resources.add_new_company
 import nextstepai_inventory.shared.generated.resources.cancel
@@ -3378,8 +3384,61 @@ private fun AddCompanyAttachmentBottomSheet(
     var path by remember { mutableStateOf("Contract.pdf") }
     var link by remember { mutableStateOf("") }
     var expiryDate by remember { mutableStateOf("2026-12-31") }
+    var showDatePickerDialog by remember { mutableStateOf(false) }
     var notifyDaysStr by remember { mutableStateOf("30") }
     var isOfficialValid by remember { mutableStateOf(true) }
+    var showCameraKDialog by remember { mutableStateOf(false) }
+
+    if (showCameraKDialog) {
+        Dialog(onDismissRequest = { showCameraKDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(450.dp)
+            ) {
+                AppCameraKView(
+                    onImageCaptured = {
+                        path = "Photo_Doc_${Clock.System.now().toEpochMilliseconds()}.jpg"
+                        showCameraKDialog = false
+                    },
+                    onClose = { showCameraKDialog = false }
+                )
+            }
+        }
+    }
+
+    if (showDatePickerDialog) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = Clock.System.now().toEpochMilliseconds()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePickerDialog = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val instant = Instant.fromEpochMilliseconds(millis)
+                        val dateTime = instant.toLocalDateTime(TimeZone.UTC)
+                        val year = dateTime.year
+                        val month = dateTime.monthNumber.toString().padStart(2, '0')
+                        val day = dateTime.dayOfMonth.toString().padStart(2, '0')
+                        expiryDate = "$year-$month-$day"
+                    }
+                    showDatePickerDialog = false
+                }) {
+                    Text("تأكيد الاختيار", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePickerDialog = false }) {
+                    Text("إلغاء")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -3558,16 +3617,39 @@ private fun AddCompanyAttachmentBottomSheet(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    OutlinedTextField(
-                        value = expiryDate,
-                        onValueChange = { expiryDate = it },
-                        label = { Text("تاريخ انتهاء الصلاحية") },
-                        placeholder = { Text("2026-12-31") },
-                        leadingIcon = { Icon(Icons.Default.Event, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1.2f),
-                        shape = RoundedCornerShape(12.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .clickable { showDatePickerDialog = true }
+                    ) {
+                        OutlinedTextField(
+                            value = expiryDate,
+                            onValueChange = { },
+                            readOnly = true,
+                            enabled = false,
+                            label = { Text("تاريخ انتهاء الصلاحية") },
+                            placeholder = { Text("اختر التاريخ") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Event,
+                                    contentDescription = "اختيار التاريخ",
+                                    tint = Color(0xFF4F46E5),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                disabledTextColor = Color(0xFF0F172A),
+                                disabledBorderColor = Color(0xFFCBD5E1),
+                                disabledLabelColor = Color(0xFF334155),
+                                disabledPlaceholderColor = Color(0xFF94A3B8),
+                                disabledLeadingIconColor = Color(0xFF4F46E5),
+                                disabledContainerColor = Color.White
+                            )
+                        )
+                    }
 
                     OutlinedTextField(
                         value = notifyDaysStr,
@@ -3621,85 +3703,71 @@ private fun AddCompanyAttachmentBottomSheet(
                     }
                 }
 
-                // File Upload Section (Moved to Bottom)
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("الملفات المرفقة حالياً", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
-
-                    // Selected File Card
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFEEF2FF).copy(alpha = 0.5f)),
-                        border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
-                        modifier = Modifier.fillMaxWidth()
+                // Upload File & Camera Buttons Sharing the Same Row
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        // Upload Local File Button
+                        Surface(
+                            onClick = { if (path.isBlank()) path = "Contract_${DateTimeUtils.getCurrentDate()}.pdf" },
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = BorderStroke(1.5.dp, Color(0xFFCBD5E1)),
+                            modifier = Modifier.weight(1f)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(Color(0xFFFFF1F2))
-                                        .border(1.dp, Color(0xFFFECDD3), RoundedCornerShape(10.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFFE11D48), modifier = Modifier.size(20.dp))
-                                }
-
-                                Column {
-                                    Text(
-                                        text = path.ifBlank { "Contract.pdf" },
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
-                                        color = Color(0xFF0F172A)
-                                    )
-                                    Text(
-                                        text = "مسار الملف المرفوع • 2.4 MB",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = Color(0xFF64748B)
-                                    )
-                                }
+                                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("رفع من الذاكرة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF334155))
                             }
+                        }
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                IconButton(onClick = { }, modifier = Modifier.size(30.dp)) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "تغيير الملف", tint = Color(0xFF4F46E5), modifier = Modifier.size(16.dp))
-                                }
-                                IconButton(onClick = { path = "" }, modifier = Modifier.size(30.dp)) {
-                                    Icon(Icons.Default.Delete, contentDescription = "حذف الملف", tint = Color(0xFFE11D48), modifier = Modifier.size(16.dp))
-                                }
+                        // Capture via Camera Button (CameraK)
+                        Surface(
+                            onClick = { showCameraKDialog = true },
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFEEF2FF),
+                            border = BorderStroke(1.5.dp, Color(0xFFC7D2FE)),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp)
+                            ) {
+                                Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = Color(0xFF4338CA), modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("التقاط بالكاميرا", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF4338CA))
                             }
                         }
                     }
 
-                    // Secondary Alternative Dropzone
-                    Surface(
-                        onClick = {
-                            if (path.isBlank()) path = "Contract.pdf"
-                        },
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFFF8FAFC),
-                        border = BorderStroke(1.5.dp, Color(0xFFCBD5E1)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-                            modifier = Modifier.padding(vertical = 12.dp)
+                    if (path.isNotBlank()) {
+                        Surface(
+                            color = Color(0xFFECFDF5),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(18.dp))
-                            Text(
-                                text = "أو انقر لاختيار ملف بديل من الذاكرة المحلية",
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium, fontSize = 11.5.sp),
-                                color = Color(0xFF475569)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(14.dp))
+                                    Text("الملف المحدد: $path", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF047857))
+                                }
+                                IconButton(onClick = { path = "" }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.Close, contentDescription = "حذف", tint = Color(0xFF047857), modifier = Modifier.size(14.dp))
+                                }
+                            }
                         }
                     }
                 }

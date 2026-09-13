@@ -42,7 +42,7 @@ kotlin {
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)
-            implementation(compose.materialIconsExtended)
+            implementation(libs.compose.materialIconsExtended)
             implementation(compose.ui)
             implementation(compose.components.resources)
             implementation(compose.components.uiToolingPreview)
@@ -56,6 +56,7 @@ kotlin {
             implementation(libs.jetbrains.adaptive.layout)
             implementation(libs.jetbrains.adaptive.navigation)
             implementation(libs.jetbrains.adaptive.navigation.suite)
+            implementation(libs.camerak)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

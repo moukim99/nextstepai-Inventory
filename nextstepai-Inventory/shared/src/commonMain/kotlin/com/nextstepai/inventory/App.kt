@@ -15,7 +15,6 @@ import com.nextstepai.inventory.data.AppThemeMode
 import com.nextstepai.inventory.ui.*
 import com.nextstepai.inventory.ui.theme.AppIcons
 import com.nextstepai.inventory.ui.theme.AppTheme
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import nextstepai_inventory.shared.generated.resources.Res
@@ -60,7 +59,7 @@ fun App() {
                                 onClick = { currentScreen = Screen.WAREHOUSE },
                                 icon = {
                                     Icon(
-                                        painter = painterResource(AppIcons.Warehouse),
+                                        imageVector = AppIcons.Warehouse,
                                         contentDescription = stringResource(Res.string.nav_warehouse),
                                         tint = if (currentScreen == Screen.WAREHOUSE) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -72,7 +71,7 @@ fun App() {
                                 onClick = { currentScreen = Screen.MANAGEMENT },
                                 icon = {
                                     Icon(
-                                        painter = painterResource(AppIcons.Management),
+                                        imageVector = AppIcons.Management,
                                         contentDescription = stringResource(Res.string.nav_management),
                                         tint = if (currentScreen == Screen.MANAGEMENT) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -84,7 +83,7 @@ fun App() {
                                 onClick = { currentScreen = Screen.SETTINGS },
                                 icon = {
                                     Icon(
-                                        painter = painterResource(AppIcons.Settings),
+                                        imageVector = AppIcons.Settings,
                                         contentDescription = stringResource(Res.string.nav_settings),
                                         tint = if (currentScreen == Screen.SETTINGS) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
