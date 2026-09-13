@@ -1557,27 +1557,72 @@ private fun CompanyDetailsBottomSheet(
                                 border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Box(modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(Color.White).border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                                            Icon(Icons.Default.AttachFile, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(16.dp))
+                                Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Box(modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(Color.White).border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Default.AttachFile, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(16.dp))
+                                            }
+                                            Column {
+                                                Text("مرفقات ووثائق الشركة", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
+                                                Text("السجل التجاري، العقود (${uiState.companyAttachments.size})", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
+                                            }
                                         }
-                                        Column {
-                                            Text("مرفقات ووثائق الشركة", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
-                                            Text("السجل التجاري، العقود (${uiState.companyAttachments.size})", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
+
+                                        OutlinedButton(
+                                            onClick = { viewModel.setAddCompanyAttachmentDialogOpen(true) },
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("+ إرفاق وثيقة", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
 
-                                    OutlinedButton(
-                                        onClick = { viewModel.setAddCompanyAttachmentDialogOpen(true) },
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Text("+ إرفاق وثيقة", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    if (uiState.companyAttachments.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        HorizontalDivider(color = Color(0xFFE2E8F0))
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        uiState.companyAttachments.forEach { att ->
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 4.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFFE11D48), modifier = Modifier.size(16.dp))
+                                                    Column {
+                                                        Text(
+                                                            text = att.documentType.ifBlank { att.comment.ifBlank { "وثيقة رسمية" } },
+                                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 11.5.sp),
+                                                            color = Color(0xFF0F172A)
+                                                        )
+                                                        Text(
+                                                            text = att.attachmentPath.ifBlank { att.link.ifBlank { "مرفق معتمد" } },
+                                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                                            color = Color(0xFF64748B)
+                                                        )
+                                                    }
+                                                }
+
+                                                IconButton(
+                                                    onClick = { viewModel.deleteCompanyAttachment(att.id) },
+                                                    modifier = Modifier.size(28.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Delete, contentDescription = "حذف", tint = Color(0xFFE11D48), modifier = Modifier.size(16.dp))
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }

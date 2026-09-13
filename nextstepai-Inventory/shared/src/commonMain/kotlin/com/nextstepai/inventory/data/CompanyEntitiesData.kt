@@ -160,8 +160,19 @@ class ContactTable {
  * جدول محاكاة مرفقات الشركات العامة في الذاكرة (CompanyAttachment Table).
  */
 class CompanyAttachmentTable {
-    private val attachments = mutableListOf<CompanyAttachment>()
-    private var nextId = 1L
+    private val attachments = mutableListOf(
+        CompanyAttachment(
+            id = 1L,
+            companyId = 1L,
+            documentType = "سجل تجاري (Commercial Register)",
+            attachmentPath = "CR-AdvancedTech-2026.pdf",
+            comment = "السجل التجاري الرئيسي المعتمد",
+            expiryDate = "2026-12-31",
+            notifyOnExpiry = true,
+            notificationDaysBefore = 30
+        )
+    )
+    private var nextId = 2L
 
     fun insertAttachment(attachment: CompanyAttachment): CompanyAttachment {
         require(attachment.companyId != 0L) { "معرف الشركة إلزامي لربط المرفق" }
