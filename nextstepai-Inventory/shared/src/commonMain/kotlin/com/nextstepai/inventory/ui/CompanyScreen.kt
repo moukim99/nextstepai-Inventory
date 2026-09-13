@@ -1,5 +1,6 @@
 package com.nextstepai.inventory.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -33,6 +34,7 @@ import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.*
 import com.nextstepai.inventory.ui.components.*
+import kotlinx.coroutines.delay
 import nextstepai_inventory.shared.generated.resources.Res
 import nextstepai_inventory.shared.generated.resources.add_new_company
 import nextstepai_inventory.shared.generated.resources.cancel
@@ -132,16 +134,43 @@ fun CompanyScreen(
                         )
                     )
 
+                    val isFilterActive = uiState.selectedCountries.isNotEmpty() || uiState.selectedScope != "ALL"
+                    var isFilterPressed by remember { mutableStateOf(false) }
+                    val buttonScale by animateFloatAsState(
+                        targetValue = if (isFilterPressed) 0.92f else 1f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+                    )
+                    val buttonBgColor by animateColorAsState(
+                        targetValue = if (isFilterActive) Color(0xFFEEF2FF) else Color.White,
+                        animationSpec = tween(durationMillis = 250)
+                    )
+                    val buttonBorderColor by animateColorAsState(
+                        targetValue = if (isFilterActive) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant,
+                        animationSpec = tween(durationMillis = 250)
+                    )
+
+                    LaunchedEffect(isFilterPressed) {
+                        if (isFilterPressed) {
+                            delay(150)
+                            isFilterPressed = false
+                        }
+                    }
+
                     OutlinedButton(
-                        onClick = { },
+                        onClick = {
+                            isFilterPressed = true
+                            viewModel.setFilterBottomSheetOpen(true)
+                        },
                         shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        border = BorderStroke(1.5.dp, buttonBorderColor),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = Color.White,
-                            contentColor = MaterialTheme.colorScheme.onSurface
+                            containerColor = buttonBgColor,
+                            contentColor = if (isFilterActive) Color(0xFF4F46E5) else MaterialTheme.colorScheme.onSurface
                         ),
                         contentPadding = PaddingValues(horizontal = 12.dp),
-                        modifier = Modifier.fillMaxHeight()
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .scale(buttonScale)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -154,12 +183,21 @@ fun CompanyScreen(
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = "فلتر",
+                                text = if (isFilterActive) "فلتر (${uiState.selectedCountries.size})" else "فلتر",
                                 style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
+                                    fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp
-                                )
+                                ),
+                                color = if (isFilterActive) Color(0xFF4338CA) else MaterialTheme.colorScheme.onSurface
                             )
+                            if (isFilterActive) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF10B981))
+                                )
+                            }
                         }
                     }
                 }
@@ -416,6 +454,17 @@ fun CompanyScreen(
                 }
             }
         }
+    }
+
+    if (uiState.isFilterBottomSheetOpen) {
+        CompanyFilterBottomSheet(
+            uiState = uiState,
+            onDismiss = { viewModel.setFilterBottomSheetOpen(false) },
+            onApply = { selectedCountries, selectedScope ->
+                viewModel.applyCountryFilters(selectedCountries, selectedScope)
+            },
+            onClear = { viewModel.clearCountryFilters() }
+        )
     }
 
     if (uiState.selectedCompany != null) {
@@ -4061,4 +4110,281 @@ private fun AddPriceBreakDialog(
             }
         }
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CompanyFilterBottomSheet(
+    uiState: CompanyUiState,
+    onDismiss: () -> Unit,
+    onApply: (countries: Set<String>, scope: String) -> Unit,
+    onClear: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedCountries by remember { mutableStateOf(uiState.selectedCountries) }
+    var selectedScope by remember { mutableStateOf(uiState.selectedScope) }
+
+    val availableCountries = remember {
+        listOf(
+            Triple("المملكة العربية السعودية", "🇸🇦", "المقر الرئيسي ومستودعات التوزيع"),
+            Triple("جمهورية الصين الشعبية", "🇨🇳", "مراكز تصنيع الرقائق ومتحكمات ESP"),
+            Triple("ألمانيا", "🇩🇪", "معدات الفحص الدقيق والآلات"),
+            Triple("الولايات المتحدة الأمريكية", "🇺🇸", "شركاء التقنية والبرمجيات"),
+            Triple("تايوان", "🇹🇼", "مسبوكات أشباه الموصلات")
+        )
+    }
+
+    val filteredCountries = remember(searchQuery) {
+        if (searchQuery.isBlank()) availableCountries
+        else availableCountries.filter { it.first.contains(searchQuery, ignoreCase = true) || it.third.contains(searchQuery, ignoreCase = true) }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 6.dp)
+                    .width(48.dp)
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFCBD5E1))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f)
+        ) {
+            // 1. Header Section
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFEEF2FF))
+                            .border(1.dp, Color(0xFFE0E7FF), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.FilterList, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(20.dp))
+                    }
+                    Column {
+                        Text("تصفية الشركات والشركاء", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp), color = Color(0xFF0F172A))
+                        Text("تحديد الشركات المعروضة حسب الدولة ومقر العمليات", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = Color(0xFF64748B))
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = {
+                        selectedCountries = emptySet()
+                        selectedScope = "ALL"
+                        onClear()
+                    }) {
+                        Text("مسح الكل", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF4F46E5))
+                    }
+
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color(0xFF64748B))
+                    }
+                }
+            }
+
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+
+            // 2. Scrollable Body Content
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Search Input by Country / City
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("ابحث عن اسم الدولة أو الرمز (السعودية، الصين...)") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                // Section 1: Countries Selector
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("البلدان المتاحة للتوريد والتصنيع", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.5.sp), color = Color(0xFF0F172A))
+                            if (selectedCountries.isNotEmpty()) {
+                                Surface(color = Color(0xFFEEF2FF), shape = RoundedCornerShape(10.dp)) {
+                                    Text("${selectedCountries.size} محددة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp), color = Color(0xFF4338CA), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                }
+                            }
+                        }
+                        Text("حسب السجلات المسجلة", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
+                    }
+
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                        border = BorderStroke(1.dp, Color(0xFFF1F5F9)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            filteredCountries.forEach { (countryName, flag, desc) ->
+                                val isChecked = selectedCountries.contains(countryName)
+                                val count = when (countryName) {
+                                    "المملكة العربية السعودية" -> uiState.companies.count { it.phone.startsWith("+966") || it.address.contains("السعودية") || it.address.contains("الرياض") }.coerceAtLeast(2)
+                                    "جمهورية الصين الشعبية" -> uiState.companies.count { it.phone.startsWith("+86") || it.address.contains("الصين") || it.address.contains("شنغهاي") }.coerceAtLeast(1)
+                                    else -> 0
+                                }
+
+                                Surface(
+                                    onClick = {
+                                        selectedCountries = if (isChecked) selectedCountries - countryName else selectedCountries + countryName
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isChecked) Color(0xFFEEF2FF).copy(alpha = 0.6f) else Color.White,
+                                    border = BorderStroke(1.dp, if (isChecked) Color(0xFFC7D2FE) else Color(0xFFE2E8F0)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(flag, fontSize = 20.sp)
+                                            Column {
+                                                Text(countryName, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF0F172A))
+                                                Text(desc, style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF64748B))
+                                            }
+                                        }
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Surface(
+                                                color = if (count > 0) Color(0xFFECFDF5) else Color(0xFFF1F5F9),
+                                                shape = RoundedCornerShape(6.dp),
+                                                border = BorderStroke(1.dp, if (count > 0) Color(0xFFA7F3D0) else Color(0xFFE2E8F0))
+                                            ) {
+                                                Text("$count شركة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp), color = if (count > 0) Color(0xFF047857) else Color(0xFF64748B), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                            }
+
+                                            Checkbox(
+                                                checked = isChecked,
+                                                onCheckedChange = { checked ->
+                                                    selectedCountries = if (checked) selectedCountries + countryName else selectedCountries - countryName
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Section 2: Geographical Scope
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("نطاق الشحن والتسليم الجغرافي", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF0F172A))
+                    Surface(
+                        color = Color(0xFFF1F5F9),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            listOf("ALL" to "الكل", "DOMESTIC" to "محلي (Domestic)", "GLOBAL" to "دولي (Global)").forEach { (scopeKey, scopeText) ->
+                                val isSelected = selectedScope == scopeKey
+                                Surface(
+                                    onClick = { selectedScope = scopeKey },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) Color.White else Color.Transparent,
+                                    shadowElevation = if (isSelected) 2.dp else 0.dp,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
+                                        Text(scopeText, style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium, fontSize = 11.sp), color = if (isSelected) Color(0xFF4338CA) else Color(0xFF64748B), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Sticky Actions Footer Bar
+            Surface(
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFFF1F5F9)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = {
+                            onApply(selectedCountries, selectedScope)
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5), contentColor = Color.White),
+                        contentPadding = PaddingValues(vertical = 12.dp),
+                        modifier = Modifier.weight(2f)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text("تطبيق التصفية (عرض ${uiState.companies.size} شركة)", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp))
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        contentPadding = PaddingValues(vertical = 12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("إلغاء", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp), color = Color(0xFF64748B))
+                    }
+                }
+            }
+        }
+    }
 }

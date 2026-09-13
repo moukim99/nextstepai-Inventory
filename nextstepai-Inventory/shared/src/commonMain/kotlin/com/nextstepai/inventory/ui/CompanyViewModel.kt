@@ -57,6 +57,9 @@ data class CompanyUiState(
     val companySupplierParts: List<SupplierPart> = emptyList(),
     val selectedSupplierPart: SupplierPart? = null,
     val supplierPartPriceBreaks: List<SupplierPriceBreak> = emptyList(),
+    val selectedCountries: Set<String> = emptySet(),
+    val selectedScope: String = "ALL",
+    val isFilterBottomSheetOpen: Boolean = false,
     val isAddCompanyDialogOpen: Boolean = false,
     val isAddContactDialogOpen: Boolean = false,
     val isAddAddressDialogOpen: Boolean = false,
@@ -87,7 +90,7 @@ class CompanyViewModel(
 
     fun loadData() {
         val filter = _uiState.value.roleFilter
-        val list = repository.searchCompanies(
+        var list = repository.searchCompanies(
             query = _uiState.value.searchQuery,
             supplierOnly = filter == CompanyRoleFilter.SUPPLIER_ONLY,
             manufacturerOnly = filter == CompanyRoleFilter.MANUFACTURER_ONLY,
@@ -120,6 +123,36 @@ class CompanyViewModel(
             )
         }
 
+        // Apply country & scope filters in memory (Zero DB changes)
+        val selectedCountries = _uiState.value.selectedCountries
+        val selectedScope = _uiState.value.selectedScope
+
+        if (selectedCountries.isNotEmpty()) {
+            list = list.filter { comp ->
+                val stats = statsMap[comp.id]
+                val addrStr = (stats?.primaryAddress ?: "") + " " + comp.address
+                selectedCountries.any { country ->
+                    addrStr.contains(country, ignoreCase = true) ||
+                    (country == "المملكة العربية السعودية" && (addrStr.contains("الرياض", ignoreCase = true) || addrStr.contains("جدة", ignoreCase = true) || addrStr.contains("السعودية", ignoreCase = true) || comp.phone.startsWith("+966"))) ||
+                    (country == "جمهورية الصين الشعبية" && (addrStr.contains("الصين", ignoreCase = true) || addrStr.contains("شنغهاي", ignoreCase = true) || comp.phone.startsWith("+86")))
+                }
+            }
+        }
+
+        if (selectedScope == "DOMESTIC") {
+            list = list.filter { comp ->
+                val stats = statsMap[comp.id]
+                val addrStr = (stats?.primaryAddress ?: "") + " " + comp.address
+                addrStr.contains("السعودية", ignoreCase = true) || addrStr.contains("الرياض", ignoreCase = true) || comp.phone.startsWith("+966")
+            }
+        } else if (selectedScope == "GLOBAL") {
+            list = list.filter { comp ->
+                val stats = statsMap[comp.id]
+                val addrStr = (stats?.primaryAddress ?: "") + " " + comp.address
+                !addrStr.contains("السعودية", ignoreCase = true) && !addrStr.contains("الرياض", ignoreCase = true) && !comp.phone.startsWith("+966")
+            }
+        }
+
         _uiState.update {
             it.copy(
                 companies = list,
@@ -129,6 +162,31 @@ class CompanyViewModel(
                 totalCustomersCount = custCount
             )
         }
+    }
+
+    fun setFilterBottomSheetOpen(isOpen: Boolean) {
+        _uiState.update { it.copy(isFilterBottomSheetOpen = isOpen) }
+    }
+
+    fun applyCountryFilters(countries: Set<String>, scope: String) {
+        _uiState.update {
+            it.copy(
+                selectedCountries = countries,
+                selectedScope = scope,
+                isFilterBottomSheetOpen = false
+            )
+        }
+        loadData()
+    }
+
+    fun clearCountryFilters() {
+        _uiState.update {
+            it.copy(
+                selectedCountries = emptySet(),
+                selectedScope = "ALL"
+            )
+        }
+        loadData()
     }
 
     fun onSearchQueryChanged(query: String) {
