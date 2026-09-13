@@ -469,7 +469,7 @@ fun CompanyScreen(
     }
 
     if (uiState.isAddManufacturerPartDialogOpen) {
-        AddManufacturerPartDialog(
+        AddManufacturerPartBottomSheet(
             errorMessage = uiState.errorMessage,
             onDismiss = { viewModel.setAddManufacturerPartDialogOpen(false) },
             onConfirm = { partId, mpn, desc, link ->
@@ -3427,40 +3427,252 @@ private fun AddAddressDialog(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddManufacturerPartDialog(
+private fun AddManufacturerPartBottomSheet(
     errorMessage: String?,
     onDismiss: () -> Unit,
     onConfirm: (partId: Long, mpn: String, description: String, link: String) -> Unit
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     var partIdStr by remember { mutableStateOf("1") }
     var mpn by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var link by remember { mutableStateOf("") }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("إضافة قطعة مصنّع (MPN)", fontWeight = FontWeight.Bold) },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val pId = partIdStr.toLongOrNull() ?: 1L
-                    if (mpn.isNotBlank()) onConfirm(pId, mpn, description, link)
-                },
-                enabled = mpn.isNotBlank()
-            ) { Text("حفظ") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (errorMessage != null) Text(errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                OutlinedTextField(value = partIdStr, onValueChange = { partIdStr = it }, label = { Text("معرف القطعة الداخلية (Part ID)") }, singleLine = true)
-                OutlinedTextField(value = mpn, onValueChange = { mpn = it }, label = { Text("رقم القطعة المصنعية (MPN) *") }, singleLine = true)
-                OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("وصف مواصفات المصنّع") })
-                OutlinedTextField(value = link, onValueChange = { link = it }, label = { Text("رابط مواصفات المنتج") }, singleLine = true)
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 6.dp)
+                    .width(48.dp)
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFCBD5E1))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+        ) {
+            // 1. Header Section
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFEEF2FF))
+                            .border(1.dp, Color(0xFFE0E7FF), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Memory, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(20.dp))
+                    }
+                    Column {
+                        Text("إضافة قطعة مصنّع (MPN)", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp), color = Color(0xFF0F172A))
+                        Text("ربط كود التصنيع بالمخزون الداخلي", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = Color(0xFF64748B))
+                    }
+                }
+
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color(0xFF64748B))
+                }
+            }
+
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+
+            // 2. Scrollable Form Content
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                if (errorMessage != null) {
+                    Text(text = errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+
+                // Smart Tip Banner
+                Surface(
+                    color = Color(0xFFEEF2FF).copy(alpha = 0.7f),
+                    border = BorderStroke(1.dp, Color(0xFFE0E7FF)),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF4F46E5)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("💡", fontSize = 12.sp)
+                        }
+                        Text(
+                            text = "يضمن تعيين رقم قطعة المصنّع (MPN) دقة شراء المكونات من المورّدين ومطابقتها التامة للوحات والدوائر الإلكترونية.",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                            color = Color(0xFF312E81)
+                        )
+                    }
+                }
+
+                // 1. Internal Part ID Field
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("معرف القطعة الداخلية (Part ID) *", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
+                        Surface(color = Color(0xFFEEF2FF), shape = RoundedCornerShape(6.dp)) {
+                            Text("قطعة نشطة", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold), color = Color(0xFF4338CA), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = partIdStr,
+                        onValueChange = { partIdStr = it },
+                        placeholder = { Text("1") },
+                        trailingIcon = { Text("ESP32-WROOM-32D", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium), color = Color(0xFF94A3B8), modifier = Modifier.padding(end = 8.dp)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color(0xFFF8FAFC),
+                            unfocusedContainerColor = Color(0xFFF8FAFC)
+                        )
+                    )
+                }
+
+                // 2. MPN Field
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("رقم القطعة المصنعية (MPN) *", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
+                        Text("رمز المصنع الرسمي", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
+                    }
+
+                    OutlinedTextField(
+                        value = mpn,
+                        onValueChange = { mpn = it },
+                        placeholder = { Text("مثال: ESP32-D0WD-V3") },
+                        trailingIcon = {
+                            Surface(
+                                onClick = { },
+                                color = Color(0xFFEEF2FF),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                                modifier = Modifier.padding(end = 6.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(12.dp))
+                                    Text("تحقق", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.5.sp), color = Color(0xFF4338CA))
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                // 3. Description Field
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("وصف مواصفات المصنّع", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        placeholder = { Text("أدخل ملخص مواصفات الشريحة، سعة الذاكرة، التردد، وحرارة التشغيل...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                // 4. Datasheet Link Field
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("رابط مواصفات المنتج (Datasheet)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
+                        Text("اختياري", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
+                    }
+
+                    OutlinedTextField(
+                        value = link,
+                        onValueChange = { link = it },
+                        placeholder = { Text("https://espressif.com/docs/datasheet.pdf") },
+                        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            }
+
+            // 3. Sticky Actions Footer
+            Surface(
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFFF1F5F9)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = {
+                            val pId = partIdStr.toLongOrNull() ?: 1L
+                            if (mpn.isNotBlank()) onConfirm(pId, mpn, description, link)
+                        },
+                        enabled = mpn.isNotBlank(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5), contentColor = Color.White),
+                        contentPadding = PaddingValues(vertical = 12.dp),
+                        modifier = Modifier.weight(2f)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text("حفظ قطعة المصنّع", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp))
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        contentPadding = PaddingValues(vertical = 12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("إلغاء", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp), color = Color(0xFF64748B))
+                    }
+                }
             }
         }
-    )
+    }
 }
 
 @Composable
