@@ -3445,9 +3445,61 @@ private fun AddCompanyAttachmentBottomSheet(
                     }
                 }
 
-                // File Upload Section
+                // External Document URL
+                OutlinedTextField(
+                    value = link,
+                    onValueChange = { link = it },
+                    label = { Text("رابط المستند الإلكتروني (Drive, Dropbox, OneDrive)") },
+                    placeholder = { Text("https://drive.google.com/file/d/...") },
+                    leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                // Optional Validity & Status Toggle
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.White)
+                                    .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Verified, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(16.dp))
+                            }
+                            Column {
+                                Text("وثيقة رسمية سارية المفعول", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF0F172A))
+                                Text("إشعار قبل تاريخ الانتهاء بـ 30 يوماً", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
+                            }
+                        }
+
+                        Switch(
+                            checked = isOfficialValid,
+                            onCheckedChange = { isOfficialValid = it }
+                        )
+                    }
+                }
+
+                // File Upload Section (Moved to Bottom)
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("الملف المرفق المحلي (File Upload)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
+                    Text("الملفات المرفقة حالياً", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
 
                     // Selected File Card
                     Card(
@@ -3525,74 +3577,6 @@ private fun AddCompanyAttachmentBottomSheet(
                                 color = Color(0xFF475569)
                             )
                         }
-                    }
-                }
-
-                // Divider
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFE2E8F0))
-                    Text(
-                        text = "أو عبر رابط إلكتروني سحابي",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                        color = Color(0xFF94A3B8),
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    )
-                    HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFE2E8F0))
-                }
-
-                // External Document URL
-                OutlinedTextField(
-                    value = link,
-                    onValueChange = { link = it },
-                    label = { Text("رابط المستند الإلكتروني (Drive, Dropbox, OneDrive)") },
-                    placeholder = { Text("https://drive.google.com/file/d/...") },
-                    leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                // Optional Validity & Status Toggle
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.White)
-                                    .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.Verified, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(16.dp))
-                            }
-                            Column {
-                                Text("وثيقة رسمية سارية المفعول", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF0F172A))
-                                Text("إشعار قبل تاريخ الانتهاء بـ 30 يوماً", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
-                            }
-                        }
-
-                        Switch(
-                            checked = isOfficialValid,
-                            onCheckedChange = { isOfficialValid = it }
-                        )
                     }
                 }
             }
