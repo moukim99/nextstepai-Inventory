@@ -165,10 +165,13 @@ class CompanyAttachmentTable {
 
     fun insertAttachment(attachment: CompanyAttachment): CompanyAttachment {
         require(attachment.companyId != 0L) { "معرف الشركة إلزامي لربط المرفق" }
-        require(attachment.attachmentPath.isNotBlank() || attachment.link.isNotBlank()) { "يجب تزويد مسار الملف المرفق أو الرابط الإلكتروني" }
+        val finalPath = if (attachment.attachmentPath.isBlank() && attachment.link.isBlank()) {
+            "${attachment.documentType.ifBlank { "وثيقة" }}.pdf"
+        } else attachment.attachmentPath
 
         val newAttachment = attachment.copy(
             id = if (attachment.id == 0L) nextId++ else attachment.id,
+            attachmentPath = finalPath,
             uploadDate = if (attachment.uploadDate == 0L) Clock.System.now().toEpochMilliseconds() else attachment.uploadDate
         )
         attachments.add(newAttachment)

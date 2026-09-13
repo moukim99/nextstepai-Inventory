@@ -3676,11 +3676,10 @@ private fun AddCompanyAttachmentBottomSheet(
                     Button(
                         onClick = {
                             val notifyDays = notifyDaysStr.toIntOrNull() ?: 30
-                            if (path.isNotBlank() || link.isNotBlank() || selectedDocType.isNotBlank()) {
-                                onConfirm(selectedDocType, path, link, comment, expiryDate, isOfficialValid, notifyDays)
-                            }
+                            val finalPath = if (path.isBlank() && link.isBlank()) "${selectedDocType.take(20)}.pdf" else path
+                            onConfirm(selectedDocType, finalPath, link, comment.ifBlank { selectedDocType }, expiryDate, isOfficialValid, notifyDays)
                         },
-                        enabled = path.isNotBlank() || link.isNotBlank() || selectedDocType.isNotBlank(),
+                        enabled = true,
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5), contentColor = Color.White),
                         contentPadding = PaddingValues(vertical = 12.dp),
