@@ -621,13 +621,7 @@ private fun CompaniesTopBar(
                 )
             }
 
-            IconButton(onClick = { }) {
-                Icon(
-                    imageVector = Icons.Default.MoreVert,
-                    contentDescription = "خيارات العرض",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Spacer(modifier = Modifier.width(48.dp))
         }
     }
 }
