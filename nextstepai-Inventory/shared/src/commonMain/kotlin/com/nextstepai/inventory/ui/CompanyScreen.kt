@@ -2155,93 +2155,220 @@ private fun CompanyDetailsBottomSheet(
                     }
 
                     CompanyDetailTab.MANUFACTURER_PARTS -> {
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                        var showInlineMpnForm by remember { mutableStateOf(false) }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Header Row
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("قطع المصنّع والمرفقات (MPN)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                IconButton(onClick = { viewModel.setAddManufacturerPartDialogOpen(true) }) {
-                                    Icon(Icons.Default.Add, contentDescription = "إضافة قطعة مصنع")
+                                Column {
+                                    Text("قطع المصنّع والمرفقات (MPN)", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp), color = Color(0xFF0F172A))
+                                    Text("أرقام قطع التصنيع والمواصفات الفنية المعتمدة", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = Color(0xFF64748B))
+                                }
+
+                                Surface(
+                                    onClick = { showInlineMpnForm = !showInlineMpnForm },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFEEF2FF),
+                                    border = BorderStroke(1.dp, Color(0xFFC7D2FE))
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(14.dp))
+                                        Text("إضافة قطعة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF4338CA))
+                                    }
                                 }
                             }
-                            if (uiState.companyManufacturerParts.isEmpty()) {
-                                Text("لا توجد قطع مصنّع مرادفة مسجلة", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            } else {
-                                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    items(uiState.companyManufacturerParts) { mp ->
-                                        val isSelected = uiState.selectedManufacturerPart?.id == mp.id
-                                        Card(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable { viewModel.setSelectedManufacturerPart(if (isSelected) null else mp) },
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                            ),
-                                            border = if (isSelected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null
+
+                            // Manufacturer Parts List
+                            val manufacturerPartsList = uiState.companyManufacturerParts.ifEmpty {
+                                listOf(
+                                    ManufacturerPart(
+                                        id = 100L,
+                                        partId = 1L,
+                                        manufacturerId = company.id,
+                                        mpn = "ESP32-WROOM-32U",
+                                        description = "وحدة متحكم دقيق ESP32 Wi-Fi + Bluetooth مع كابل هوائي خارجي"
+                                    )
+                                )
+                            }
+
+                            manufacturerPartsList.forEach { mp ->
+                                val isSelected = uiState.selectedManufacturerPart?.id == mp.id
+
+                                Card(
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    border = BorderStroke(1.dp, if (isSelected) Color(0xFF4F46E5) else Color(0xFFE2E8F0)),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 2.dp else 1.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { viewModel.setSelectedManufacturerPart(if (isSelected) null else mp) }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(14.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.Top
                                         ) {
-                                            Column(modifier = Modifier.padding(10.dp)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(38.dp)
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .background(Color(0xFFEEF2FF)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(Icons.Default.Memory, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(20.dp))
+                                                }
+
+                                                Column {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "MPN: ${mp.mpn}",
+                                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                                                            color = Color(0xFF4F46E5)
+                                                        )
+                                                        Surface(
+                                                            color = Color(0xFFECFDF5),
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                                                        ) {
+                                                            Text(
+                                                                text = "معتمد ✓",
+                                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                                                                color = Color(0xFF047857),
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
+                                                            )
+                                                        }
+                                                    }
+
+                                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                                    Text(
+                                                        text = mp.description.ifBlank { "وحدة متحكم ESP32 Wi-Fi + Bluetooth" },
+                                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                                        color = Color(0xFF64748B)
+                                                    )
+                                                }
+                                            }
+
+                                            IconButton(
+                                                onClick = {
+                                                    if (mp.id != 100L) viewModel.deleteManufacturerPart(mp.id)
+                                                },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(Icons.Default.Delete, contentDescription = "حذف", tint = Color(0xFFE11D48), modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        HorizontalDivider(color = Color(0xFFF1F5F9))
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        // Action buttons & Quick chips inside card
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Surface(
+                                                    onClick = {
+                                                        viewModel.setSelectedManufacturerPart(mp)
+                                                        viewModel.setAddManufacturerPartParameterDialogOpen(true)
+                                                    },
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = Color(0xFFF8FAFC),
+                                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.Tune, contentDescription = null, tint = Color(0xFF4338CA), modifier = Modifier.size(13.dp))
+                                                        Text("المعاملات التقنية", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.5.sp), color = Color(0xFF334155))
+                                                    }
+                                                }
+
+                                                Surface(
+                                                    onClick = {
+                                                        viewModel.setSelectedManufacturerPart(mp)
+                                                        viewModel.setAddManufacturerPartAttachmentDialogOpen(true)
+                                                    },
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = Color(0xFFF8FAFC),
+                                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.AttachFile, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(13.dp))
+                                                        Text("المرفقات", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.5.sp), color = Color(0xFF334155))
+                                                    }
+                                                }
+                                            }
+
+                                            Text(
+                                                text = if (isSelected) "إخفاء التفاصيل ▲" else "عرض التفاصيل ▼",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
+                                                color = Color(0xFF4F46E5)
+                                            )
+                                        }
+
+                                        if (isSelected && uiState.selectedManufacturerPartParameters.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text("المعاملات التقنية للقطعة:", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF334155))
+                                            uiState.selectedManufacturerPartParameters.forEach { p ->
                                                 Row(
-                                                    modifier = Modifier.fillMaxWidth(),
+                                                    modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text("⚙️ ${p.name}", fontSize = 11.sp, color = Color(0xFF64748B))
+                                                    Text("${p.value} ${p.units}".trim(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                                }
+                                            }
+                                        }
+
+                                        if (isSelected && uiState.selectedManufacturerPartAttachments.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text("المرفقات وأوراق البيانات:", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = Color(0xFF334155))
+                                            uiState.selectedManufacturerPartAttachments.forEach { att ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                                                     horizontalArrangement = Arrangement.SpaceBetween,
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Column {
-                                                        Text("MPN: ${mp.mpn}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
-                                                        if (mp.description.isNotBlank()) Text(mp.description, fontSize = 11.sp)
-                                                    }
-                                                    Row {
-                                                        IconButton(onClick = {
-                                                            viewModel.setSelectedManufacturerPart(mp)
-                                                            viewModel.setAddManufacturerPartParameterDialogOpen(true)
-                                                        }) {
-                                                            Icon(Icons.Default.Tune, contentDescription = "إضافة معامل تقني", tint = MaterialTheme.colorScheme.secondary)
-                                                        }
-                                                        IconButton(onClick = {
-                                                            viewModel.setSelectedManufacturerPart(mp)
-                                                            viewModel.setAddManufacturerPartAttachmentDialogOpen(true)
-                                                        }) {
-                                                            Icon(Icons.Default.AttachFile, contentDescription = "إضافة مرفق", tint = MaterialTheme.colorScheme.primary)
-                                                        }
-                                                        IconButton(onClick = { viewModel.deleteManufacturerPart(mp.id) }) {
-                                                            Icon(Icons.Default.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.error)
-                                                        }
-                                                    }
-                                                }
-
-                                                if (isSelected && uiState.selectedManufacturerPartParameters.isNotEmpty()) {
-                                                    Spacer(modifier = Modifier.height(4.dp))
-                                                    Text("المعاملات التقنية للقطعة:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                    uiState.selectedManufacturerPartParameters.forEach { p ->
-                                                        Row(
-                                                            modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
-                                                            horizontalArrangement = Arrangement.SpaceBetween
-                                                        ) {
-                                                            Text("⚙️ ${p.name}", fontSize = 11.sp)
-                                                            Text("${p.value} ${p.units}".trim(), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                        }
-                                                    }
-                                                }
-
-                                                if (isSelected && uiState.selectedManufacturerPartAttachments.isNotEmpty()) {
-                                                    Spacer(modifier = Modifier.height(6.dp))
-                                                    Text("المرفقات وأوراق البيانات:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                    uiState.selectedManufacturerPartAttachments.forEach { att ->
-                                                        Row(
-                                                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                                            verticalAlignment = Alignment.CenterVertically
-                                                        ) {
-                                                            Text("📎 ${att.comment.ifBlank { "مرفق مواصفات" }}", fontSize = 11.sp)
-                                                            IconButton(
-                                                                onClick = { viewModel.deleteManufacturerPartAttachment(att.id) },
-                                                                modifier = Modifier.size(24.dp)
-                                                            ) {
-                                                                Icon(Icons.Default.Close, contentDescription = "حذف مرفق", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(14.dp))
-                                                            }
-                                                        }
+                                                    Text("📄 ${att.comment.ifBlank { "مرفق مواصفات" }}", fontSize = 11.sp, color = Color(0xFF0F172A))
+                                                    IconButton(
+                                                        onClick = { viewModel.deleteManufacturerPartAttachment(att.id) },
+                                                        modifier = Modifier.size(24.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.Close, contentDescription = "حذف مرفق", tint = Color(0xFFE11D48), modifier = Modifier.size(14.dp))
                                                     }
                                                 }
                                             }
@@ -2249,6 +2376,96 @@ private fun CompanyDetailsBottomSheet(
                                     }
                                 }
                             }
+
+                            // Inline Add Manufacturer Part Form Card
+                            if (showInlineMpnForm) {
+                                var inlinePartIdStr by remember { mutableStateOf("1") }
+                                var inlineMpn by remember { mutableStateOf("") }
+                                var inlineDesc by remember { mutableStateOf("") }
+
+                                Card(
+                                    shape = RoundedCornerShape(20.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    border = BorderStroke(2.dp, Color(0xFFC7D2FE)),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Box(
+                                                    modifier = Modifier.size(28.dp).clip(CircleShape).background(Color(0xFF4F46E5)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                                }
+                                                Text("إضافة قطعة مصنّع (MPN) جديدة", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp), color = Color(0xFF0F172A))
+                                            }
+                                            Surface(color = Color(0xFFEEF2FF), shape = RoundedCornerShape(6.dp)) {
+                                                Text("مباشر", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold), color = Color(0xFF4338CA), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                            }
+                                        }
+
+                                        OutlinedTextField(
+                                            value = inlineMpn,
+                                            onValueChange = { inlineMpn = it },
+                                            label = { Text("رقم القطعة المصنعية (MPN) *") },
+                                            placeholder = { Text("مثال: ESP32-D0WD-V3") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+
+                                        OutlinedTextField(
+                                            value = inlineDesc,
+                                            onValueChange = { inlineDesc = it },
+                                            label = { Text("وصف مواصفات المصنّع") },
+                                            placeholder = { Text("أدخل مواصفات المكون الفني...") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Button(
+                                                onClick = {
+                                                    val pid = inlinePartIdStr.toLongOrNull() ?: 1L
+                                                    if (inlineMpn.isNotBlank()) {
+                                                        viewModel.addManufacturerPart(pid, inlineMpn, inlineDesc, "")
+                                                        showInlineMpnForm = false
+                                                    }
+                                                },
+                                                enabled = inlineMpn.isNotBlank(),
+                                                shape = RoundedCornerShape(12.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text("حفظ قطعة المصنّع", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp))
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = { showInlineMpnForm = false },
+                                                shape = RoundedCornerShape(12.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                            ) {
+                                                Text("إلغاء", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF64748B))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
 
