@@ -73,6 +73,13 @@ data class CompanyUiState(
     val successMessage: String? = null
 )
 
+fun String.normalizeArabic(): String = this
+    .replace("[أإآ]".toRegex(), "ا")
+    .replace("ة", "ه")
+    .replace("ى", "ي")
+    .trim()
+    .lowercase()
+
 /**
  * نموذج العرض (ViewModel) لشاشة إدارة الشركات والعلاقات التجارية (Company Management).
  */
@@ -130,11 +137,12 @@ class CompanyViewModel(
         if (selectedCountries.isNotEmpty()) {
             list = list.filter { comp ->
                 val stats = statsMap[comp.id]
-                val addrStr = (stats?.primaryAddress ?: "") + " " + comp.address
+                val addrNorm = ((stats?.primaryAddress ?: "") + " " + comp.address).normalizeArabic()
                 selectedCountries.any { country ->
-                    addrStr.contains(country, ignoreCase = true) ||
-                    (country == "المملكة العربية السعودية" && (addrStr.contains("الرياض", ignoreCase = true) || addrStr.contains("جدة", ignoreCase = true) || addrStr.contains("السعودية", ignoreCase = true) || comp.phone.startsWith("+966"))) ||
-                    (country == "جمهورية الصين الشعبية" && (addrStr.contains("الصين", ignoreCase = true) || addrStr.contains("شنغهاي", ignoreCase = true) || comp.phone.startsWith("+86")))
+                    val cNorm = country.normalizeArabic()
+                    addrNorm.contains(cNorm) ||
+                    (country.contains("السعودية") && (addrNorm.contains("الرياض") || addrNorm.contains("جده") || addrNorm.contains("السعوديه") || comp.phone.startsWith("+966"))) ||
+                    (country.contains("الصين") && (addrNorm.contains("الصين") || addrNorm.contains("شنغهاي") || comp.phone.startsWith("+86")))
                 }
             }
         }

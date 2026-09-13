@@ -14,10 +14,29 @@
     <string name="nav_stock">المخزون</string>
     <string name="nav_builds">الإنتاج</string>
     <string name="nav_companies">الموردين</string>
-    <string name="nav_parts">الإعدادات</string>
+    <string name="nav_parts">القطع</string>
     <string name="nav_orders">أوامر الشراء</string>
     <string name="nav_bom">قائمة المواد</string>
     <string name="nav_theme">المظهر</string>
+
+    <string name="nav_warehouse">المستودع</string>
+    <string name="nav_management">الإدارة</string>
+    <string name="nav_settings">الإعدادات</string>
+
+    <string name="tab_inventory">المخزون</string>
+    <string name="tab_production">الإنتاج</string>
+    <string name="subtab_parts">دليل القطع والمكونات</string>
+    <string name="subtab_stock">المخزون والمواقع</string>
+    <string name="subtab_builds">أوامر التصنيع</string>
+    <string name="subtab_bom">قائمة المواد (BOM)</string>
+    <string name="tab_companies">الشركات والعلاقات</string>
+    <string name="tab_orders">أوامر الشراء وبنودها</string>
+
+    <string name="settings_account_title">معلومات الجلسة والحساب</string>
+    <string name="settings_preferences_title">تفضيلات المظهر والنظام</string>
+    <string name="settings_currency_label">العملة الأساسية: USD ($)</string>
+    <string name="settings_backup_label">النسخ الاحتياطي ومزامنة البيانات</string>
+    <string name="settings_backup_btn">إجراء نسخ احتياطي الآن 💾</string>
 
     <string name="card_builds_title">جدول أوامر الإنتاج والتصنيع</string>
     <string name="card_builds_subtitle">إدارة وتتبع دورة تصنيع المكونات وتحويل قائمة المواد (BOM) إلى منتجات تامة الصنع.</string>

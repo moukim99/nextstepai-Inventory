@@ -372,7 +372,7 @@ private fun DashboardTopHeader(
  * شارة الأمان الحامي على اليمين وشارة "الحساب نشط ومتصل" على اليسار مطابق للتصميم المستهدف.
  */
 @Composable
-private fun WelcomeHeroBanner(
+fun WelcomeHeroBanner(
     username: String
 ) {
     Card(
@@ -485,7 +485,7 @@ private fun WelcomeHeroBanner(
  * قسم كروت المؤشرات التشغيلية Operational KPIs Section
  */
 @Composable
-private fun OperationalKpiSection() {
+fun OperationalKpiSection() {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -584,7 +584,7 @@ private fun KpiMetricCard(
  * كارت إجراء المسح السريع للباركود Barcode / QR Quick Action Card
  */
 @Composable
-private fun BarcodeScannerActionCard(
+fun BarcodeScannerActionCard(
     onScanClick: () -> Unit
 ) {
     Card(

@@ -4148,19 +4148,20 @@ private fun CompanyFilterBottomSheet(
     var selectedCountries by remember { mutableStateOf(uiState.selectedCountries) }
     var selectedScope by remember { mutableStateOf(uiState.selectedScope) }
 
-    val availableCountries = remember {
-        listOf(
-            Triple("المملكة العربية السعودية", "🇸🇦", "المقر الرئيسي ومستودعات التوزيع"),
-            Triple("جمهورية الصين الشعبية", "🇨🇳", "مراكز تصنيع الرقائق ومتحكمات ESP"),
-            Triple("ألمانيا", "🇩🇪", "معدات الفحص الدقيق والآلات"),
-            Triple("الولايات المتحدة الأمريكية", "🇺🇸", "شركاء التقنية والبرمجيات"),
-            Triple("تايوان", "🇹🇼", "مسبوكات أشباه الموصلات")
-        )
-    }
+    val allPickerCountries = remember { CountryRepository.countries }
 
-    val filteredCountries = remember(searchQuery) {
-        if (searchQuery.isBlank()) availableCountries
-        else availableCountries.filter { it.first.contains(searchQuery, ignoreCase = true) || it.third.contains(searchQuery, ignoreCase = true) }
+    val filteredCountries = remember(searchQuery, allPickerCountries) {
+        val query = searchQuery.normalizeArabic()
+        if (query.isBlank()) {
+            allPickerCountries
+        } else {
+            allPickerCountries.filter { country ->
+                country.nameAr.normalizeArabic().contains(query) ||
+                country.nameEn.normalizeArabic().contains(query) ||
+                country.code.lowercase().contains(query) ||
+                country.dialCode.contains(query)
+            }
+        }
     }
 
     ModalBottomSheet(
@@ -4277,58 +4278,76 @@ private fun CompanyFilterBottomSheet(
                             modifier = Modifier.padding(8.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            filteredCountries.forEach { (countryName, flag, desc) ->
-                                val isChecked = selectedCountries.contains(countryName)
-                                val count = when (countryName) {
-                                    "المملكة العربية السعودية" -> uiState.companies.count { it.phone.startsWith("+966") || it.address.contains("السعودية") || it.address.contains("الرياض") }.coerceAtLeast(2)
-                                    "جمهورية الصين الشعبية" -> uiState.companies.count { it.phone.startsWith("+86") || it.address.contains("الصين") || it.address.contains("شنغهاي") }.coerceAtLeast(1)
-                                    else -> 0
-                                }
+                            if (filteredCountries.isEmpty()) {
+                                Text(
+                                    text = "لا توجد بلدان تطابق نتائج البحث",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                    color = Color(0xFF64748B),
+                                    modifier = Modifier.padding(12.dp)
+                                )
+                            } else {
+                                filteredCountries.forEach { country ->
+                                    val countryName = country.nameAr
+                                    val isChecked = selectedCountries.contains(countryName)
+                                    val count = remember(country.code, uiState.companies) {
+                                        uiState.companies.count { comp ->
+                                            val stats = uiState.companyStatsMap[comp.id]
+                                            val addrNorm = ((stats?.primaryAddress ?: "") + " " + comp.address).normalizeArabic()
+                                            val cNameArNorm = country.nameAr.normalizeArabic()
+                                            val cNameEnNorm = country.nameEn.normalizeArabic()
+                                            addrNorm.contains(cNameArNorm) ||
+                                            addrNorm.contains(cNameEnNorm) ||
+                                            comp.phone.startsWith(country.dialCode) ||
+                                            (country.code == "SA" && (addrNorm.contains("الرياض") || addrNorm.contains("جده") || addrNorm.contains("السعوديه"))) ||
+                                            (country.code == "CN" && (addrNorm.contains("الصين") || addrNorm.contains("شنغهاي")))
+                                        }
+                                    }
 
-                                Surface(
-                                    onClick = {
-                                        selectedCountries = if (isChecked) selectedCountries - countryName else selectedCountries + countryName
-                                    },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isChecked) Color(0xFFEEF2FF).copy(alpha = 0.6f) else Color.White,
-                                    border = BorderStroke(1.dp, if (isChecked) Color(0xFFC7D2FE) else Color(0xFFE2E8F0)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(10.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Surface(
+                                        onClick = {
+                                            selectedCountries = if (isChecked) selectedCountries - countryName else selectedCountries + countryName
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isChecked) Color(0xFFEEF2FF).copy(alpha = 0.6f) else Color.White,
+                                        border = BorderStroke(1.dp, if (isChecked) Color(0xFFC7D2FE) else Color(0xFFE2E8F0)),
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                            modifier = Modifier.weight(1f)
+                                            modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(flag, fontSize = 20.sp)
-                                            Column {
-                                                Text(countryName, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF0F172A))
-                                                Text(desc, style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF64748B))
-                                            }
-                                        }
-
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Surface(
-                                                color = if (count > 0) Color(0xFFECFDF5) else Color(0xFFF1F5F9),
-                                                shape = RoundedCornerShape(6.dp),
-                                                border = BorderStroke(1.dp, if (count > 0) Color(0xFFA7F3D0) else Color(0xFFE2E8F0))
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                modifier = Modifier.weight(1f)
                                             ) {
-                                                Text("$count شركة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp), color = if (count > 0) Color(0xFF047857) else Color(0xFF64748B), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                                Text(country.flagEmoji, fontSize = 20.sp)
+                                                Column {
+                                                    Text(country.nameAr, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF0F172A))
+                                                    Text("${country.nameEn} • ${country.dialCode}", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF64748B))
+                                                }
                                             }
 
-                                            Checkbox(
-                                                checked = isChecked,
-                                                onCheckedChange = { checked ->
-                                                    selectedCountries = if (checked) selectedCountries + countryName else selectedCountries - countryName
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Surface(
+                                                    color = if (count > 0) Color(0xFFECFDF5) else Color(0xFFF1F5F9),
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    border = BorderStroke(1.dp, if (count > 0) Color(0xFFA7F3D0) else Color(0xFFE2E8F0))
+                                                ) {
+                                                    Text("$count شركة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp), color = if (count > 0) Color(0xFF047857) else Color(0xFF64748B), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                                                 }
-                                            )
+
+                                                Checkbox(
+                                                    checked = isChecked,
+                                                    onCheckedChange = { checked ->
+                                                        selectedCountries = if (checked) selectedCountries + countryName else selectedCountries - countryName
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 }

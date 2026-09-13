@@ -21,6 +21,9 @@ import nextstepai_inventory.shared.generated.resources.ic_theme
  * كائن مركزي لإدارة كافة أيقونات المتجهات (Vector Drawables) في التطبيق.
  */
 object AppIcons {
+    val Warehouse = Res.drawable.ic_stock
+    val Management = Res.drawable.ic_companies
+    val Settings = Res.drawable.ic_theme
     val Dashboard = Res.drawable.ic_dashboard
     val Parts = Res.drawable.ic_parts
     val Bom = Res.drawable.ic_bom
