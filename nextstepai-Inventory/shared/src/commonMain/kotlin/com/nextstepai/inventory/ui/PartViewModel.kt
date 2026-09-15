@@ -3,6 +3,8 @@ package com.nextstepai.inventory.ui
 import androidx.lifecycle.ViewModel
 import com.nextstepai.inventory.data.BomItem
 import com.nextstepai.inventory.data.CategoryParameterTemplateView
+import com.nextstepai.inventory.data.Company
+import com.nextstepai.inventory.data.ManufacturerPart
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.PartAttachment
 import com.nextstepai.inventory.data.PartCategory
@@ -11,10 +13,12 @@ import com.nextstepai.inventory.data.PartParameter
 import com.nextstepai.inventory.data.PartParameterTemplate
 import com.nextstepai.inventory.data.PartRelatedView
 import com.nextstepai.inventory.data.PartTestTemplate
+import com.nextstepai.inventory.data.SupplierPart
 import com.nextstepai.inventory.data.db.PartInternalPriceEntity
 import com.nextstepai.inventory.data.db.PartPricingEntity
 import com.nextstepai.inventory.data.db.PartSalePriceEntity
 import com.nextstepai.inventory.repository.BomRepository
+import com.nextstepai.inventory.repository.CompanyRepository
 import com.nextstepai.inventory.repository.PartRepository
 import com.nextstepai.inventory.repository.PartsSummary
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +47,9 @@ data class PartUiState(
     val selectedPartPricing: PartPricingEntity? = null,
     val selectedPartInternalPrices: List<PartInternalPriceEntity> = emptyList(),
     val selectedPartSalePrices: List<PartSalePriceEntity> = emptyList(),
+    val selectedPartManufacturerParts: List<ManufacturerPart> = emptyList(),
+    val selectedPartSupplierParts: List<SupplierPart> = emptyList(),
+    val allCompanies: List<Company> = emptyList(),
     val starredPartIds: Set<Long> = emptySet(),
     val lowStockOnlyFilter: Boolean = false,
     val assemblyOnlyFilter: Boolean = false,
@@ -50,6 +57,8 @@ data class PartUiState(
     val selectedPart: Part? = null,
     val isAddPartDialogOpen: Boolean = false,
     val isAddCategoryParamDialogOpen: Boolean = false,
+    val isAddManufacturerPartDialogOpen: Boolean = false,
+    val isAddSupplierPartDialogOpen: Boolean = false,
     val isLoading: Boolean = false,
     val message: String? = null
 )
@@ -59,7 +68,8 @@ data class PartUiState(
  */
 class PartViewModel(
     private val repository: PartRepository = PartRepository(),
-    private val bomRepository: BomRepository = BomRepository()
+    private val bomRepository: BomRepository = BomRepository(),
+    private val companyRepository: CompanyRepository = CompanyRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PartUiState())
@@ -79,6 +89,7 @@ class PartViewModel(
         val templateParts = repository.getTemplateParts()
         val summary = repository.getPartsSummary()
         val starredIds = repository.getStarredPartIdsForUser(1L).toSet()
+        val allCompanies = companyRepository.getCompanies()
 
         val filteredParts = repository.searchParts(
             query = _uiState.value.searchQuery,
@@ -96,6 +107,7 @@ class PartViewModel(
                 templateParts = templateParts,
                 summary = summary,
                 starredPartIds = starredIds,
+                allCompanies = allCompanies,
                 isLoading = false
             )
         }
@@ -195,6 +207,16 @@ class PartViewModel(
         } else {
             null
         }
+        val mfgParts = if (part != null) {
+            companyRepository.getManufacturerPartsForPart(part.id)
+        } else {
+            emptyList()
+        }
+        val supParts = if (part != null) {
+            companyRepository.getSupplierPartsForPart(part.id)
+        } else {
+            emptyList()
+        }
         _uiState.update {
             it.copy(
                 selectedPart = part,
@@ -206,7 +228,9 @@ class PartViewModel(
                 selectedPartBomItems = bomItems,
                 selectedPartPricing = pricing,
                 selectedPartInternalPrices = internalPrices,
-                selectedPartSalePrices = salePrices
+                selectedPartSalePrices = salePrices,
+                selectedPartManufacturerParts = mfgParts,
+                selectedPartSupplierParts = supParts
             )
         }
     }
@@ -433,6 +457,72 @@ class PartViewModel(
     fun toggleStarredFilter() {
         _uiState.update { it.copy(starredOnlyFilter = !it.starredOnlyFilter) }
         refreshFilteredParts()
+    }
+
+    fun setAddManufacturerPartDialogOpen(isOpen: Boolean) {
+        _uiState.update { it.copy(isAddManufacturerPartDialogOpen = isOpen) }
+    }
+
+    fun setAddSupplierPartDialogOpen(isOpen: Boolean) {
+        _uiState.update { it.copy(isAddSupplierPartDialogOpen = isOpen) }
+    }
+
+    fun addManufacturerPartForCurrentPart(
+        manufacturerId: Long,
+        mpn: String,
+        description: String,
+        link: String
+    ) {
+        val currentPart = _uiState.value.selectedPart ?: return
+        val item = ManufacturerPart(
+            partId = currentPart.id,
+            manufacturerId = manufacturerId,
+            mpn = mpn,
+            description = description,
+            link = link
+        )
+        companyRepository.addManufacturerPart(item)
+        setAddManufacturerPartDialogOpen(false)
+        selectPart(currentPart)
+    }
+
+    fun deleteManufacturerPart(id: Long) {
+        val currentPart = _uiState.value.selectedPart ?: return
+        companyRepository.deleteManufacturerPart(id)
+        selectPart(currentPart)
+    }
+
+    fun addSupplierPartForCurrentPart(
+        supplierId: Long,
+        sku: String,
+        mfgPartId: Long?,
+        description: String,
+        link: String,
+        note: String,
+        packaging: String,
+        packQuantity: String
+    ) {
+        val currentPart = _uiState.value.selectedPart ?: return
+        val item = SupplierPart(
+            partId = currentPart.id,
+            supplierId = supplierId,
+            sku = sku,
+            manufacturerPartId = mfgPartId,
+            description = description,
+            link = link,
+            note = note,
+            packaging = packaging,
+            packQuantity = packQuantity.ifBlank { "1" }
+        )
+        companyRepository.addSupplierPart(item)
+        setAddSupplierPartDialogOpen(false)
+        selectPart(currentPart)
+    }
+
+    fun deleteSupplierPart(id: Long) {
+        val currentPart = _uiState.value.selectedPart ?: return
+        companyRepository.deleteSupplierPart(id)
+        selectPart(currentPart)
     }
 
     /**

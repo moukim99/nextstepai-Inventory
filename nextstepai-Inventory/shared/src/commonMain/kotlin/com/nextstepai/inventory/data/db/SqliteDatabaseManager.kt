@@ -297,16 +297,25 @@ object SqliteDatabaseManager {
             CREATE TABLE IF NOT EXISTS company_attachments (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 companyUuid TEXT NOT NULL,
+                documentType TEXT NOT NULL DEFAULT 'سجل تجاري',
                 attachmentPath TEXT NOT NULL DEFAULT '',
                 link TEXT NOT NULL DEFAULT '',
                 comment TEXT NOT NULL DEFAULT '',
                 uploadDate INTEGER NOT NULL DEFAULT 0,
                 userId INTEGER,
+                expiryDate TEXT NOT NULL DEFAULT '',
+                notifyOnExpiry INTEGER NOT NULL DEFAULT 1,
+                notificationDaysBefore INTEGER NOT NULL DEFAULT 30,
                 syncStatus TEXT NOT NULL DEFAULT 'PENDING',
                 isDeleted INTEGER NOT NULL DEFAULT 0,
                 updatedAt INTEGER NOT NULL DEFAULT 0
             );
         """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE company_attachments ADD COLUMN documentType TEXT NOT NULL DEFAULT 'سجل تجاري'").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE company_attachments ADD COLUMN expiryDate TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE company_attachments ADD COLUMN notifyOnExpiry INTEGER NOT NULL DEFAULT 1").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE company_attachments ADD COLUMN notificationDaysBefore INTEGER NOT NULL DEFAULT 30").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS contacts (
@@ -316,6 +325,7 @@ object SqliteDatabaseManager {
                 phone TEXT NOT NULL DEFAULT '',
                 email TEXT NOT NULL DEFAULT '',
                 role TEXT NOT NULL DEFAULT '',
+                isPrimary INTEGER NOT NULL DEFAULT 0,
                 syncStatus TEXT NOT NULL DEFAULT 'PENDING',
                 isDeleted INTEGER NOT NULL DEFAULT 0,
                 updatedAt INTEGER NOT NULL DEFAULT 0
@@ -425,9 +435,11 @@ object SqliteDatabaseManager {
         """.trimIndent()).use { it.step() }
 
         runCatching { conn.prepare("ALTER TABLE supplier_price_breaks ADD COLUMN packQuantity TEXT NOT NULL DEFAULT '1'").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE contacts ADD COLUMN isPrimary INTEGER NOT NULL DEFAULT 0").use { it.step() } }
 
         // قيود التفرد المركبة والجزئية على مستوى DDL (Composite & Partial Unique Indexes)
         runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_primary_address ON addresses(companyUuid) WHERE isPrimary = 1").use { it.step() } }
+        runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_primary_contact ON contacts(companyUuid) WHERE isPrimary = 1").use { it.step() } }
         runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_mfg_parts_mfg_mpn ON manufacturer_parts(manufacturerUuid, mpn)").use { it.step() } }
         runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_supplier_parts_sup_sku ON supplier_parts(supplierUuid, sku)").use { it.step() } }
         runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_price_breaks_part_qty ON supplier_price_breaks(supplierPartUuid, quantity)").use { it.step() } }
@@ -444,6 +456,48 @@ object SqliteDatabaseManager {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_mfg_attachments_mfgPartUuid ON manufacturer_part_attachments(manufacturerPartUuid)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_supplier_parts_supUuid ON supplier_parts(supplierUuid)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_price_breaks_partUuid ON supplier_price_breaks(supplierPartUuid)").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS company_bank_accounts (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                companyUuid TEXT NOT NULL,
+                bankName TEXT NOT NULL,
+                accountName TEXT NOT NULL,
+                accountNumber TEXT NOT NULL DEFAULT '',
+                iban TEXT NOT NULL DEFAULT '',
+                swiftBic TEXT NOT NULL DEFAULT '',
+                currency TEXT NOT NULL DEFAULT 'USD',
+                branchName TEXT NOT NULL DEFAULT '',
+                isPrimary INTEGER NOT NULL DEFAULT 0,
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_bank_accounts_companyUuid ON company_bank_accounts(companyUuid)").use { it.step() } }
+        runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_primary_bank_account ON company_bank_accounts(companyUuid) WHERE isPrimary = 1").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS company_legal_records (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                companyUuid TEXT NOT NULL UNIQUE,
+                commercialRegisterNumber TEXT NOT NULL DEFAULT '',
+                taxId TEXT NOT NULL DEFAULT '',
+                nationalIdNumber TEXT NOT NULL DEFAULT '',
+                importLicenseNumber TEXT NOT NULL DEFAULT '',
+                manufacturingLicenseNumber TEXT NOT NULL DEFAULT '',
+                activityCodes TEXT NOT NULL DEFAULT '',
+                issuingAuthority TEXT NOT NULL DEFAULT '',
+                issueDate TEXT NOT NULL DEFAULT '',
+                expiryDate TEXT NOT NULL DEFAULT '',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_legal_records_companyUuid ON company_legal_records(companyUuid)").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS purchase_orders (

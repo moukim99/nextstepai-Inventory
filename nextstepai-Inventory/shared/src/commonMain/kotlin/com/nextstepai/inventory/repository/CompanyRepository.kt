@@ -19,6 +19,8 @@ class CompanyRepository(
     private val companyAttachmentTable: CompanyAttachmentTable = CompanyAttachmentTable(),
     private val contactTable: ContactTable = ContactTable(),
     private val addressTable: AddressTable = AddressTable(),
+    private val companyBankAccountTable: CompanyBankAccountTable = CompanyBankAccountTable(),
+    private val companyLegalRecordTable: CompanyLegalRecordTable = CompanyLegalRecordTable(),
     private val manufacturerPartTable: ManufacturerPartTable = ManufacturerPartTable(),
     private val manufacturerPartParameterTable: ManufacturerPartParameterTable = ManufacturerPartParameterTable(),
     private val manufacturerPartAttachmentTable: ManufacturerPartAttachmentTable = ManufacturerPartAttachmentTable(),
@@ -28,6 +30,8 @@ class CompanyRepository(
     private val companyAttachmentDao: CompanyAttachmentDao = CompanyAttachmentDao(),
     private val contactDao: ContactDao = ContactDao(),
     private val addressDao: AddressDao = AddressDao(),
+    private val companyBankAccountDao: CompanyBankAccountDao = CompanyBankAccountDao(),
+    private val companyLegalRecordDao: CompanyLegalRecordDao = CompanyLegalRecordDao(),
     private val manufacturerPartDao: ManufacturerPartDao = ManufacturerPartDao(),
     private val manufacturerPartParameterDao: ManufacturerPartParameterDao = ManufacturerPartParameterDao(),
     private val manufacturerPartAttachmentDao: ManufacturerPartAttachmentDao = ManufacturerPartAttachmentDao(),
@@ -198,6 +202,7 @@ class CompanyRepository(
                     phone = inserted.phone,
                     email = inserted.email,
                     role = inserted.role,
+                    isPrimary = inserted.isPrimary,
                     syncStatus = SyncStatus.PENDING
                 )
             )
@@ -248,10 +253,85 @@ class CompanyRepository(
         return deleted
     }
 
+    // --- الحسابات البنكية للشركة (Company Bank Accounts) ---
+
+    fun getBankAccountsForCompany(companyId: Long): List<CompanyBankAccount> =
+        companyBankAccountTable.getBankAccountsForCompany(companyId)
+
+    fun addBankAccount(account: CompanyBankAccount): CompanyBankAccount {
+        val inserted = companyBankAccountTable.insertBankAccount(account)
+        runBlocking {
+            companyBankAccountDao.insertOrUpdate(
+                CompanyBankAccountEntity(
+                    uuid = "bank-${inserted.id}",
+                    companyUuid = "company-${inserted.companyId}",
+                    bankName = inserted.bankName,
+                    accountName = inserted.accountName,
+                    accountNumber = inserted.accountNumber,
+                    iban = inserted.iban,
+                    swiftBic = inserted.swiftBic,
+                    currency = inserted.currency,
+                    branchName = inserted.branchName,
+                    isPrimary = inserted.isPrimary,
+                    syncStatus = SyncStatus.PENDING
+                )
+            )
+        }
+        return inserted
+    }
+
+    fun deleteBankAccount(accountId: Long): Boolean {
+        val deleted = companyBankAccountTable.deleteBankAccount(accountId)
+        if (deleted) {
+            runBlocking { companyBankAccountDao.delete("bank-$accountId") }
+        }
+        return deleted
+    }
+
+    // --- السجلات القانونية والتراخيص (Company Legal Records) ---
+
+    fun getLegalRecordForCompany(companyId: Long): CompanyLegalRecord? =
+        companyLegalRecordTable.getLegalRecordForCompany(companyId)
+
+    fun saveOrUpdateLegalRecord(record: CompanyLegalRecord): CompanyLegalRecord {
+        val inserted = companyLegalRecordTable.saveOrUpdateLegalRecord(record)
+        runBlocking {
+            companyLegalRecordDao.insertOrUpdate(
+                CompanyLegalRecordEntity(
+                    uuid = "legal-${inserted.id}",
+                    companyUuid = "company-${inserted.companyId}",
+                    commercialRegisterNumber = inserted.commercialRegisterNumber,
+                    taxId = inserted.taxId,
+                    nationalIdNumber = inserted.nationalIdNumber,
+                    importLicenseNumber = inserted.importLicenseNumber,
+                    manufacturingLicenseNumber = inserted.manufacturingLicenseNumber,
+                    activityCodes = inserted.activityCodes,
+                    issuingAuthority = inserted.issuingAuthority,
+                    issueDate = inserted.issueDate,
+                    expiryDate = inserted.expiryDate,
+                    syncStatus = SyncStatus.PENDING
+                )
+            )
+        }
+        return inserted
+    }
+
+    fun deleteLegalRecord(companyId: Long): Boolean {
+        val record = getLegalRecordForCompany(companyId) ?: return false
+        val deleted = companyLegalRecordTable.deleteLegalRecord(record.id)
+        if (deleted) {
+            runBlocking { companyLegalRecordDao.delete("legal-${record.id}") }
+        }
+        return deleted
+    }
+
     // --- قطع المصنّع (Manufacturer Parts) ---
 
     fun getManufacturerPartsForCompany(companyId: Long): List<ManufacturerPart> =
         manufacturerPartTable.getManufacturerPartsForCompany(companyId)
+
+    fun getManufacturerPartsForPart(partId: Long): List<ManufacturerPart> =
+        manufacturerPartTable.getManufacturerPartsForPart(partId)
 
     fun addManufacturerPart(part: ManufacturerPart): ManufacturerPart {
         val company = getCompanyById(part.manufacturerId)
@@ -348,6 +428,9 @@ class CompanyRepository(
 
     fun getSupplierPartsForCompany(companyId: Long): List<SupplierPart> =
         supplierPartTable.getSupplierPartsForCompany(companyId)
+
+    fun getSupplierPartsForPart(partId: Long): List<SupplierPart> =
+        supplierPartTable.getSupplierPartsForPart(partId)
 
     fun addSupplierPart(part: SupplierPart): SupplierPart {
         val company = getCompanyById(part.supplierId)

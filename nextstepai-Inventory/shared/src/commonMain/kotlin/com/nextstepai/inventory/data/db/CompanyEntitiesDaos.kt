@@ -14,10 +14,10 @@ class ContactDao {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<ContactEntity>()
         conn.prepare("""
-            SELECT uuid, companyUuid, name, phone, email, role, syncStatus, isDeleted, updatedAt
+            SELECT uuid, companyUuid, name, phone, email, role, isPrimary, syncStatus, isDeleted, updatedAt
             FROM contacts
             WHERE companyUuid = ? AND isDeleted = 0
-            ORDER BY name ASC
+            ORDER BY isPrimary DESC, name ASC
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, companyUuid)
             while (stmt.step()) {
@@ -29,9 +29,10 @@ class ContactDao {
                         phone = stmt.getText(3),
                         email = stmt.getText(4),
                         role = stmt.getText(5),
-                        syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(6)) }.getOrDefault(SyncStatus.PENDING),
-                        isDeleted = stmt.getLong(7) != 0L,
-                        updatedAt = stmt.getLong(8)
+                        isPrimary = stmt.getLong(6) != 0L,
+                        syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(7)) }.getOrDefault(SyncStatus.PENDING),
+                        isDeleted = stmt.getLong(8) != 0L,
+                        updatedAt = stmt.getLong(9)
                     )
                 )
             }
@@ -41,9 +42,15 @@ class ContactDao {
 
     suspend fun insertOrUpdate(entity: ContactEntity) {
         val conn = SqliteDatabaseManager.getConnection()
+        if (entity.isPrimary) {
+            conn.prepare("UPDATE contacts SET isPrimary = 0 WHERE companyUuid = ?").use { stmt ->
+                stmt.bindText(1, entity.companyUuid)
+                stmt.step()
+            }
+        }
         conn.prepare("""
-            INSERT OR REPLACE INTO contacts (uuid, companyUuid, name, phone, email, role, syncStatus, isDeleted, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO contacts (uuid, companyUuid, name, phone, email, role, isPrimary, syncStatus, isDeleted, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
             stmt.bindText(2, entity.companyUuid)
@@ -51,9 +58,10 @@ class ContactDao {
             stmt.bindText(4, entity.phone)
             stmt.bindText(5, entity.email)
             stmt.bindText(6, entity.role)
-            stmt.bindText(7, entity.syncStatus.name)
-            stmt.bindLong(8, if (entity.isDeleted) 1L else 0L)
-            stmt.bindLong(9, entity.updatedAt)
+            stmt.bindLong(7, if (entity.isPrimary) 1L else 0L)
+            stmt.bindText(8, entity.syncStatus.name)
+            stmt.bindLong(9, if (entity.isDeleted) 1L else 0L)
+            stmt.bindLong(10, entity.updatedAt)
             stmt.step()
         }
     }
@@ -225,6 +233,162 @@ class AddressDao {
             stmt.bindText(2, uuid)
             stmt.step()
         }
+    }
+}
+
+/**
+ * كائن الوصول لبيانات الحسابات البنكية للشركات (CompanyBankAccountDao) باستعلامات صريحة.
+ */
+@Dao
+class CompanyBankAccountDao {
+    suspend fun getForCompany(companyUuid: String): List<CompanyBankAccountEntity> {
+        val conn = SqliteDatabaseManager.getConnection()
+        val results = mutableListOf<CompanyBankAccountEntity>()
+        conn.prepare("""
+            SELECT uuid, companyUuid, bankName, accountName, accountNumber, iban, swiftBic, currency, branchName, isPrimary, syncStatus, isDeleted, updatedAt
+            FROM company_bank_accounts
+            WHERE companyUuid = ? AND isDeleted = 0
+            ORDER BY isPrimary DESC, bankName ASC
+        """.trimIndent()).use { stmt ->
+            stmt.bindText(1, companyUuid)
+            while (stmt.step()) {
+                results.add(mapEntity(stmt))
+            }
+        }
+        return results
+    }
+
+    suspend fun insertOrUpdate(entity: CompanyBankAccountEntity) {
+        val conn = SqliteDatabaseManager.getConnection()
+        if (entity.isPrimary) {
+            conn.prepare("UPDATE company_bank_accounts SET isPrimary = 0 WHERE companyUuid = ?").use { stmt ->
+                stmt.bindText(1, entity.companyUuid)
+                stmt.step()
+            }
+        }
+        conn.prepare("""
+            INSERT OR REPLACE INTO company_bank_accounts (uuid, companyUuid, bankName, accountName, accountNumber, iban, swiftBic, currency, branchName, isPrimary, syncStatus, isDeleted, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """.trimIndent()).use { stmt ->
+            stmt.bindText(1, entity.uuid)
+            stmt.bindText(2, entity.companyUuid)
+            stmt.bindText(3, entity.bankName)
+            stmt.bindText(4, entity.accountName)
+            stmt.bindText(5, entity.accountNumber)
+            stmt.bindText(6, entity.iban)
+            stmt.bindText(7, entity.swiftBic)
+            stmt.bindText(8, entity.currency)
+            stmt.bindText(9, entity.branchName)
+            stmt.bindLong(10, if (entity.isPrimary) 1L else 0L)
+            stmt.bindText(11, entity.syncStatus.name)
+            stmt.bindLong(12, if (entity.isDeleted) 1L else 0L)
+            stmt.bindLong(13, entity.updatedAt)
+            stmt.step()
+        }
+    }
+
+    suspend fun delete(uuid: String) {
+        val conn = SqliteDatabaseManager.getConnection()
+        val now = Clock.System.now().toEpochMilliseconds()
+        conn.prepare("UPDATE company_bank_accounts SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?").use { stmt ->
+            stmt.bindLong(1, now)
+            stmt.bindText(2, uuid)
+            stmt.step()
+        }
+    }
+
+    private fun mapEntity(stmt: SQLiteStatement): CompanyBankAccountEntity {
+        return CompanyBankAccountEntity(
+            uuid = stmt.getText(0),
+            companyUuid = stmt.getText(1),
+            bankName = stmt.getText(2),
+            accountName = stmt.getText(3),
+            accountNumber = stmt.getText(4),
+            iban = stmt.getText(5),
+            swiftBic = stmt.getText(6),
+            currency = stmt.getText(7),
+            branchName = stmt.getText(8),
+            isPrimary = stmt.getLong(9) == 1L,
+            syncStatus = SyncStatus.valueOf(stmt.getText(10)),
+            isDeleted = stmt.getLong(11) == 1L,
+            updatedAt = stmt.getLong(12)
+        )
+    }
+}
+
+/**
+ * كائن الوصول لبيانات السجلات ترخيص الشركة والقوانين (CompanyLegalRecordDao) باستعلامات صريحة.
+ */
+@Dao
+class CompanyLegalRecordDao {
+    suspend fun getForCompany(companyUuid: String): CompanyLegalRecordEntity? {
+        val conn = SqliteDatabaseManager.getConnection()
+        var result: CompanyLegalRecordEntity? = null
+        conn.prepare("""
+            SELECT uuid, companyUuid, commercialRegisterNumber, taxId, nationalIdNumber, importLicenseNumber, manufacturingLicenseNumber, activityCodes, issuingAuthority, issueDate, expiryDate, syncStatus, isDeleted, updatedAt
+            FROM company_legal_records
+            WHERE companyUuid = ? AND isDeleted = 0
+            LIMIT 1
+        """.trimIndent()).use { stmt ->
+            stmt.bindText(1, companyUuid)
+            if (stmt.step()) {
+                result = mapEntity(stmt)
+            }
+        }
+        return result
+    }
+
+    suspend fun insertOrUpdate(entity: CompanyLegalRecordEntity) {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            INSERT OR REPLACE INTO company_legal_records (uuid, companyUuid, commercialRegisterNumber, taxId, nationalIdNumber, importLicenseNumber, manufacturingLicenseNumber, activityCodes, issuingAuthority, issueDate, expiryDate, syncStatus, isDeleted, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """.trimIndent()).use { stmt ->
+            stmt.bindText(1, entity.uuid)
+            stmt.bindText(2, entity.companyUuid)
+            stmt.bindText(3, entity.commercialRegisterNumber)
+            stmt.bindText(4, entity.taxId)
+            stmt.bindText(5, entity.nationalIdNumber)
+            stmt.bindText(6, entity.importLicenseNumber)
+            stmt.bindText(7, entity.manufacturingLicenseNumber)
+            stmt.bindText(8, entity.activityCodes)
+            stmt.bindText(9, entity.issuingAuthority)
+            stmt.bindText(10, entity.issueDate)
+            stmt.bindText(11, entity.expiryDate)
+            stmt.bindText(12, entity.syncStatus.name)
+            stmt.bindLong(13, if (entity.isDeleted) 1L else 0L)
+            stmt.bindLong(14, entity.updatedAt)
+            stmt.step()
+        }
+    }
+
+    suspend fun delete(uuid: String) {
+        val conn = SqliteDatabaseManager.getConnection()
+        val now = Clock.System.now().toEpochMilliseconds()
+        conn.prepare("UPDATE company_legal_records SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?").use { stmt ->
+            stmt.bindLong(1, now)
+            stmt.bindText(2, uuid)
+            stmt.step()
+        }
+    }
+
+    private fun mapEntity(stmt: SQLiteStatement): CompanyLegalRecordEntity {
+        return CompanyLegalRecordEntity(
+            uuid = stmt.getText(0),
+            companyUuid = stmt.getText(1),
+            commercialRegisterNumber = stmt.getText(2),
+            taxId = stmt.getText(3),
+            nationalIdNumber = stmt.getText(4),
+            importLicenseNumber = stmt.getText(5),
+            manufacturingLicenseNumber = stmt.getText(6),
+            activityCodes = stmt.getText(7),
+            issuingAuthority = stmt.getText(8),
+            issueDate = stmt.getText(9),
+            expiryDate = stmt.getText(10),
+            syncStatus = SyncStatus.valueOf(stmt.getText(11)),
+            isDeleted = stmt.getLong(12) == 1L,
+            updatedAt = stmt.getLong(13)
+        )
     }
 }
 

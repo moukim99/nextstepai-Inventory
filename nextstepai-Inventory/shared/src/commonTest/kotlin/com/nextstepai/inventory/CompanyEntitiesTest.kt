@@ -339,7 +339,7 @@ class CompanyEntitiesTest {
         mfgAttDao.insertOrUpdate(
             ManufacturerPartAttachmentEntity(
                 uuid = "mfg-att-test-2",
-                manufacturerPartUuid = "mfg-part-2",
+                manufacturerPartUuid = "mfg-part-dao-unique-99",
                 attachmentPath = "/path/to/cert.pdf",
                 comment = "RoHS Certificate",
                 uploadDate = Clock.System.now().toEpochMilliseconds(),
@@ -347,7 +347,7 @@ class CompanyEntitiesTest {
             )
         )
 
-        val daoList = mfgAttDao.getForManufacturerPart("mfg-part-2")
+        val daoList = mfgAttDao.getForManufacturerPart("mfg-part-dao-unique-99")
         assertEquals(1, daoList.size)
         assertEquals("RoHS Certificate", daoList.first().comment)
     }
@@ -474,5 +474,45 @@ class CompanyEntitiesTest {
         val priceList = priceDao.getForSupplierPart("sup-part-test-1")
         assertEquals(1, priceList.size)
         assertEquals(2.75, priceList.first().price)
+    }
+
+    @Test
+    fun testCompanyBankAccountTableAndDao() {
+        val table = CompanyBankAccountTable()
+
+        val acc1 = table.insertBankAccount(
+            CompanyBankAccount(
+                companyId = 1L,
+                bankName = "الراجحي",
+                accountName = "شركة التقنيات المتقدمة",
+                iban = "SA1122334455667788990000",
+                currency = "SAR",
+                isPrimary = true
+            )
+        )
+        assertEquals(1L, acc1.id)
+        assertTrue(acc1.isPrimary)
+
+        val acc2 = table.insertBankAccount(
+            CompanyBankAccount(
+                companyId = 1L,
+                bankName = "البنك الأهلي",
+                accountName = "شركة التقنيات المتقدمة",
+                iban = "SA9988776655443322110000",
+                currency = "USD",
+                isPrimary = true
+            )
+        )
+        val accounts = table.getBankAccountsForCompany(1L)
+        assertEquals(2, accounts.size)
+
+        val updatedAcc1 = accounts.find { it.id == acc1.id }
+        val updatedAcc2 = accounts.find { it.id == acc2.id }
+        assertFalse(updatedAcc1!!.isPrimary)
+        assertTrue(updatedAcc2!!.isPrimary)
+
+        val deleted = table.deleteBankAccount(acc1.id)
+        assertTrue(deleted)
+        assertEquals(1, table.getBankAccountsForCompany(1L).size)
     }
 }

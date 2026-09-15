@@ -35,6 +35,8 @@ import com.nextstepai.inventory.data.Company
 import com.nextstepai.inventory.data.POStatus
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.PurchaseOrder
+import com.nextstepai.inventory.ui.components.CurrencySelectionBottomSheet
+import com.nextstepai.inventory.ui.components.CurrencySelectorField
 import nextstepai_inventory.shared.generated.resources.Res
 import nextstepai_inventory.shared.generated.resources.add_new_order
 import nextstepai_inventory.shared.generated.resources.cancel
@@ -745,14 +747,21 @@ private fun AddOrderDialog(
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                OutlinedTextField(
-                    value = currency,
-                    onValueChange = { currency = it },
-                    label = { Text("العملة المعتمدة للطلب") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                var isCurrencyPickerOpen by remember { mutableStateOf(false) }
+                CurrencySelectorField(
+                    selectedCurrencyCode = currency,
+                    onOpenPicker = { isCurrencyPickerOpen = true },
+                    label = "العملة المعتمدة للطلب"
                 )
+                if (isCurrencyPickerOpen) {
+                    CurrencySelectionBottomSheet(
+                        selectedCurrencyCode = currency,
+                        onDismiss = { isCurrencyPickerOpen = false },
+                        onCurrencySelected = { selectedCurr ->
+                            currency = selectedCurr.code
+                        }
+                    )
+                }
             }
         }
     )

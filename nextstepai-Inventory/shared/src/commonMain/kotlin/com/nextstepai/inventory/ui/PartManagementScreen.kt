@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.BomItem
+import com.nextstepai.inventory.data.Company
+import com.nextstepai.inventory.data.ManufacturerPart
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.PartAttachment
 import com.nextstepai.inventory.data.PartCategory
@@ -39,10 +41,14 @@ import com.nextstepai.inventory.data.PartNotes
 import com.nextstepai.inventory.data.PartParameter
 import com.nextstepai.inventory.data.PartRelatedView
 import com.nextstepai.inventory.data.PartTestTemplate
+import com.nextstepai.inventory.data.SupplierPart
 import com.nextstepai.inventory.data.db.PartInternalPriceEntity
 import com.nextstepai.inventory.data.db.PartPricingEntity
 import com.nextstepai.inventory.data.db.PartSalePriceEntity
 import com.nextstepai.inventory.repository.PartsSummary
+import com.nextstepai.inventory.ui.components.CurrencySelectionBottomSheet
+import com.nextstepai.inventory.ui.components.CurrencySelectorField
+import com.nextstepai.inventory.ui.components.SearchableCompanyPickerDialog
 import nextstepai_inventory.shared.generated.resources.Res
 import nextstepai_inventory.shared.generated.resources.add_new_part
 import nextstepai_inventory.shared.generated.resources.cancel
@@ -213,9 +219,20 @@ fun PartManagementScreen(
             partPricing = uiState.selectedPartPricing,
             internalPrices = uiState.selectedPartInternalPrices,
             salePrices = uiState.selectedPartSalePrices,
+            mfgParts = uiState.selectedPartManufacturerParts,
+            supParts = uiState.selectedPartSupplierParts,
+            allCompanies = uiState.allCompanies,
             onRecalculatePricing = { viewModel.recalculatePartPricing() },
             onAddInternalPrice = { qty, prc, curr -> viewModel.addPartInternalPrice(qty, prc, curr) },
             onAddSalePrice = { qty, prc, curr -> viewModel.addPartSalePrice(qty, prc, curr) },
+            onAddManufacturerPart = { mfgId, mpn, desc, link ->
+                viewModel.addManufacturerPartForCurrentPart(mfgId, mpn, desc, link)
+            },
+            onDeleteManufacturerPart = { id -> viewModel.deleteManufacturerPart(id) },
+            onAddSupplierPart = { supId, sku, mfgPartId, desc, link, note, pkg, packQty ->
+                viewModel.addSupplierPartForCurrentPart(supId, sku, mfgPartId, desc, link, note, pkg, packQty)
+            },
+            onDeleteSupplierPart = { id -> viewModel.deleteSupplierPart(id) },
             onDismiss = { viewModel.selectPart(null) }
         )
     }
@@ -623,14 +640,25 @@ private fun PartDetailsDialog(
     partPricing: PartPricingEntity? = null,
     internalPrices: List<PartInternalPriceEntity> = emptyList(),
     salePrices: List<PartSalePriceEntity> = emptyList(),
+    mfgParts: List<ManufacturerPart> = emptyList(),
+    supParts: List<SupplierPart> = emptyList(),
+    allCompanies: List<Company> = emptyList(),
     onRecalculatePricing: () -> Unit = {},
     onAddInternalPrice: (quantity: Double, price: Double, currency: String) -> Unit = { _, _, _ -> },
     onAddSalePrice: (quantity: Double, price: Double, currency: String) -> Unit = { _, _, _ -> },
+    onAddManufacturerPart: (manufacturerId: Long, mpn: String, description: String, link: String) -> Unit = { _, _, _, _ -> },
+    onDeleteManufacturerPart: (id: Long) -> Unit = {},
+    onAddSupplierPart: (supplierId: Long, sku: String, mfgPartId: Long?, description: String, link: String, note: String, packaging: String, packQuantity: String) -> Unit = { _, _, _, _, _, _, _, _ -> },
+    onDeleteSupplierPart: (id: Long) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     var selectedTabIndex by remember { mutableStateOf(0) }
     var isAddInternalPriceDialogOpen by remember { mutableStateOf(false) }
     var isAddSalePriceDialogOpen by remember { mutableStateOf(false) }
+    var isAddMfgPartDialogOpen by remember { mutableStateOf(false) }
+    var isAddSupPartDialogOpen by remember { mutableStateOf(false) }
+    var deleteItemPending by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+
     val tabTitles = listOf(
         "📊 العام",
         "⚙️ الـ BOM (${bomItems.size})",
@@ -639,7 +667,9 @@ private fun PartDetailsDialog(
         "🔗 الصلة (${relatedParts.size})",
         "📁 المرفقات (${attachments.size})",
         "📝 الملاحظات",
-        "💰 التسعير"
+        "💰 التسعير",
+        "🏭 المصنّعون (${mfgParts.size})",
+        "🛒 المورّدون (${supParts.size})"
     )
 
     AlertDialog(
@@ -702,6 +732,52 @@ private fun PartDetailsDialog(
                         DetailRow("الحد الأدنى للتنبيه (minimumStock):", "${part.minimumStock} ${part.units}")
                         DetailRow("الحد الأقصى للمخزون (maximumStock):", part.maximumStock?.let { "$it ${part.units}" } ?: "-")
                         DetailRow("تاريخ الإنشاء (creation_date):", part.creationDate.ifBlank { "2025-02-15" })
+
+                        HorizontalDivider()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("🏭 قطع المصنّع الأصلي (MPN):", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                            Button(
+                                onClick = { isAddMfgPartDialogOpen = true },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("+ إضافة MPN", fontSize = 10.sp)
+                            }
+                        }
+                        if (mfgParts.isEmpty()) {
+                            Text("لا توجد أكواد مصنع مربوطة بهذه القطعة.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            mfgParts.forEach { mp ->
+                                val compName = allCompanies.find { it.id == mp.manufacturerId }?.name ?: "مصنع #${mp.manufacturerId}"
+                                DetailRow("• $compName:", "MPN: ${mp.mpn}")
+                            }
+                        }
+
+                        HorizontalDivider()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("🛒 أكواد الموردين الشركاء (SKU):", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                            Button(
+                                onClick = { isAddSupPartDialogOpen = true },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("+ إضافة SKU", fontSize = 10.sp)
+                            }
+                        }
+                        if (supParts.isEmpty()) {
+                            Text("لا توجد أكواد مورّدين مربوطة بهذه القطعة.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            supParts.forEach { sp ->
+                                val supName = allCompanies.find { it.id == sp.supplierId }?.name ?: "مورد #${sp.supplierId}"
+                                DetailRow("• $supName:", "SKU: ${sp.sku}")
+                            }
+                        }
                     }
                     1 -> {
                         Text("بنود قائمة المواد (Bill of Materials):", fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -860,6 +936,102 @@ private fun PartDetailsDialog(
                             }
                         }
                     }
+                    8 -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("الشركات المصنّعة وأكواد MPN:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Button(
+                                onClick = { isAddMfgPartDialogOpen = true },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("+ إضافة MPN", fontSize = 10.sp)
+                            }
+                        }
+
+                        if (mfgParts.isEmpty()) {
+                            Text("لا توجد شركات مصنّعة مسجلة لهذه القطعة بعد.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            for (mp in mfgParts) {
+                                val companyName = allCompanies.find { it.id == mp.manufacturerId }?.name ?: "مصنّع #${mp.manufacturerId}"
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(companyName, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                            Text("MPN: ${mp.mpn}", fontSize = 11.sp, color = Color(0xFF4F46E5), fontWeight = FontWeight.SemiBold)
+                                            if (mp.description.isNotBlank()) Text(mp.description, fontSize = 10.sp, color = Color(0xFF64748B))
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                deleteItemPending = Pair("قطع المصنع MPN: ${mp.mpn}") { onDeleteManufacturerPart(mp.id) }
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(Icons.Default.Delete, contentDescription = "حذف", tint = Color(0xFFE11D48), modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    9 -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("شركات التوريد وأكواد SKU والأسعار:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Button(
+                                onClick = { isAddSupPartDialogOpen = true },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("+ إضافة SKU", fontSize = 10.sp)
+                            }
+                        }
+
+                        if (supParts.isEmpty()) {
+                            Text("لا توجد شركات توريد مسجلة لهذه القطعة بعد.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            for (sp in supParts) {
+                                val supplierName = allCompanies.find { it.id == sp.supplierId }?.name ?: "مورّد #${sp.supplierId}"
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(supplierName, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                            Text("SKU: ${sp.sku}", fontSize = 11.sp, color = Color(0xFF059669), fontWeight = FontWeight.SemiBold)
+                                            if (sp.packaging.isNotBlank()) Text("التغليف: ${sp.packaging} (حزمة ${sp.packQuantity})", fontSize = 10.sp, color = Color(0xFF64748B))
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                deleteItemPending = Pair("قطع المورد SKU: ${sp.sku}") { onDeleteSupplierPart(sp.id) }
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(Icons.Default.Delete, contentDescription = "حذف", tint = Color(0xFFE11D48), modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -882,6 +1054,37 @@ private fun PartDetailsDialog(
                 onAddSalePrice(qty, prc, curr)
                 isAddSalePriceDialogOpen = false
             }
+        )
+    }
+
+    if (isAddMfgPartDialogOpen) {
+        AddManufacturerPartForPartDialog(
+            companies = allCompanies,
+            onDismiss = { isAddMfgPartDialogOpen = false },
+            onConfirm = { mfgId, mpn, desc, link ->
+                onAddManufacturerPart(mfgId, mpn, desc, link)
+                isAddMfgPartDialogOpen = false
+            }
+        )
+    }
+
+    if (isAddSupPartDialogOpen) {
+        AddSupplierPartForPartDialog(
+            companies = allCompanies,
+            mfgParts = mfgParts,
+            onDismiss = { isAddSupPartDialogOpen = false },
+            onConfirm = { supId, sku, mfgPartId, desc, link, note, pkg, packQty ->
+                onAddSupplierPart(supId, sku, mfgPartId, desc, link, note, pkg, packQty)
+                isAddSupPartDialogOpen = false
+            }
+        )
+    }
+
+    if (deleteItemPending != null) {
+        ConfirmDeletePartLinkDialog(
+            itemTitle = deleteItemPending!!.first,
+            onConfirm = deleteItemPending!!.second,
+            onDismiss = { deleteItemPending = null }
         )
     }
 }
@@ -1121,14 +1324,21 @@ private fun AddInternalPriceDialog(
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                OutlinedTextField(
-                    value = currency,
-                    onValueChange = { currency = it },
-                    label = { Text("العملة (price_currency)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                var isCurrencyPickerOpen by remember { mutableStateOf(false) }
+                CurrencySelectorField(
+                    selectedCurrencyCode = currency,
+                    onOpenPicker = { isCurrencyPickerOpen = true },
+                    label = "العملة (price_currency)"
                 )
+                if (isCurrencyPickerOpen) {
+                    CurrencySelectionBottomSheet(
+                        selectedCurrencyCode = currency,
+                        onDismiss = { isCurrencyPickerOpen = false },
+                        onCurrencySelected = { selectedCurr ->
+                            currency = selectedCurr.code
+                        }
+                    )
+                }
             }
         }
     )
@@ -1190,15 +1400,253 @@ private fun AddSalePriceDialog(
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                OutlinedTextField(
-                    value = currency,
-                    onValueChange = { currency = it },
-                    label = { Text("العملة (price_currency)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                var isCurrencyPickerOpen by remember { mutableStateOf(false) }
+                CurrencySelectorField(
+                    selectedCurrencyCode = currency,
+                    onOpenPicker = { isCurrencyPickerOpen = true },
+                    label = "العملة (price_currency)"
                 )
+                if (isCurrencyPickerOpen) {
+                    CurrencySelectionBottomSheet(
+                        selectedCurrencyCode = currency,
+                        onDismiss = { isCurrencyPickerOpen = false },
+                        onCurrencySelected = { selectedCurr ->
+                            currency = selectedCurr.code
+                        }
+                    )
+                }
             }
         }
     )
 }
+
+@Composable
+private fun AddManufacturerPartForPartDialog(
+    companies: List<Company>,
+    onDismiss: () -> Unit,
+    onConfirm: (manufacturerId: Long, mpn: String, description: String, link: String) -> Unit
+) {
+    val mfgCompanies = remember(companies) { companies.filter { it.isManufacturer } }
+    var selectedCompany by remember { mutableStateOf(mfgCompanies.firstOrNull()) }
+    var isCompanyPickerOpen by remember { mutableStateOf(false) }
+    var mpn by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var link by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("إضافة قطعة مصنّع (MPN)", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("المصنّع المعتمد:", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                OutlinedButton(
+                    onClick = { isCompanyPickerOpen = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(selectedCompany?.name ?: "اختر الشركة المصنعة...")
+                }
+                OutlinedTextField(
+                    value = mpn,
+                    onValueChange = { mpn = it },
+                    label = { Text("رقم قطعة المصنع (MPN)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("الوصف الفني") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = link,
+                    onValueChange = { link = it },
+                    label = { Text("رابط كراسة المواصفات (Datasheet)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (selectedCompany != null && mpn.isNotBlank()) {
+                        onConfirm(selectedCompany!!.id, mpn, description, link)
+                    }
+                },
+                enabled = selectedCompany != null && mpn.isNotBlank()
+            ) {
+                Text("إضافة")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("إلغاء")
+            }
+        }
+    )
+
+    if (isCompanyPickerOpen) {
+        SearchableCompanyPickerDialog(
+            companies = mfgCompanies,
+            selectedCompanyId = selectedCompany?.id,
+            title = "اختر الشركة المصنعة",
+            onCompanySelected = { selectedCompany = it },
+            onDismiss = { isCompanyPickerOpen = false }
+        )
+    }
+}
+
+@Composable
+private fun AddSupplierPartForPartDialog(
+    companies: List<Company>,
+    mfgParts: List<ManufacturerPart>,
+    onDismiss: () -> Unit,
+    onConfirm: (supplierId: Long, sku: String, mfgPartId: Long?, description: String, link: String, note: String, packaging: String, packQuantity: String) -> Unit
+) {
+    val supCompanies = remember(companies) { companies.filter { it.isSupplier } }
+    var selectedCompany by remember { mutableStateOf(supCompanies.firstOrNull()) }
+    var isCompanyPickerOpen by remember { mutableStateOf(false) }
+    var selectedMfgPartId by remember { mutableStateOf<Long?>(mfgParts.firstOrNull()?.id) }
+    var sku by remember { mutableStateOf("") }
+    var packaging by remember { mutableStateOf("Box") }
+    var packQuantity by remember { mutableStateOf("1") }
+    var description by remember { mutableStateOf("") }
+    var link by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("إضافة قطعة مورّد (SKU)", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text("المورّد المعتمد:", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                OutlinedButton(
+                    onClick = { isCompanyPickerOpen = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(selectedCompany?.name ?: "اختر شركة التوريد...")
+                }
+                if (mfgParts.isNotEmpty()) {
+                    Text("ربط برقم قطع التصنيع (MPN):", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    mfgParts.forEach { mp ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedMfgPartId = mp.id }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            RadioButton(
+                                selected = selectedMfgPartId == mp.id,
+                                onClick = { selectedMfgPartId = mp.id }
+                            )
+                            Text("MPN: ${mp.mpn} (#${mp.id})", fontSize = 12.sp)
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = sku,
+                    onValueChange = { sku = it },
+                    label = { Text("رمز التوريد (SKU)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = packaging,
+                        onValueChange = { packaging = it },
+                        label = { Text("نوع التغليف") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = packQuantity,
+                        onValueChange = { packQuantity = it },
+                        label = { Text("كمية الحزمة") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                }
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("الوصف") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = link,
+                    onValueChange = { link = it },
+                    label = { Text("رابط صفحة الشراء") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("ملاحظة التوريد") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (selectedCompany != null && sku.isNotBlank()) {
+                        onConfirm(selectedCompany!!.id, sku, selectedMfgPartId, description, link, note, packaging, packQuantity)
+                    }
+                },
+                enabled = selectedCompany != null && sku.isNotBlank()
+            ) {
+                Text("إضافة")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("إلغاء")
+            }
+        }
+    )
+
+    if (isCompanyPickerOpen) {
+        SearchableCompanyPickerDialog(
+            companies = supCompanies,
+            selectedCompanyId = selectedCompany?.id,
+            title = "اختر شركة التوريد",
+            onCompanySelected = { selectedCompany = it },
+            onDismiss = { isCompanyPickerOpen = false }
+        )
+    }
+}
+
+@Composable
+private fun ConfirmDeletePartLinkDialog(
+    itemTitle: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("تأكيد الحذف ⚠️", fontWeight = FontWeight.Bold, color = Color(0xFFE11D48)) },
+        text = {
+            Text("هل أنت تأكد من إزالة '$itemTitle'؟\n\nتنبيه: في حال كان هذا السجل مرتبطاً بأسعار سابقة أو أوامر شراء، فقد تتأثر تقارير التكلفة المرتبطة به.")
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm()
+                    onDismiss()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE11D48))
+            ) {
+                Text("حذف")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("إلغاء")
+            }
+        }
+    )
+}
+

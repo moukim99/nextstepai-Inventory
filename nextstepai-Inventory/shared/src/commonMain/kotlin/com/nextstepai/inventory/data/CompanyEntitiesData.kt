@@ -11,7 +11,8 @@ data class Contact(
     val name: String,
     val phone: String = "",
     val email: String = "",
-    val role: String = ""
+    val role: String = "",
+    val isPrimary: Boolean = false
 )
 
 /**
@@ -46,6 +47,41 @@ data class CompanyAttachment(
     val expiryDate: String = "",
     val notifyOnExpiry: Boolean = true,
     val notificationDaysBefore: Int = 30
+)
+
+/**
+ * نموذج البيانات للحسابات البنكية الخاصة بالشركة (CompanyBankAccount).
+ */
+data class CompanyBankAccount(
+    val id: Long = 0L,
+    val companyId: Long,
+    val bankName: String,
+    val accountName: String,
+    val accountNumber: String = "",
+    val iban: String = "",
+    val swiftBic: String = "",
+    val currency: String = "USD",
+    val branchName: String = "",
+    val isPrimary: Boolean = false,
+    val updatedAt: Long = Clock.System.now().toEpochMilliseconds()
+)
+
+/**
+ * نموذج البيانات للسجلات والتراخيص القانونية الخاصة بالشركة (CompanyLegalRecord).
+ */
+data class CompanyLegalRecord(
+    val id: Long = 0L,
+    val companyId: Long,
+    val commercialRegisterNumber: String = "",
+    val taxId: String = "",
+    val nationalIdNumber: String = "",
+    val importLicenseNumber: String = "",
+    val manufacturingLicenseNumber: String = "",
+    val activityCodes: String = "",
+    val issuingAuthority: String = "",
+    val issueDate: String = "",
+    val expiryDate: String = "",
+    val updatedAt: Long = Clock.System.now().toEpochMilliseconds()
 )
 
 /**
@@ -130,7 +166,18 @@ class ContactTable {
         require(contact.name.isNotBlank()) { "اسم جهة الاتصال إلزامي ولا يمكن أن يكون فارغاً" }
         require(contact.companyId != 0L) { "معرف الشركة إلزامي لربط جهة الاتصال" }
 
-        val newContact = contact.copy(id = if (contact.id == 0L) nextId++ else contact.id)
+        val existing = getContactsForCompany(contact.companyId)
+        val isFirst = existing.isEmpty()
+        val shouldBePrimary = contact.isPrimary || isFirst
+
+        if (shouldBePrimary) {
+            resetPrimaryForCompany(contact.companyId)
+        }
+
+        val newContact = contact.copy(
+            id = if (contact.id == 0L) nextId++ else contact.id,
+            isPrimary = shouldBePrimary
+        )
         contacts.add(newContact)
         return newContact
     }
@@ -141,16 +188,45 @@ class ContactTable {
 
         val index = contacts.indexOfFirst { it.id == contact.id }
         require(index != -1) { "جهة الاتصال غير موجودة لتحديثها" }
+
+        if (contact.isPrimary) {
+            resetPrimaryForCompany(contact.companyId, excludeContactId = contact.id)
+        }
+
         contacts[index] = contact
         return contact
     }
 
     fun deleteContact(id: Long): Boolean {
-        return contacts.removeIf { it.id == id }
+        val target = contacts.find { it.id == id } ?: return false
+        val companyId = target.companyId
+        val removed = contacts.removeIf { it.id == id }
+        if (removed) {
+            val remaining = getContactsForCompany(companyId)
+            if (remaining.isNotEmpty() && remaining.none { it.isPrimary }) {
+                val idx = contacts.indexOfFirst { it.id == remaining.first().id }
+                if (idx != -1) {
+                    contacts[idx] = contacts[idx].copy(isPrimary = true)
+                }
+            }
+        }
+        return removed
     }
 
     fun getContactsForCompany(companyId: Long): List<Contact> {
         return contacts.filter { it.companyId == companyId }
+    }
+
+    fun getPrimaryContactForCompany(companyId: Long): Contact? {
+        return contacts.find { it.companyId == companyId && it.isPrimary }
+    }
+
+    private fun resetPrimaryForCompany(companyId: Long, excludeContactId: Long = 0L) {
+        for (i in contacts.indices) {
+            if (contacts[i].companyId == companyId && contacts[i].id != excludeContactId && contacts[i].isPrimary) {
+                contacts[i] = contacts[i].copy(isPrimary = false)
+            }
+        }
     }
 
     fun getAllContacts(): List<Contact> = contacts.toList()
@@ -246,11 +322,18 @@ class AddressTable {
         require(address.line1.isNotBlank()) { "السطر الأول من العنوان إلزامي" }
         require(address.companyId != 0L) { "معرف الشركة إلزامي لربط العنوان" }
 
-        if (address.isPrimary) {
+        val existing = getAddressesForCompany(address.companyId)
+        val isFirst = existing.isEmpty()
+        val shouldBePrimary = address.isPrimary || isFirst
+
+        if (shouldBePrimary) {
             resetPrimaryForCompany(address.companyId)
         }
 
-        val newAddress = address.copy(id = if (address.id == 0L) nextId++ else address.id)
+        val newAddress = address.copy(
+            id = if (address.id == 0L) nextId++ else address.id,
+            isPrimary = shouldBePrimary
+        )
         addresses.add(newAddress)
         return newAddress
     }
@@ -271,7 +354,19 @@ class AddressTable {
     }
 
     fun deleteAddress(id: Long): Boolean {
-        return addresses.removeIf { it.id == id }
+        val target = addresses.find { it.id == id } ?: return false
+        val companyId = target.companyId
+        val removed = addresses.removeIf { it.id == id }
+        if (removed) {
+            val remaining = getAddressesForCompany(companyId)
+            if (remaining.isNotEmpty() && remaining.none { it.isPrimary }) {
+                val idx = addresses.indexOfFirst { it.id == remaining.first().id }
+                if (idx != -1) {
+                    addresses[idx] = addresses[idx].copy(isPrimary = true)
+                }
+            }
+        }
+        return removed
     }
 
     fun getAddressesForCompany(companyId: Long): List<Address> {
@@ -560,5 +655,73 @@ class SupplierPriceBreakTable {
         val tiers = getPriceBreaksForSupplierPart(supplierPartId)
         if (tiers.isEmpty()) return null
         return tiers.filter { it.quantity <= orderQty }.maxByOrNull { it.quantity } ?: tiers.minByOrNull { it.quantity }
+    }
+}
+
+/**
+ * جدول محاكاة الحسابات البنكية للشركة في الذاكرة (CompanyBankAccount Table).
+ */
+class CompanyBankAccountTable {
+    private val accounts = mutableListOf<CompanyBankAccount>()
+    private var nextId = 1L
+
+    fun insertBankAccount(account: CompanyBankAccount): CompanyBankAccount {
+        require(account.companyId != 0L) { "معرف الشركة إلزامي لربط الحساب البنكي" }
+        require(account.bankName.isNotBlank()) { "اسم البنك إلزامي" }
+        require(account.accountName.isNotBlank()) { "اسم صاحب الحساب إلزامي" }
+
+        if (account.isPrimary) {
+            accounts.indices.filter { accounts[it].companyId == account.companyId }.forEach { i ->
+                accounts[i] = accounts[i].copy(isPrimary = false)
+            }
+        }
+
+        val newAcc = account.copy(
+            id = if (account.id == 0L) nextId++ else account.id,
+            updatedAt = Clock.System.now().toEpochMilliseconds()
+        )
+        accounts.add(newAcc)
+        return newAcc
+    }
+
+    fun deleteBankAccount(id: Long): Boolean {
+        return accounts.removeIf { it.id == id }
+    }
+
+    fun getBankAccountsForCompany(companyId: Long): List<CompanyBankAccount> {
+        return accounts.filter { it.companyId == companyId }
+    }
+}
+
+/**
+ * جدول محاكاة السجلات والقوانين الترخيصية للشركة في الذاكرة (CompanyLegalRecord Table).
+ */
+class CompanyLegalRecordTable {
+    private val records = mutableListOf<CompanyLegalRecord>()
+    private var nextId = 1L
+
+    fun saveOrUpdateLegalRecord(record: CompanyLegalRecord): CompanyLegalRecord {
+        require(record.companyId != 0L) { "معرف الشركة إلزامي لربط السجل القانوني" }
+
+        val existingIndex = records.indexOfFirst { it.companyId == record.companyId }
+        val updated = record.copy(
+            id = if (record.id != 0L) record.id else if (existingIndex != -1) records[existingIndex].id else nextId++,
+            updatedAt = Clock.System.now().toEpochMilliseconds()
+        )
+
+        if (existingIndex != -1) {
+            records[existingIndex] = updated
+        } else {
+            records.add(updated)
+        }
+        return updated
+    }
+
+    fun getLegalRecordForCompany(companyId: Long): CompanyLegalRecord? {
+        return records.find { it.companyId == companyId }
+    }
+
+    fun deleteLegalRecord(id: Long): Boolean {
+        return records.removeIf { it.id == id }
     }
 }

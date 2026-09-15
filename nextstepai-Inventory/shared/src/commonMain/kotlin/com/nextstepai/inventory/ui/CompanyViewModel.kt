@@ -3,6 +3,7 @@ package com.nextstepai.inventory.ui
 import androidx.lifecycle.ViewModel
 import com.nextstepai.inventory.data.*
 import com.nextstepai.inventory.repository.CompanyRepository
+import com.nextstepai.inventory.repository.PartRepository
 import com.nextstepai.inventory.repository.PurchaseOrderRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +21,7 @@ enum class CompanyDetailTab {
     INFO,
     CONTACTS,
     ADDRESSES,
+    BANK_ACCOUNTS,
     MANUFACTURER_PARTS,
     SUPPLIER_PARTS
 }
@@ -50,6 +52,8 @@ data class CompanyUiState(
     val companyContacts: List<Contact> = emptyList(),
     val companyAddresses: List<Address> = emptyList(),
     val companyAttachments: List<CompanyAttachment> = emptyList(),
+    val companyBankAccounts: List<CompanyBankAccount> = emptyList(),
+    val companyLegalRecord: CompanyLegalRecord? = null,
     val companyManufacturerParts: List<ManufacturerPart> = emptyList(),
     val selectedManufacturerPart: ManufacturerPart? = null,
     val selectedManufacturerPartAttachments: List<ManufacturerPartAttachment> = emptyList(),
@@ -57,13 +61,17 @@ data class CompanyUiState(
     val companySupplierParts: List<SupplierPart> = emptyList(),
     val selectedSupplierPart: SupplierPart? = null,
     val supplierPartPriceBreaks: List<SupplierPriceBreak> = emptyList(),
+    val allParts: List<Part> = emptyList(),
     val selectedCountries: Set<String> = emptySet(),
     val selectedScope: String = "ALL",
     val isFilterBottomSheetOpen: Boolean = false,
     val isAddCompanyDialogOpen: Boolean = false,
+    val companyToEdit: Company? = null,
     val isAddContactDialogOpen: Boolean = false,
     val isAddAddressDialogOpen: Boolean = false,
     val isAddCompanyAttachmentDialogOpen: Boolean = false,
+    val isAddBankAccountDialogOpen: Boolean = false,
+    val isEditLegalRecordDialogOpen: Boolean = false,
     val isAddManufacturerPartDialogOpen: Boolean = false,
     val isAddManufacturerPartParameterDialogOpen: Boolean = false,
     val isAddManufacturerPartAttachmentDialogOpen: Boolean = false,
@@ -85,7 +93,8 @@ fun String.normalizeArabic(): String = this
  */
 class CompanyViewModel(
     private val repository: CompanyRepository = CompanyRepository(),
-    private val poRepository: PurchaseOrderRepository = PurchaseOrderRepository()
+    private val poRepository: PurchaseOrderRepository = PurchaseOrderRepository(),
+    private val partRepository: PartRepository = PartRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CompanyUiState())
@@ -161,13 +170,16 @@ class CompanyViewModel(
             }
         }
 
+        val allParts = partRepository.getParts()
+
         _uiState.update {
             it.copy(
                 companies = list,
                 companyStatsMap = statsMap,
                 totalSuppliersCount = supCount,
                 totalManufacturersCount = mfgCount,
-                totalCustomersCount = custCount
+                totalCustomersCount = custCount,
+                allParts = allParts
             )
         }
     }
@@ -228,8 +240,16 @@ class CompanyViewModel(
         _uiState.update { it.copy(activeDetailTab = tab) }
     }
 
+    fun openAddCompanyDialog() {
+        _uiState.update { it.copy(isAddCompanyDialogOpen = true, companyToEdit = null, errorMessage = null) }
+    }
+
+    fun openEditCompanyDialog(company: Company) {
+        _uiState.update { it.copy(isAddCompanyDialogOpen = true, companyToEdit = company, errorMessage = null) }
+    }
+
     fun setAddDialogOpen(isOpen: Boolean) {
-        _uiState.update { it.copy(isAddCompanyDialogOpen = isOpen, errorMessage = null) }
+        _uiState.update { it.copy(isAddCompanyDialogOpen = isOpen, companyToEdit = if (!isOpen) null else it.companyToEdit, errorMessage = null) }
     }
 
     fun setAddContactDialogOpen(isOpen: Boolean) {
@@ -242,6 +262,14 @@ class CompanyViewModel(
 
     fun setAddCompanyAttachmentDialogOpen(isOpen: Boolean) {
         _uiState.update { it.copy(isAddCompanyAttachmentDialogOpen = isOpen, errorMessage = null) }
+    }
+
+    fun setAddBankAccountDialogOpen(isOpen: Boolean) {
+        _uiState.update { it.copy(isAddBankAccountDialogOpen = isOpen, errorMessage = null) }
+    }
+
+    fun setEditLegalRecordDialogOpen(isOpen: Boolean) {
+        _uiState.update { it.copy(isEditLegalRecordDialogOpen = isOpen, errorMessage = null) }
     }
 
     fun setAddManufacturerPartDialogOpen(isOpen: Boolean) {
@@ -299,6 +327,8 @@ class CompanyViewModel(
         val contacts = repository.getContactsForCompany(companyId)
         val addresses = repository.getAddressesForCompany(companyId)
         val attachments = repository.getAttachmentsForCompany(companyId)
+        val bankAccounts = repository.getBankAccountsForCompany(companyId)
+        val legalRecord = repository.getLegalRecordForCompany(companyId)
         val mfgParts = repository.getManufacturerPartsForCompany(companyId)
         val supParts = repository.getSupplierPartsForCompany(companyId)
         _uiState.update {
@@ -306,6 +336,8 @@ class CompanyViewModel(
                 companyContacts = contacts,
                 companyAddresses = addresses,
                 companyAttachments = attachments,
+                companyBankAccounts = bankAccounts,
+                companyLegalRecord = legalRecord,
                 companyManufacturerParts = mfgParts,
                 companySupplierParts = supParts
             )
@@ -345,8 +377,56 @@ class CompanyViewModel(
             _uiState.update {
                 it.copy(
                     isAddCompanyDialogOpen = false,
+                    companyToEdit = null,
                     errorMessage = null,
                     successMessage = "تم تسجيل الشركة '${name}' بنجاح"
+                )
+            }
+            loadData()
+        } catch (e: IllegalArgumentException) {
+            _uiState.update { it.copy(errorMessage = e.message) }
+        }
+    }
+
+    fun updateCompany(
+        id: Long,
+        name: String,
+        description: String,
+        website: String,
+        phone: String,
+        email: String,
+        address: String,
+        contact: String,
+        isSupplier: Boolean,
+        isManufacturer: Boolean,
+        isCustomer: Boolean,
+        currency: String,
+        parentId: Long? = null
+    ) {
+        try {
+            val existing = repository.getCompanyById(id) ?: return
+            val updated = existing.copy(
+                name = name,
+                description = description,
+                website = website,
+                phone = phone,
+                email = email,
+                address = address,
+                contact = contact,
+                isSupplier = isSupplier,
+                isManufacturer = isManufacturer,
+                isCustomer = isCustomer,
+                currency = currency.ifBlank { "USD" },
+                parentId = parentId
+            )
+            repository.updateCompany(updated)
+            _uiState.update {
+                it.copy(
+                    isAddCompanyDialogOpen = false,
+                    companyToEdit = null,
+                    selectedCompany = updated,
+                    errorMessage = null,
+                    successMessage = "تم تحديث بيانات الشركة '${name}' بنجاح"
                 )
             }
             loadData()
@@ -390,7 +470,7 @@ class CompanyViewModel(
         loadCompanyDetails(currentCompany.id)
     }
 
-    fun addContact(name: String, phone: String, email: String, role: String) {
+    fun addContact(name: String, phone: String, email: String, role: String, isPrimary: Boolean = false) {
         val currentCompany = _uiState.value.selectedCompany ?: return
         try {
             val contact = Contact(
@@ -398,7 +478,8 @@ class CompanyViewModel(
                 name = name,
                 phone = phone,
                 email = email,
-                role = role
+                role = role,
+                isPrimary = isPrimary
             )
             repository.addContact(contact)
             _uiState.update { it.copy(isAddContactDialogOpen = false, errorMessage = null) }
@@ -450,6 +531,80 @@ class CompanyViewModel(
     fun deleteAddress(addressId: Long) {
         val currentCompany = _uiState.value.selectedCompany ?: return
         repository.deleteAddress(addressId)
+        loadCompanyDetails(currentCompany.id)
+    }
+
+    fun addCompanyBankAccount(
+        bankName: String,
+        accountName: String,
+        accountNumber: String = "",
+        iban: String = "",
+        swiftBic: String = "",
+        currency: String = "USD",
+        branchName: String = "",
+        isPrimary: Boolean = false
+    ) {
+        val currentCompany = _uiState.value.selectedCompany ?: return
+        if (bankName.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "اسم البنك إلزامي") }
+            return
+        }
+        if (accountName.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "اسم صاحب الحساب إلزامي") }
+            return
+        }
+
+        val account = CompanyBankAccount(
+            companyId = currentCompany.id,
+            bankName = bankName.trim(),
+            accountName = accountName.trim(),
+            accountNumber = accountNumber.trim(),
+            iban = iban.trim(),
+            swiftBic = swiftBic.trim(),
+            currency = currency.ifBlank { currentCompany.currency },
+            branchName = branchName.trim(),
+            isPrimary = isPrimary
+        )
+        repository.addBankAccount(account)
+        _uiState.update { it.copy(isAddBankAccountDialogOpen = false, errorMessage = null) }
+        loadCompanyDetails(currentCompany.id)
+    }
+
+    fun deleteCompanyBankAccount(accountId: Long) {
+        val currentCompany = _uiState.value.selectedCompany ?: return
+        repository.deleteBankAccount(accountId)
+        loadCompanyDetails(currentCompany.id)
+    }
+
+    fun saveOrUpdateCompanyLegalRecord(
+        commercialRegisterNumber: String,
+        taxId: String,
+        nationalIdNumber: String = "",
+        importLicenseNumber: String = "",
+        manufacturingLicenseNumber: String = "",
+        activityCodes: String = "",
+        issuingAuthority: String = "",
+        issueDate: String = "",
+        expiryDate: String = ""
+    ) {
+        val currentCompany = _uiState.value.selectedCompany ?: return
+        val currentRecord = _uiState.value.companyLegalRecord
+
+        val newRecord = CompanyLegalRecord(
+            id = currentRecord?.id ?: 0L,
+            companyId = currentCompany.id,
+            commercialRegisterNumber = commercialRegisterNumber.trim(),
+            taxId = taxId.trim(),
+            nationalIdNumber = nationalIdNumber.trim(),
+            importLicenseNumber = importLicenseNumber.trim(),
+            manufacturingLicenseNumber = manufacturingLicenseNumber.trim(),
+            activityCodes = activityCodes.trim(),
+            issuingAuthority = issuingAuthority.trim(),
+            issueDate = issueDate.trim(),
+            expiryDate = expiryDate.trim()
+        )
+        repository.saveOrUpdateLegalRecord(newRecord)
+        _uiState.update { it.copy(isEditLegalRecordDialogOpen = false, errorMessage = null) }
         loadCompanyDetails(currentCompany.id)
     }
 

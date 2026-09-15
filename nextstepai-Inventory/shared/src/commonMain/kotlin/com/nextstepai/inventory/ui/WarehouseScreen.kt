@@ -55,7 +55,6 @@ fun WarehouseScreen(
     var selectedTab by remember { mutableStateOf(WarehouseTab.INVENTORY) }
     var selectedInventorySubTab by remember { mutableStateOf(InventorySubTab.PARTS) }
     var selectedProductionSubTab by remember { mutableStateOf(ProductionSubTab.BUILDS) }
-    var isDashboardExpanded by remember { mutableStateOf(true) }
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -64,66 +63,7 @@ fun WarehouseScreen(
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
-            // 1. شريط ترويسة لوحة التحكم القابل للطي (Collapsible Dashboard KPI Header)
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { isDashboardExpanded = !isDashboardExpanded }
-                            .padding(vertical = 6.dp, horizontal = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.QrCodeScanner,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Text(
-                                text = "مؤشرات لوحة التحكم والمسح السريع",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        Icon(
-                            imageVector = if (isDashboardExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = if (isDashboardExpanded) "طي" else "توسيع",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    AnimatedVisibility(
-                        visible = isDashboardExpanded,
-                        enter = expandVertically(),
-                        exit = shrinkVertically()
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp, bottom = 4.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            OperationalKpiSection()
-                            BarcodeScannerActionCard(onScanClick = onScanClick)
-                        }
-                    }
-                }
-            }
-
-            // 2. الشريط العلوي الرئيسي للتبويب (Top Primary Tab Row: المخزون | الإنتاج)
+            // 1. الشريط العلوي الرئيسي للتبويب (Top Primary Tab Row: المخزون | الإنتاج)
             PrimaryTabRow(
                 selectedTabIndex = selectedTab.ordinal,
                 containerColor = MaterialTheme.colorScheme.surface,

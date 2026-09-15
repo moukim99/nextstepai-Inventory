@@ -18,6 +18,7 @@ data class ContactEntity(
     val phone: String = "",
     val email: String = "",
     val role: String = "",
+    val isPrimary: Boolean = false,
     override val syncStatus: SyncStatus = SyncStatus.PENDING,
     override val isDeleted: Boolean = false,
     override val updatedAt: Long = Clock.System.now().toEpochMilliseconds()
@@ -40,6 +41,49 @@ data class CompanyAttachmentEntity(
     val expiryDate: String = "",
     val notifyOnExpiry: Boolean = true,
     val notificationDaysBefore: Int = 30,
+    override val syncStatus: SyncStatus = SyncStatus.PENDING,
+    override val isDeleted: Boolean = false,
+    override val updatedAt: Long = Clock.System.now().toEpochMilliseconds()
+) : SyncableEntity
+
+/**
+ * تمثيل كيان الحساب البنكي للشركة (CompanyBankAccountEntity) في قاعدة البيانات المحلية.
+ */
+@Entity(tableName = "company_bank_accounts")
+data class CompanyBankAccountEntity(
+    @PrimaryKey
+    override val uuid: String,
+    val companyUuid: String,
+    val bankName: String,
+    val accountName: String,
+    val accountNumber: String = "",
+    val iban: String = "",
+    val swiftBic: String = "",
+    val currency: String = "USD",
+    val branchName: String = "",
+    val isPrimary: Boolean = false,
+    override val syncStatus: SyncStatus = SyncStatus.PENDING,
+    override val isDeleted: Boolean = false,
+    override val updatedAt: Long = Clock.System.now().toEpochMilliseconds()
+) : SyncableEntity
+
+/**
+ * تمثيل كيان السجل القانوني والرخص التجارية (CompanyLegalRecordEntity) في قاعدة البيانات المحلية.
+ */
+@Entity(tableName = "company_legal_records")
+data class CompanyLegalRecordEntity(
+    @PrimaryKey
+    override val uuid: String,
+    val companyUuid: String,
+    val commercialRegisterNumber: String = "",
+    val taxId: String = "",
+    val nationalIdNumber: String = "",
+    val importLicenseNumber: String = "",
+    val manufacturingLicenseNumber: String = "",
+    val activityCodes: String = "",
+    val issuingAuthority: String = "",
+    val issueDate: String = "",
+    val expiryDate: String = "",
     override val syncStatus: SyncStatus = SyncStatus.PENDING,
     override val isDeleted: Boolean = false,
     override val updatedAt: Long = Clock.System.now().toEpochMilliseconds()
