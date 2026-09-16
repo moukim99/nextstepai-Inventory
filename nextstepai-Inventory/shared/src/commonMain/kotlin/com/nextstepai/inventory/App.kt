@@ -18,12 +18,14 @@ import com.nextstepai.inventory.ui.theme.AppTheme
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import nextstepai_inventory.shared.generated.resources.Res
+import nextstepai_inventory.shared.generated.resources.nav_builds
 import nextstepai_inventory.shared.generated.resources.nav_management
 import nextstepai_inventory.shared.generated.resources.nav_settings
 import nextstepai_inventory.shared.generated.resources.nav_warehouse
 
 private enum class Screen {
     WAREHOUSE,
+    PRODUCTION,
     MANAGEMENT,
     SETTINGS
 }
@@ -67,6 +69,18 @@ fun App() {
                                 label = { Text(stringResource(Res.string.nav_warehouse)) }
                             )
                             item(
+                                selected = currentScreen == Screen.PRODUCTION,
+                                onClick = { currentScreen = Screen.PRODUCTION },
+                                icon = {
+                                    Icon(
+                                        imageVector = AppIcons.Builds,
+                                        contentDescription = stringResource(Res.string.nav_builds),
+                                        tint = if (currentScreen == Screen.PRODUCTION) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                },
+                                label = { Text(stringResource(Res.string.nav_builds)) }
+                            )
+                            item(
                                 selected = currentScreen == Screen.MANAGEMENT,
                                 onClick = { currentScreen = Screen.MANAGEMENT },
                                 icon = {
@@ -97,9 +111,14 @@ fun App() {
                                 WarehouseScreen(
                                     partViewModel = partViewModel,
                                     stockViewModel = stockViewModel,
+                                    onBackClick = { currentScreen = Screen.WAREHOUSE }
+                                )
+                            }
+                            Screen.PRODUCTION -> {
+                                ProductionScreen(
                                     buildOrderViewModel = buildViewModel,
                                     bomViewModel = bomViewModel,
-                                    onBackClick = { currentScreen = Screen.WAREHOUSE }
+                                    onBackClick = { currentScreen = Screen.PRODUCTION }
                                 )
                             }
                             Screen.MANAGEMENT -> {

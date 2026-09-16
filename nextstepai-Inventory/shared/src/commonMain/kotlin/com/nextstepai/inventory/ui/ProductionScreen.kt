@@ -10,23 +10,22 @@ import com.nextstepai.inventory.ui.theme.AppIcons
 import org.jetbrains.compose.resources.stringResource
 import nextstepai_inventory.shared.generated.resources.*
 
-enum class WarehouseTab {
-    STOCK,
-    PARTS
+enum class ProductionTab {
+    BUILDS,
+    BOM
 }
 
 /**
- * شاشة المستودع والمخزون المجمعة: تضم شريطي تبويب علويين (المخزون والمواقع / دليل القطع والمكونات).
+ * شاشة الإنتاج المجمعة: تضم شريطي تبويب علويين (أوامر التصنيع / قائمة المواد BOM).
  */
 @Composable
-fun WarehouseScreen(
-    partViewModel: PartViewModel,
-    stockViewModel: StockViewModel,
+fun ProductionScreen(
+    buildOrderViewModel: BuildOrderViewModel,
+    bomViewModel: BomViewModel,
     onBackClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    onScanClick: () -> Unit = {}
+    modifier: Modifier = Modifier
 ) {
-    var selectedTab by remember { mutableStateOf(WarehouseTab.STOCK) }
+    var selectedTab by remember { mutableStateOf(ProductionTab.BUILDS) }
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -35,7 +34,7 @@ fun WarehouseScreen(
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
-            // الشريط العلوي الأساسي للتبويب (Top Tab Row: المخزون والمواقع | دليل القطع والمكونات)
+            // الشريط العلوي الأساسي للتبويب (Top Tab Row)
             PrimaryTabRow(
                 selectedTabIndex = selectedTab.ordinal,
                 containerColor = MaterialTheme.colorScheme.surface,
@@ -43,40 +42,40 @@ fun WarehouseScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Tab(
-                    selected = selectedTab == WarehouseTab.STOCK,
-                    onClick = { selectedTab = WarehouseTab.STOCK },
+                    selected = selectedTab == ProductionTab.BUILDS,
+                    onClick = { selectedTab = ProductionTab.BUILDS },
                     text = {
                         Text(
-                            text = stringResource(Res.string.subtab_stock),
+                            text = stringResource(Res.string.subtab_builds),
                             style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = if (selectedTab == WarehouseTab.STOCK) FontWeight.Bold else FontWeight.Normal
+                                fontWeight = if (selectedTab == ProductionTab.BUILDS) FontWeight.Bold else FontWeight.Normal
                             )
                         )
                     },
                     icon = {
                         Icon(
-                            imageVector = AppIcons.Stock,
-                            contentDescription = stringResource(Res.string.subtab_stock),
+                            imageVector = AppIcons.Builds,
+                            contentDescription = stringResource(Res.string.subtab_builds),
                             modifier = Modifier.size(20.dp)
                         )
                     }
                 )
 
                 Tab(
-                    selected = selectedTab == WarehouseTab.PARTS,
-                    onClick = { selectedTab = WarehouseTab.PARTS },
+                    selected = selectedTab == ProductionTab.BOM,
+                    onClick = { selectedTab = ProductionTab.BOM },
                     text = {
                         Text(
-                            text = stringResource(Res.string.subtab_parts),
+                            text = stringResource(Res.string.subtab_bom),
                             style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = if (selectedTab == WarehouseTab.PARTS) FontWeight.Bold else FontWeight.Normal
+                                fontWeight = if (selectedTab == ProductionTab.BOM) FontWeight.Bold else FontWeight.Normal
                             )
                         )
                     },
                     icon = {
                         Icon(
-                            imageVector = AppIcons.Parts,
-                            contentDescription = stringResource(Res.string.subtab_parts),
+                            imageVector = AppIcons.Bom,
+                            contentDescription = stringResource(Res.string.subtab_bom),
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -89,15 +88,15 @@ fun WarehouseScreen(
                     .weight(1f)
             ) {
                 when (selectedTab) {
-                    WarehouseTab.STOCK -> {
-                        StockScreen(
-                            viewModel = stockViewModel,
+                    ProductionTab.BUILDS -> {
+                        BuildOrderScreen(
+                            viewModel = buildOrderViewModel,
                             onBackClick = onBackClick
                         )
                     }
-                    WarehouseTab.PARTS -> {
-                        PartManagementScreen(
-                            viewModel = partViewModel,
+                    ProductionTab.BOM -> {
+                        BomScreen(
+                            viewModel = bomViewModel,
                             onBackClick = onBackClick
                         )
                     }
