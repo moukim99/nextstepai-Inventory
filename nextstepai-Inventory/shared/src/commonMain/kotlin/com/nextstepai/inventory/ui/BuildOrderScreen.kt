@@ -1,5 +1,6 @@
 package com.nextstepai.inventory.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -27,11 +28,13 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import com.nextstepai.inventory.data.BuildItem
@@ -62,6 +65,34 @@ fun BuildOrderScreen(
                 onAddClick = { viewModel.setAddDialogOpen(true) }
             )
         },
+        floatingActionButton = {
+            Box(
+                modifier = Modifier.padding(bottom = 20.dp, start = 12.dp, end = 12.dp)
+            ) {
+                ExtendedFloatingActionButton(
+                    onClick = { viewModel.setAddDialogOpen(true) },
+                    containerColor = Color(0xFF4F46E5),
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(18.dp),
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(Res.string.add_new_build),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "إنشاء أمر تصنيع",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.5.sp
+                        )
+                    )
+                }
+            }
+        },
+        floatingActionButtonPosition = FabPosition.Start,
         modifier = modifier
     ) { paddingValues ->
         Box(
@@ -75,120 +106,230 @@ fun BuildOrderScreen(
             ) {
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // شريط البحث المطور مع زر الباركود المدمج على اليسار
-                OutlinedTextField(
-                    value = uiState.searchQuery,
-                    onValueChange = { viewModel.onSearchQueryChanged(it) },
-                    placeholder = {
-                        Text(
-                            text = stringResource(Res.string.search_build_hint),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline
-                        )
-                    },
-                    trailingIcon = {
-                        IconButton(
-                            onClick = { },
-                            modifier = Modifier
-                                .padding(end = 4.dp)
-                                .size(34.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                        ) {
+                // شريط البحث المطور مع دمج الفلتر الخارجي الجانبي المتناسق
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = uiState.searchQuery,
+                        onValueChange = { viewModel.onSearchQueryChanged(it) },
+                        placeholder = {
+                            Text(
+                                text = stringResource(Res.string.search_build_hint),
+                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.5.sp),
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        },
+                        leadingIcon = {
                             Icon(
-                                imageVector = Icons.Default.QrCodeScanner,
+                                imageVector = Icons.Default.Search,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.size(18.dp)
                             )
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                        },
+                        trailingIcon = {
+                            IconButton(
+                                onClick = { },
+                                modifier = Modifier
+                                    .padding(end = 4.dp)
+                                    .size(34.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFFEEF2FF))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.QrCodeScanner,
+                                    contentDescription = null,
+                                    tint = Color(0xFF4F46E5),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Search),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF4F46E5),
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        )
                     )
-                )
+
+                    val isFilterActive = uiState.statusFilter != null || uiState.searchQuery.isNotBlank()
+                    var isFilterPressed by remember { mutableStateOf(false) }
+                    val buttonScale by animateFloatAsState(
+                        targetValue = if (isFilterPressed) 0.92f else 1f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+                    )
+                    val buttonBgColor by animateColorAsState(
+                        targetValue = if (isFilterActive) Color(0xFFEEF2FF) else Color.White,
+                        animationSpec = tween(durationMillis = 250)
+                    )
+                    val buttonBorderColor by animateColorAsState(
+                        targetValue = if (isFilterActive) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant,
+                        animationSpec = tween(durationMillis = 250)
+                    )
+
+                    LaunchedEffect(isFilterPressed) {
+                        if (isFilterPressed) {
+                            delay(150)
+                            isFilterPressed = false
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            isFilterPressed = true
+                            if (isFilterActive) {
+                                viewModel.setStatusFilter(null)
+                                viewModel.onSearchQueryChanged("")
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.5.dp, buttonBorderColor),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = buttonBgColor,
+                            contentColor = if (isFilterActive) Color(0xFF4F46E5) else MaterialTheme.colorScheme.onSurface
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .scale(buttonScale)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FilterList,
+                                contentDescription = "فلتر",
+                                tint = Color(0xFF4F46E5),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "فلتر",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                ),
+                                color = if (isFilterActive) Color(0xFF4338CA) else MaterialTheme.colorScheme.onSurface
+                            )
+                            if (isFilterActive) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF10B981))
+                                )
+                            }
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // شريط تصفية حالات أوامر الإنتاج Filter Chips Tray
                 LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     item(key = "build-status-all") {
-                        FilterChip(
-                            selected = uiState.statusFilter == null,
+                        val isAllSelected = uiState.statusFilter == null
+                        Surface(
                             onClick = { viewModel.setStatusFilter(null) },
-                            label = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isAllSelected) Color(0xFF4F46E5) else Color.White,
+                            border = BorderStroke(1.dp, if (isAllSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
+                            shadowElevation = if (isAllSelected) 2.dp else 0.dp
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(vertical = 7.dp, horizontal = 12.dp)
+                            ) {
+                                Text(
+                                    text = "كافة الحالات",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.5.sp
+                                    ),
+                                    color = if (isAllSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = if (isAllSelected) Color(0xFF3730A3) else Color(0xFFF1F5F9)
                                 ) {
-                                    Text("كافة الحالات")
-                                    Surface(
-                                        shape = RoundedCornerShape(50),
-                                        color = if (uiState.statusFilter == null) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-                                    ) {
-                                        Text(
-                                            text = "${uiState.builds.size}",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
+                                    Text(
+                                        text = "${uiState.builds.size}",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.5.sp
+                                        ),
+                                        color = if (isAllSelected) Color.White else Color(0xFF64748B),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
                                 }
-                            },
-                            shape = RoundedCornerShape(50)
-                        )
+                            }
+                        }
                     }
 
                     items(BuildStatus.entries, key = { "build-status-${it.code}" }) { status ->
                         val count = uiState.builds.count { it.status == status }
-                        FilterChip(
-                            selected = uiState.statusFilter == status,
-                            onClick = { viewModel.setStatusFilter(if (uiState.statusFilter == status) null else status) },
-                            label = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    val statusDotColor = when (status) {
-                                        BuildStatus.IN_PRODUCTION -> MaterialTheme.colorScheme.primary
-                                        BuildStatus.COMPLETE -> MaterialTheme.colorScheme.secondary
-                                        BuildStatus.CANCELLED -> MaterialTheme.colorScheme.error
-                                        else -> MaterialTheme.colorScheme.outline
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .size(7.dp)
-                                            .clip(CircleShape)
-                                            .background(statusDotColor)
-                                    )
-                                    Text(status.label)
-                                    Surface(
-                                        shape = RoundedCornerShape(50),
-                                        color = if (uiState.statusFilter == status) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-                                    ) {
-                                        Text(
-                                            text = "$count",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
+                        val isSelected = uiState.statusFilter == status
+                        Surface(
+                            onClick = { viewModel.setStatusFilter(if (isSelected) null else status) },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) Color(0xFF4F46E5) else Color.White,
+                            border = BorderStroke(1.dp, if (isSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
+                            shadowElevation = if (isSelected) 2.dp else 0.dp
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(vertical = 7.dp, horizontal = 10.dp)
+                            ) {
+                                val statusDotColor = when (status) {
+                                    BuildStatus.IN_PRODUCTION -> Color(0xFF4F46E5)
+                                    BuildStatus.COMPLETE -> Color(0xFF059669)
+                                    BuildStatus.CANCELLED -> Color(0xFFDC2626)
+                                    else -> Color(0xFF94A3B8)
                                 }
-                            },
-                            shape = RoundedCornerShape(50)
-                        )
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isSelected) Color.White else statusDotColor)
+                                )
+                                Text(
+                                    text = status.label,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.5.sp
+                                    ),
+                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = if (isSelected) Color(0xFF3730A3) else Color(0xFFF1F5F9)
+                                ) {
+                                    Text(
+                                        text = "$count",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.5.sp
+                                        ),
+                                        color = if (isSelected) Color.White else Color(0xFF64748B),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -244,7 +385,7 @@ fun BuildOrderScreen(
     }
 
     if (uiState.selectedBuild != null) {
-        BuildDetailsDialog(
+        BuildDetailsBottomSheet(
             build = uiState.selectedBuild!!,
             stockLocations = uiState.stockLocations,
             lineItems = uiState.selectedLineItems,
@@ -260,7 +401,7 @@ fun BuildOrderScreen(
     }
 
     if (uiState.isAddBuildDialogOpen) {
-        AddBuildSheetDialog(
+        AddBuildOrderBottomSheet(
             assemblyParts = uiState.assemblyParts,
             stockLocations = uiState.stockLocations,
             existingBuilds = uiState.builds,
@@ -685,8 +826,9 @@ private fun BuildOrderRichCard(
 /**
  * حوار تفاصيل ومتابعة أمر الإنتاج
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BuildDetailsDialog(
+private fun BuildDetailsBottomSheet(
     build: BuildOrder,
     stockLocations: List<StockLocation> = emptyList(),
     lineItems: List<BuildOrderLineItem> = emptyList(),
@@ -699,31 +841,81 @@ private fun BuildDetailsDialog(
     onConsumeStock: (lineItemId: Long, qty: Double) -> Unit = { _, _ -> },
     onDismiss: () -> Unit
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var outputQtyText by remember { mutableStateOf("1.0") }
     val takeFromLocName = stockLocations.find { it.id == build.takeFromLocationId }?.name ?: (if (build.takeFromLocationId != null) "موقع #${build.takeFromLocationId}" else "المستودع الرئيسي (افتراضي)")
     val destLocName = stockLocations.find { it.id == build.destinationLocationId }?.name ?: (if (build.destinationLocationId != null) "موقع #${build.destinationLocationId}" else "مخزن المنتجات النهائية (افتراضي)")
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp),
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(Res.string.dialog_close), fontWeight = FontWeight.Bold)
-            }
-        },
-        title = {
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 6.dp)
+                    .width(48.dp)
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFCBD5E1))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+        ) {
+            // Header Section
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(stringResource(Res.string.build_order_ref_label, build.reference), fontWeight = FontWeight.Bold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFEEF2FF)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PrecisionManufacturing,
+                            contentDescription = null,
+                            tint = Color(0xFF4F46E5),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = stringResource(Res.string.build_order_ref_label, build.reference),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 17.sp
+                            ),
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            text = build.partName,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                            color = Color(0xFF0D9488)
+                        )
+                    }
+                }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (build.status == BuildStatus.PENDING) {
                         Button(
                             onClick = { onStartProduction(build.id) },
-                            shape = RoundedCornerShape(10.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5), contentColor = Color.White)
                         ) {
                             Text(stringResource(Res.string.btn_start_production), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
@@ -733,20 +925,32 @@ private fun BuildDetailsDialog(
                         OutlinedButton(
                             onClick = { onCancelBuild(build.id) },
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626))
                         ) {
                             Text(stringResource(Res.string.btn_cancel_build), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
+
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "إغلاق",
+                            tint = Color(0xFF64748B)
+                        )
+                    }
                 }
             }
-        },
-        text = {
+
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+
+            // Body
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 DetailRow("رقم الأمر:", "#${build.id}")
                 DetailRow("العنوان:", build.title.ifBlank { "-" })
@@ -776,31 +980,31 @@ private fun BuildDetailsDialog(
                         onClick = { onAutoAllocate(build.id) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5), contentColor = Color.White)
                     ) {
-                        Text(stringResource(Res.string.btn_auto_allocate), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(Res.string.btn_auto_allocate), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
                 // قسم سجلات التخصيص المحجوزة من المخزون (BuildItems Stock Allocations)
                 if (allocatedBuildItems.isNotEmpty()) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                    Text(stringResource(Res.string.allocated_stock_title), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color(0xFFF1F5F9))
+                    Text(stringResource(Res.string.allocated_stock_title), fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = Color(0xFF4F46E5))
 
                     allocatedBuildItems.forEach { alloc ->
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f))
+                            color = Color(0xFFEEF2FF),
+                            border = BorderStroke(1.dp, Color(0xFFC7D2FE))
                         ) {
-                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(alloc.stockItemName, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(alloc.stockItemName, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF0F172A))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("الكمية المحجوزة: ${alloc.quantity}", fontSize = 10.sp)
-                                    if (alloc.installIntoStockItemId != null) Text("مركّبة في الوحدة: #${alloc.installIntoStockItemId}", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+                                    Text("الكمية المحجوزة: ${alloc.quantity}", fontSize = 11.sp, color = Color(0xFF334155))
+                                    if (alloc.installIntoStockItemId != null) Text("مركّبة في الوحدة: #${alloc.installIntoStockItemId}", fontSize = 11.sp, color = Color(0xFF4F46E5))
                                 }
-                                if (alloc.notes.isNotBlank()) Text(alloc.notes, fontSize = 10.sp, color = MaterialTheme.colorScheme.outline)
+                                if (alloc.notes.isNotBlank()) Text(alloc.notes, fontSize = 10.5.sp, color = Color(0xFF64748B))
                             }
                         }
                     }
@@ -808,31 +1012,32 @@ private fun BuildDetailsDialog(
 
                 // قسم بنود ومكونات الـ BOM لأمر التصنيع (BuildOrderLineItems)
                 if (lineItems.isNotEmpty()) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                    Text(stringResource(Res.string.line_items_title), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color(0xFFF1F5F9))
+                    Text(stringResource(Res.string.line_items_title), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0F172A))
 
                     lineItems.forEach { line ->
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                            color = Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
                         ) {
-                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(line.subPartName.ifBlank { "مكون BOM #${line.bomItemId}" }, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(line.subPartName.ifBlank { "مكون BOM #${line.bomItemId}" }, fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = Color(0xFF0F172A))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("مطلوب: ${line.quantity}", fontSize = 11.sp)
-                                    Text("محجوز: ${line.allocatedQuantity}", fontSize = 11.sp, color = if (line.isFullyAllocated) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary)
-                                    Text("مستهلك: ${line.consumedQuantity}", fontSize = 11.sp)
+                                    Text("مطلوب: ${line.quantity}", fontSize = 11.5.sp, color = Color(0xFF64748B))
+                                    Text("محجوز: ${line.allocatedQuantity}", fontSize = 11.5.sp, color = if (line.isFullyAllocated) Color(0xFF059669) else Color(0xFF4F46E5))
+                                    Text("مستهلك: ${line.consumedQuantity}", fontSize = 11.5.sp, color = Color(0xFF64748B))
                                 }
 
                                 LinearProgressIndicator(
                                     progress = { (line.allocationPercentage / 100f).coerceIn(0f, 1f) },
                                     modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)),
-                                    color = if (line.isFullyAllocated) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+                                    color = if (line.isFullyAllocated) Color(0xFF059669) else Color(0xFF4F46E5),
+                                    trackColor = Color(0xFFEEF2FF)
                                 )
 
                                 if (build.status != BuildStatus.CANCELLED && build.status != BuildStatus.COMPLETE) {
@@ -845,7 +1050,7 @@ private fun BuildDetailsDialog(
                                             onClick = { onAllocateStock(line.id, 10.0) },
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                                         ) {
-                                            Text(stringResource(Res.string.btn_allocate_plus), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            Text(stringResource(Res.string.btn_allocate_plus), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4F46E5))
                                         }
 
                                         if (line.allocatedQuantity > 0) {
@@ -853,7 +1058,7 @@ private fun BuildDetailsDialog(
                                                 onClick = { onConsumeStock(line.id, 10.0) },
                                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                                             ) {
-                                                Text(stringResource(Res.string.btn_consume_plus), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
+                                                Text(stringResource(Res.string.btn_consume_plus), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0D9488))
                                             }
                                         }
                                     }
@@ -864,8 +1069,8 @@ private fun BuildDetailsDialog(
                 }
 
                 if (build.status == BuildStatus.IN_PRODUCTION && (build.completedQuantity < build.quantity)) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                    Text(stringResource(Res.string.build_output_title), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color(0xFFF1F5F9))
+                    Text(stringResource(Res.string.build_output_title), fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = Color(0xFF0F172A))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -878,7 +1083,11 @@ private fun BuildDetailsDialog(
                             label = { Text(stringResource(Res.string.output_qty_label)) },
                             modifier = Modifier.weight(1f),
                             singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF4F46E5),
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                            )
                         )
 
                         Button(
@@ -889,15 +1098,19 @@ private fun BuildDetailsDialog(
                                 }
                             },
                             enabled = (outputQtyText.toDoubleOrNull() ?: 0.0) > 0.0,
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF4F46E5),
+                                contentColor = Color.White
+                            )
                         ) {
-                            Text(stringResource(Res.string.btn_supply_output), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(stringResource(Res.string.btn_supply_output), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
         }
-    )
+    }
 }
 
 @Composable
@@ -914,8 +1127,9 @@ private fun DetailRow(label: String, value: String) {
 /**
  * حوار / ورقة إنشاء أمر إنتاج جديد Add Build Order Sheet Dialog
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddBuildSheetDialog(
+private fun AddBuildOrderBottomSheet(
     assemblyParts: List<Part>,
     stockLocations: List<StockLocation> = emptyList(),
     existingBuilds: List<BuildOrder> = emptyList(),
@@ -937,6 +1151,8 @@ private fun AddBuildSheetDialog(
         link: String
     ) -> Unit
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     var reference by remember { mutableStateOf("BO-2025-003") }
     var title by remember { mutableStateOf("تجميع أجهزة الاستشعار DHT22") }
     var selectedPartId by remember { mutableStateOf<Long?>(assemblyParts.firstOrNull()?.id) }
@@ -952,112 +1168,144 @@ private fun AddBuildSheetDialog(
     var link by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp),
-        title = {
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 6.dp)
+                    .width(48.dp)
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFCBD5E1))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+        ) {
+            // Header Section
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "إنشاء أمر إنتاج جديد (Build)",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFEEF2FF)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddBox,
+                            contentDescription = null,
+                            tint = Color(0xFF4F46E5),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Text(
+                        text = "إنشاء أمر إنتاج جديد",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        ),
+                        color = Color(0xFF0F172A)
+                    )
+                }
+
                 IconButton(onClick = onDismiss) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "إغلاق",
-                        tint = MaterialTheme.colorScheme.outline
+                        tint = Color(0xFF64748B)
                     )
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val pId = selectedPartId
-                    val qty = quantityText.toDoubleOrNull() ?: 1.0
-                    if (reference.isNotBlank() && pId != null && qty > 0.0) {
-                        onConfirm(
-                            reference, title, pId, qty, batch, targetDate,
-                            selectedTakeFromLocationId, selectedDestinationLocationId,
-                            selectedParentId, salesOrderIdText.toLongOrNull(),
-                            issuedBy, responsible, notes, link
-                        )
-                    }
-                },
-                enabled = reference.isNotBlank() && selectedPartId != null && (quantityText.toDoubleOrNull() ?: 0.0) > 0.0,
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(Res.string.cancel), color = MaterialTheme.colorScheme.onSurface)
-            }
-        },
-        text = {
+
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+
+            // Form Body
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // الكود المرجعي
-                Text("الكود المرجعي (reference) *", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = reference,
                     onValueChange = { reference = it },
+                    label = { Text("الكود المرجعي (reference) *") },
                     placeholder = { Text("BO-2025-003") },
                     trailingIcon = {
                         IconButton(onClick = { reference = "BO-2025-00${(4..99).random()}" }) {
                             Icon(
                                 imageVector = Icons.Default.Sync,
                                 contentDescription = "توليد رقم تلقائي",
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = Color(0xFF4F46E5)
                             )
                         }
                     },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF4F46E5),
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    )
                 )
 
                 // عنوان أو وصف الهدف
-                Text("عنوان أو وصف الهدف (title)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
+                    label = { Text("عنوان أو وصف الهدف (title)") },
                     placeholder = { Text("مثال: تجميع أجهزة الاستشعار") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF4F46E5),
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    )
                 )
 
                 // اختيار المنتج الأب المجمع
-                Text("اختر المنتج الأب المجمع (assembly = true) *:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text("اختر المنتج الأب المجمع (assembly = true) *:", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Color(0xFF0F172A))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(assemblyParts, key = { "build-assembly-${it.id}" }) { p ->
-                        FilterChip(
-                            selected = selectedPartId == p.id,
+                        val isSelected = selectedPartId == p.id
+                        Surface(
                             onClick = { selectedPartId = p.id },
-                            label = { Text(p.name, fontWeight = FontWeight.Bold) },
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) Color(0xFF4F46E5) else Color.White,
+                            border = BorderStroke(1.dp, if (isSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Text(
+                                text = p.name,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 11.5.sp),
+                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
                     }
                 }
 
@@ -1066,53 +1314,73 @@ private fun AddBuildSheetDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("رقم التشغيلة (batch)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        OutlinedTextField(
-                            value = batch,
-                            onValueChange = { batch = it },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                    OutlinedTextField(
+                        value = batch,
+                        onValueChange = { batch = it },
+                        label = { Text("رقم التشغيلة (batch)") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF4F46E5),
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
                         )
-                    }
+                    )
 
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("الكمية (quantity) *", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        OutlinedTextField(
-                            value = quantityText,
-                            onValueChange = { quantityText = it },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                    OutlinedTextField(
+                        value = quantityText,
+                        onValueChange = { quantityText = it },
+                        label = { Text("الكمية (quantity) *") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF4F46E5),
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
                         )
-                    }
+                    )
                 }
 
                 // مستودع سحب المكونات
                 if (stockLocations.isNotEmpty()) {
-                    Text("مستودع سحب المكونات (take_from):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text("مستودع سحب المكونات (take_from):", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Color(0xFF0F172A))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(stockLocations, key = { "take-loc-${it.id}" }) { loc ->
-                            FilterChip(
-                                selected = selectedTakeFromLocationId == loc.id,
+                            val isSelected = selectedTakeFromLocationId == loc.id
+                            Surface(
                                 onClick = { selectedTakeFromLocationId = loc.id },
-                                label = { Text(loc.name) },
-                                shape = RoundedCornerShape(12.dp)
-                            )
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) Color(0xFF4F46E5) else Color.White,
+                                border = BorderStroke(1.dp, if (isSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant)
+                            ) {
+                                Text(
+                                    text = loc.name,
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 11.5.sp),
+                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
                         }
                     }
 
-                    Text("مستودع استلام المنتج النهائي (destination):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text("مستودع استلام المنتج النهائي (destination):", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Color(0xFF0F172A))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(stockLocations, key = { "dest-loc-${it.id}" }) { loc ->
-                            FilterChip(
-                                selected = selectedDestinationLocationId == loc.id,
+                            val isSelected = selectedDestinationLocationId == loc.id
+                            Surface(
                                 onClick = { selectedDestinationLocationId = loc.id },
-                                label = { Text(loc.name) },
-                                shape = RoundedCornerShape(12.dp)
-                            )
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) Color(0xFF4F46E5) else Color.White,
+                                border = BorderStroke(1.dp, if (isSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant)
+                            ) {
+                                Text(
+                                    text = loc.name,
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 11.5.sp),
+                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -1122,80 +1390,139 @@ private fun AddBuildSheetDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("المُصدر (issued_by)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        OutlinedTextField(
-                            value = issuedBy,
-                            onValueChange = { issuedBy = it },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                    OutlinedTextField(
+                        value = issuedBy,
+                        onValueChange = { issuedBy = it },
+                        label = { Text("المُصدر (issued_by)") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF4F46E5),
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
                         )
-                    }
+                    )
 
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("المسؤول (responsible)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        OutlinedTextField(
-                            value = responsible,
-                            onValueChange = { responsible = it },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                    OutlinedTextField(
+                        value = responsible,
+                        onValueChange = { responsible = it },
+                        label = { Text("المسؤول (responsible)") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF4F46E5),
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
                         )
-                    }
+                    )
                 }
 
                 // التاريخ المستهدف
-                Text("التاريخ المستهدف لإنهاء الإنتاج (target_date)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = targetDate,
                     onValueChange = { targetDate = it },
+                    label = { Text("التاريخ المستهدف لإنهاء الإنتاج (target_date)") },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.CalendarToday,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline
+                            tint = Color(0xFF4F46E5)
                         )
                     },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF4F46E5),
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
                 )
 
                 // ربط بأمر بيع رقم
-                Text("رقم أمر البيع المرتبط (sales_order)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = salesOrderIdText,
                     onValueChange = { salesOrderIdText = it },
+                    label = { Text("رقم أمر البيع المرتبط (sales_order)") },
                     placeholder = { Text("مثال: 101") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF4F46E5),
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
                 )
 
                 // رابط خارجي وملاحظات
-                Text("رابط الوثائق الخارجي (link)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = link,
                     onValueChange = { link = it },
+                    label = { Text("رابط الوثائق الخارجي (link)") },
                     placeholder = { Text("https://...") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF4F46E5),
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
                 )
 
-                Text("ملاحظات وتشغيلات إضافية (notes)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
+                    label = { Text("ملاحظات وتشغيلات إضافية (notes)") },
                     placeholder = { Text("أدخل تعليمات التجميع...") },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF4F46E5),
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
                 )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(stringResource(Res.string.cancel), fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = {
+                            val pId = selectedPartId
+                            val qty = quantityText.toDoubleOrNull() ?: 1.0
+                            if (reference.isNotBlank() && pId != null && qty > 0.0) {
+                                onConfirm(
+                                    reference, title, pId, qty, batch, targetDate,
+                                    selectedTakeFromLocationId, selectedDestinationLocationId,
+                                    selectedParentId, salesOrderIdText.toLongOrNull(),
+                                    issuedBy, responsible, notes, link
+                                )
+                            }
+                        },
+                        enabled = reference.isNotBlank() && selectedPartId != null && (quantityText.toDoubleOrNull() ?: 0.0) > 0.0,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF4F46E5),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier.weight(1.5f)
+                    ) {
+                        Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
-    )
+    }
 }
 
 

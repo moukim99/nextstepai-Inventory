@@ -60,6 +60,34 @@ fun BomScreen(
                 onAddClick = { viewModel.setAddDialogOpen(true) }
             )
         },
+        floatingActionButton = {
+            Box(
+                modifier = Modifier.padding(bottom = 20.dp, start = 12.dp, end = 12.dp)
+            ) {
+                ExtendedFloatingActionButton(
+                    onClick = { viewModel.setAddDialogOpen(true) },
+                    containerColor = Color(0xFF4F46E5),
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(18.dp),
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(Res.string.add_bom_item),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "إضافة مكون",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.5.sp
+                        )
+                    )
+                }
+            }
+        },
+        floatingActionButtonPosition = FabPosition.Start,
         modifier = modifier
     ) { paddingValues ->
         Box(
@@ -75,8 +103,11 @@ fun BomScreen(
 
                 Text(
                     text = "اختر المنتج الأب المجمع (Assembly) لعرض قائمة مواده:",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.5.sp
+                    ),
+                    color = Color(0xFF0F172A)
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -87,12 +118,24 @@ fun BomScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     items(uiState.parentParts, key = { "parent-assembly-${it.id}" }) { parent ->
-                        FilterChip(
-                            selected = uiState.selectedPartId == parent.id,
+                        val isSelected = uiState.selectedPartId == parent.id
+                        Surface(
                             onClick = { viewModel.selectParentPart(parent.id) },
-                            label = { Text("🛠️ ${parent.name}", fontWeight = FontWeight.Bold) },
-                            shape = RoundedCornerShape(50)
-                        )
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) Color(0xFF4F46E5) else Color.White,
+                            border = BorderStroke(1.dp, if (isSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
+                            shadowElevation = if (isSelected) 2.dp else 0.dp
+                        ) {
+                            Text(
+                                text = "🛠️ ${parent.name}",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                ),
+                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                            )
+                        }
                     }
                 }
 
@@ -136,7 +179,10 @@ fun BomScreen(
                     ) {
                         Text(
                             text = pluralStringResource(Res.plurals.bom_items_count, uiState.bomItems.size, uiState.bomItems.size),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.sp
+                            ),
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -144,7 +190,7 @@ fun BomScreen(
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(bottom = 24.dp)
+                        contentPadding = PaddingValues(bottom = 80.dp)
                     ) {
                         items(uiState.bomItems, key = { "bom-${it.id}" }) { bomItem ->
                             val component = uiState.availableComponents.find { it.id == bomItem.subPartId }
@@ -163,7 +209,7 @@ fun BomScreen(
     }
 
     if (uiState.isAddBomDialogOpen) {
-        AddBomItemDialog(
+        AddBomItemBottomSheet(
             components = uiState.availableComponents,
             onDismiss = { viewModel.setAddDialogOpen(false) },
             onConfirm = { subPartId, qty, ref, opt, cons, alwVar, inh, note ->
@@ -177,7 +223,7 @@ fun BomScreen(
         val currentSubPartId = bomItem.subPartId
         val eligibleParts = uiState.availableComponents.filter { it.id != currentSubPartId }
 
-        AddSubstituteDialog(
+        AddSubstituteBottomSheet(
             bomItem = bomItem,
             eligibleParts = eligibleParts,
             onDismiss = { viewModel.closeAddSubstituteDialog() },
@@ -209,7 +255,7 @@ private fun BomTopBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // اليمين: زر الرجوع وعنوان الشاشة
+            // اليمين: زر الرجوع والعنوان المزدوج
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -224,14 +270,24 @@ private fun BomTopBar(
                     )
                 }
 
-                Text(
-                    text = "جدول بنود قائمة المواد (BOM)",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 17.sp
-                    ),
-                    color = Color(0xFF0F172A)
-                )
+                Column {
+                    Text(
+                        text = "جدول بنود قائمة المواد (BOM)",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 17.sp
+                        ),
+                        color = Color(0xFF0F172A)
+                    )
+                    Text(
+                        text = "قائمة المكونات الفرعية والقطع البديلة للمُنتج المجمّع",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.sp
+                        ),
+                        color = Color(0xFF64748B)
+                    )
+                }
             }
 
             // اليسار: زر "+ إضافة مكون"
@@ -239,8 +295,8 @@ private fun BomTopBar(
                 onClick = onAddClick,
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF7C3AED),
-                    contentColor = Color.White
+                    containerColor = Color(0xFFEEF2FF),
+                    contentColor = Color(0xFF4F46E5)
                 ),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
             ) {
@@ -251,11 +307,13 @@ private fun BomTopBar(
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = stringResource(Res.string.add_bom_item),
+                        tint = Color(0xFF4F46E5),
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
                         text = "إضافة مكون",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFF4F46E5)
                     )
                 }
             }
@@ -276,9 +334,9 @@ private fun BomItemCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -290,21 +348,21 @@ private fun BomItemCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFFF3E8FF))
-                            .border(1.dp, Color(0xFFE9D5FF), RoundedCornerShape(10.dp)),
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFEEF2FF))
+                            .border(1.dp, Color(0xFFC7D2FE), RoundedCornerShape(12.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.AccountTree,
                             contentDescription = null,
-                            tint = Color(0xFF7C3AED),
-                            modifier = Modifier.size(20.dp)
+                            tint = Color(0xFF4F46E5),
+                            modifier = Modifier.size(22.dp)
                         )
                     }
 
@@ -314,19 +372,19 @@ private fun BomItemCard(
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         ),
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = Color(0xFF0F172A)
                     )
                 }
 
                 Surface(
-                    color = Color(0xFFF3E8FF),
+                    color = Color(0xFFEEF2FF),
                     shape = RoundedCornerShape(50),
-                    border = BorderStroke(1.dp, Color(0xFFE9D5FF))
+                    border = BorderStroke(1.dp, Color(0xFFC7D2FE))
                 ) {
                     Text(
                         text = "الكمية: ${bomItem.quantity} ${component?.units ?: "pcs"}",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = Color(0xFF7C3AED),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp),
+                        color = Color(0xFF4F46E5),
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
@@ -336,8 +394,8 @@ private fun BomItemCard(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "المرجع الهندسي (Ref): ${bomItem.reference}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                    color = Color(0xFF475569)
                 )
             }
 
@@ -345,8 +403,8 @@ private fun BomItemCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "ملاحظات التركيب: ${bomItem.note}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                    color = Color(0xFF64748B)
                 )
             }
 
@@ -363,7 +421,7 @@ private fun BomItemCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            HorizontalDivider(color = Color(0xFFF1F5F9))
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -375,15 +433,15 @@ private fun BomItemCard(
             ) {
                 Text(
                     text = "البدائل المعتمدة (${substitutes.size}):",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp),
+                    color = Color(0xFF0F172A)
                 )
 
                 TextButton(
                     onClick = onAddSubstituteClick,
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Text("+ إضافة بديل", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Color(0xFF7C3AED))
+                    Text("+ إضافة بديل", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF4F46E5))
                 }
             }
 
@@ -395,24 +453,25 @@ private fun BomItemCard(
                 ) {
                     for (sub in substitutes) {
                         Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFF8FAFC),
+                            shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth(),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     text = "• ${sub.substitutePart.name}",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp),
+                                    color = Color(0xFF0F172A)
                                 )
                                 Text(
                                     text = "IPN: ${sub.substitutePart.ipn.ifBlank { "-" }}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                    color = Color(0xFF64748B)
                                 )
                             }
                         }
@@ -439,8 +498,9 @@ private fun BadgeTag(text: String, bgColor: Color, textColor: Color) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddBomItemDialog(
+private fun AddBomItemBottomSheet(
     components: List<Part>,
     onDismiss: () -> Unit,
     onConfirm: (
@@ -454,6 +514,8 @@ private fun AddBomItemDialog(
         note: String
     ) -> Unit
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     var selectedSubPartId by remember { mutableStateOf<Long?>(components.firstOrNull()?.id) }
     var quantityText by remember { mutableStateOf("1.0") }
     var reference by remember { mutableStateOf("") }
@@ -462,56 +524,101 @@ private fun AddBomItemDialog(
     var consumable by remember { mutableStateOf(false) }
     var allowVariants by remember { mutableStateOf(false) }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp),
-        title = {
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 6.dp)
+                    .width(48.dp)
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFCBD5E1))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f)
+        ) {
+            // Header Section
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(stringResource(Res.string.add_bom_item), fontWeight = FontWeight.Bold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFEEF2FF)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AccountTree,
+                            contentDescription = null,
+                            tint = Color(0xFF4F46E5),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Text(
+                        text = stringResource(Res.string.add_bom_item),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        ),
+                        color = Color(0xFF0F172A)
+                    )
+                }
+
                 IconButton(onClick = onDismiss) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "إغلاق",
+                        tint = Color(0xFF64748B)
+                    )
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val subId = selectedSubPartId
-                    val qty = quantityText.toDoubleOrNull() ?: 1.0
-                    if (subId != null && qty > 0.0) {
-                        onConfirm(subId, qty, reference, optional, consumable, allowVariants, false, note)
-                    }
-                },
-                enabled = selectedSubPartId != null && (quantityText.toDoubleOrNull() ?: 0.0) > 0.0,
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
-        },
-        text = {
+
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+
+            // Form Body
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("اختر القطعة المكونة الفرعية (SubPart):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("اختر القطعة المكونة الفرعية (SubPart) *:", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Color(0xFF0F172A))
 
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(components, key = { "comp-select-${it.id}" }) { comp ->
-                        FilterChip(
-                            selected = selectedSubPartId == comp.id,
+                        val isSelected = selectedSubPartId == comp.id
+                        Surface(
                             onClick = { selectedSubPartId = comp.id },
-                            label = { Text(comp.name, fontWeight = FontWeight.Bold) },
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) Color(0xFF4F46E5) else Color.White,
+                            border = BorderStroke(1.dp, if (isSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Text(
+                                text = comp.name,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 11.5.sp),
+                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
                     }
                 }
 
@@ -521,7 +628,11 @@ private fun AddBomItemDialog(
                     label = { Text("الكمية المطلوبة (quantity > 0)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF4F46E5),
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
                 )
 
                 OutlinedTextField(
@@ -530,7 +641,11 @@ private fun AddBomItemDialog(
                     label = { Text("المرجع الهندسي على البوردة (Reference/Designator)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF4F46E5),
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
                 )
 
                 OutlinedTextField(
@@ -538,89 +653,239 @@ private fun AddBomItemDialog(
                     onValueChange = { note = it },
                     label = { Text("ملاحظات تركيبية (Note)") },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF4F46E5),
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
                 )
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = optional, onCheckedChange = { optional = it })
-                    Text("مكون اختياري (Optional)", fontSize = 12.sp)
+                Surface(
+                    color = Color(0xFFF8FAFC),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { optional = !optional }
+                        ) {
+                            Checkbox(checked = optional, onCheckedChange = { optional = it }, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4F46E5)))
+                            Text("مكون اختياري (Optional)", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp))
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { consumable = !consumable }
+                        ) {
+                            Checkbox(checked = consumable, onCheckedChange = { consumable = it }, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4F46E5)))
+                            Text("مكون مستهلك (Consumable)", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp))
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { allowVariants = !allowVariants }
+                        ) {
+                            Checkbox(checked = allowVariants, onCheckedChange = { allowVariants = it }, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4F46E5)))
+                            Text("السماح باستخدام بدائل المكون (Allow Variants)", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp))
+                        }
+                    }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = consumable, onCheckedChange = { consumable = it })
-                    Text("مكون مستهلك (Consumable)", fontSize = 12.sp)
-                }
+                Spacer(modifier = Modifier.height(10.dp))
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = allowVariants, onCheckedChange = { allowVariants = it })
-                    Text("السماح باستخدام بدائل المكون (Allow Variants)", fontSize = 12.sp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(stringResource(Res.string.cancel), fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = {
+                            val subId = selectedSubPartId
+                            val qty = quantityText.toDoubleOrNull() ?: 1.0
+                            if (subId != null && qty > 0.0) {
+                                onConfirm(subId, qty, reference, optional, consumable, allowVariants, false, note)
+                            }
+                        },
+                        enabled = selectedSubPartId != null && (quantityText.toDoubleOrNull() ?: 0.0) > 0.0,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF4F46E5),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier.weight(1.5f)
+                    ) {
+                        Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
-    )
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddSubstituteDialog(
+private fun AddSubstituteBottomSheet(
     bomItem: BomItem,
     eligibleParts: List<Part>,
     onDismiss: () -> Unit,
     onConfirm: (partId: Long) -> Unit
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedPartId by remember { mutableStateOf<Long?>(eligibleParts.firstOrNull()?.id) }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp),
-        title = {
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 6.dp)
+                    .width(48.dp)
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFCBD5E1))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.75f)
+        ) {
+            // Header Section
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("إضافة قطعة بديلة معتمدة", fontWeight = FontWeight.Bold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFEEF2FF)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SwapHoriz,
+                            contentDescription = null,
+                            tint = Color(0xFF4F46E5),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Text(
+                        text = "إضافة قطعة بديلة معتمدة",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        ),
+                        color = Color(0xFF0F172A)
+                    )
+                }
+
                 IconButton(onClick = onDismiss) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "إغلاق",
+                        tint = Color(0xFF64748B)
+                    )
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val pId = selectedPartId
-                    if (pId != null) {
-                        onConfirm(pId)
-                    }
-                },
-                enabled = selectedPartId != null,
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
-        },
-        text = {
+
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .weight(1f)
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("اختر القطعة البديلة المعتمدة:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("اختر القطعة البديلة المناسبة من المستودع:", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Color(0xFF0F172A))
 
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(eligibleParts, key = { "eligible-sub-${it.id}" }) { p ->
-                        FilterChip(
-                            selected = selectedPartId == p.id,
-                            onClick = { selectedPartId = p.id },
-                            label = { Text(p.name, fontWeight = FontWeight.Bold) },
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    items(eligibleParts, key = { "sub-part-${it.id}" }) { part ->
+                        val isSelected = selectedPartId == part.id
+                        Surface(
+                            onClick = { selectedPartId = part.id },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) Color(0xFFEEF2FF) else Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, if (isSelected) Color(0xFF4F46E5) else Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(part.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0F172A))
+                                    Text("IPN: ${part.ipn.ifBlank { "-" }}", fontSize = 11.sp, color = Color(0xFF64748B))
+                                }
+                                if (isSelected) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(stringResource(Res.string.cancel), fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = {
+                            val pId = selectedPartId
+                            if (pId != null) {
+                                onConfirm(pId)
+                            }
+                        },
+                        enabled = selectedPartId != null,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF4F46E5),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier.weight(1.5f)
+                    ) {
+                        Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
-    )
+    }
 }

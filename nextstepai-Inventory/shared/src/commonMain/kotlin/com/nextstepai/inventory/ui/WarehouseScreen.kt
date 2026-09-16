@@ -3,6 +3,7 @@ package com.nextstepai.inventory.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,8 +18,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.nextstepai.inventory.ui.theme.AppIcons
 import org.jetbrains.compose.resources.stringResource
 import nextstepai_inventory.shared.generated.resources.*
@@ -66,18 +69,28 @@ fun WarehouseScreen(
             // 1. الشريط العلوي الرئيسي للتبويب (Top Primary Tab Row: المخزون | الإنتاج)
             PrimaryTabRow(
                 selectedTabIndex = selectedTab.ordinal,
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary,
+                containerColor = Color.White,
+                contentColor = Color(0xFF4F46E5),
+                indicator = {
+                    TabRowDefaults.PrimaryIndicator(
+                        modifier = Modifier.tabIndicatorOffset(selectedTab.ordinal),
+                        color = Color(0xFF4F46E5),
+                        width = 48.dp
+                    )
+                },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Tab(
                     selected = selectedTab == WarehouseTab.INVENTORY,
                     onClick = { selectedTab = WarehouseTab.INVENTORY },
+                    selectedContentColor = Color(0xFF4F46E5),
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     text = {
                         Text(
                             text = stringResource(Res.string.tab_inventory),
                             style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = if (selectedTab == WarehouseTab.INVENTORY) FontWeight.Bold else FontWeight.Normal
+                                fontWeight = if (selectedTab == WarehouseTab.INVENTORY) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 14.sp
                             )
                         )
                     },
@@ -93,11 +106,14 @@ fun WarehouseScreen(
                 Tab(
                     selected = selectedTab == WarehouseTab.PRODUCTION,
                     onClick = { selectedTab = WarehouseTab.PRODUCTION },
+                    selectedContentColor = Color(0xFF4F46E5),
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     text = {
                         Text(
                             text = stringResource(Res.string.tab_production),
                             style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = if (selectedTab == WarehouseTab.PRODUCTION) FontWeight.Bold else FontWeight.Normal
+                                fontWeight = if (selectedTab == WarehouseTab.PRODUCTION) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 14.sp
                             )
                         )
                     },
@@ -111,74 +127,149 @@ fun WarehouseScreen(
                 )
             }
 
-            // 3. الشريط الفرعي التكتيكي (Secondary Sub-Tab / Segmented Controls)
+            // 3. الشريط الفرعي التكتيكي المقسم (Segmented Controls)
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp
+                color = Color.White,
+                shadowElevation = 1.dp,
+                border = BorderStroke(1.dp, Color(0xFFF1F5F9))
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     when (selectedTab) {
                         WarehouseTab.INVENTORY -> {
-                            FilterChip(
-                                selected = selectedInventorySubTab == InventorySubTab.PARTS,
+                            val isPartsSelected = selectedInventorySubTab == InventorySubTab.PARTS
+                            Surface(
                                 onClick = { selectedInventorySubTab = InventorySubTab.PARTS },
-                                label = { Text(stringResource(Res.string.subtab_parts)) },
-                                leadingIcon = {
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isPartsSelected) Color(0xFF4F46E5) else Color.White,
+                                border = BorderStroke(1.dp, if (isPartsSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
+                                shadowElevation = if (isPartsSelected) 2.dp else 0.dp,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                                ) {
                                     Icon(
                                         imageVector = AppIcons.Parts,
                                         contentDescription = null,
+                                        tint = if (isPartsSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(16.dp)
                                     )
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
-                            FilterChip(
-                                selected = selectedInventorySubTab == InventorySubTab.STOCK,
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(Res.string.subtab_parts),
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        ),
+                                        color = if (isPartsSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            val isStockSelected = selectedInventorySubTab == InventorySubTab.STOCK
+                            Surface(
                                 onClick = { selectedInventorySubTab = InventorySubTab.STOCK },
-                                label = { Text(stringResource(Res.string.subtab_stock)) },
-                                leadingIcon = {
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isStockSelected) Color(0xFF4F46E5) else Color.White,
+                                border = BorderStroke(1.dp, if (isStockSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
+                                shadowElevation = if (isStockSelected) 2.dp else 0.dp,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                                ) {
                                     Icon(
                                         imageVector = AppIcons.Stock,
                                         contentDescription = null,
+                                        tint = if (isStockSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(16.dp)
                                     )
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(Res.string.subtab_stock),
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        ),
+                                        color = if (isStockSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
                         WarehouseTab.PRODUCTION -> {
-                            FilterChip(
-                                selected = selectedProductionSubTab == ProductionSubTab.BUILDS,
+                            val isBuildsSelected = selectedProductionSubTab == ProductionSubTab.BUILDS
+                            Surface(
                                 onClick = { selectedProductionSubTab = ProductionSubTab.BUILDS },
-                                label = { Text(stringResource(Res.string.subtab_builds)) },
-                                leadingIcon = {
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isBuildsSelected) Color(0xFF4F46E5) else Color.White,
+                                border = BorderStroke(1.dp, if (isBuildsSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
+                                shadowElevation = if (isBuildsSelected) 2.dp else 0.dp,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                                ) {
                                     Icon(
                                         imageVector = AppIcons.Builds,
                                         contentDescription = null,
+                                        tint = if (isBuildsSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(16.dp)
                                     )
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
-                            FilterChip(
-                                selected = selectedProductionSubTab == ProductionSubTab.BOM,
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(Res.string.subtab_builds),
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        ),
+                                        color = if (isBuildsSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            val isBomSelected = selectedProductionSubTab == ProductionSubTab.BOM
+                            Surface(
                                 onClick = { selectedProductionSubTab = ProductionSubTab.BOM },
-                                label = { Text(stringResource(Res.string.subtab_bom)) },
-                                leadingIcon = {
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isBomSelected) Color(0xFF4F46E5) else Color.White,
+                                border = BorderStroke(1.dp, if (isBomSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
+                                shadowElevation = if (isBomSelected) 2.dp else 0.dp,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                                ) {
                                     Icon(
                                         imageVector = AppIcons.Bom,
                                         contentDescription = null,
+                                        tint = if (isBomSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(16.dp)
                                     )
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(Res.string.subtab_bom),
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        ),
+                                        color = if (isBomSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
                     }
                 }

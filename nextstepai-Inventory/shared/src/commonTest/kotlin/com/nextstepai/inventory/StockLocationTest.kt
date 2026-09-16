@@ -100,7 +100,7 @@ class StockLocationTest {
             parentId = 10L,
             structural = false,
             external = true,
-            locationTypeId = 3L,
+            locationType = "SHELF",
             ownerId = 7L,
             icon = "box",
             customIcon = "custom_icon_b12.png",
@@ -125,7 +125,7 @@ class StockLocationTest {
         assertEquals(10L, loaded.parentId)
         assertEquals(false, loaded.structural)
         assertEquals(true, loaded.external)
-        assertEquals(3L, loaded.locationTypeId)
+        assertEquals("SHELF", loaded.locationType)
         assertEquals(7L, loaded.ownerId)
         assertEquals("box", loaded.icon)
         assertEquals("custom_icon_b12.png", loaded.customIcon)

@@ -6,7 +6,6 @@ import com.nextstepai.inventory.data.StockItemTable
 import com.nextstepai.inventory.data.StockItemTestResult
 import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
-import com.nextstepai.inventory.data.StockLocationType
 import com.nextstepai.inventory.data.StockTrackingType
 import com.nextstepai.inventory.data.db.StockItemAttachmentDao
 import com.nextstepai.inventory.data.db.StockItemAttachmentEntity
@@ -18,8 +17,6 @@ import com.nextstepai.inventory.data.db.StockItemTrackingDao
 import com.nextstepai.inventory.data.db.StockItemTrackingEntity
 import com.nextstepai.inventory.data.db.StockLocationDao
 import com.nextstepai.inventory.data.db.StockLocationEntity
-import com.nextstepai.inventory.data.db.StockLocationTypeDao
-import com.nextstepai.inventory.data.db.StockLocationTypeEntity
 import com.nextstepai.inventory.media.ImageProcessor
 import com.nextstepai.inventory.media.ProcessedImage
 import com.nextstepai.inventory.sync.BatchSyncService
@@ -30,14 +27,13 @@ import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 
 /**
- * المستودع (Repository) المسؤول عن إدارة المخزون الفعلي ومواقع التخزين وأنواعها وسجلات التتبع
+ * المستودع (Repository) المسؤول عن إدارة المخزون الفعلي ومواقع التخزين وسجلات التتبع
  * ونتائج فحوصات الجودة ومرفقات المخزون (StockItemAttachment) وتجزئة الكميات والجرد والمزامنة مع السحابة.
  */
 class StockRepository(
     private val stockTable: StockItemTable = StockItemTable(),
     private val stockDao: StockItemDao = StockItemDao(),
     private val locationDao: StockLocationDao = StockLocationDao(),
-    private val locationTypeDao: StockLocationTypeDao = StockLocationTypeDao(),
     private val trackingDao: StockItemTrackingDao = StockItemTrackingDao(),
     private val testResultDao: StockItemTestResultDao = StockItemTestResultDao(),
     private val attachmentDao: StockItemAttachmentDao = StockItemAttachmentDao(),
@@ -66,10 +62,7 @@ class StockRepository(
      */
     fun getLocations(): List<StockLocation> = stockTable.getAllLocations()
 
-    /**
-     * جلب كافة أنواع مواقع التخزين المتاحة.
-     */
-    fun getLocationTypes(): List<StockLocationType> = stockTable.getAllLocationTypes()
+
 
     /**
      * جلب سجلات الحركات والتتبع لوحدة مخزنية محددة.
@@ -123,17 +116,6 @@ class StockRepository(
         val inserted = stockTable.addTestResult(testResult)
         runBlocking {
             testResultDao.insertOrUpdate(inserted.toEntity())
-        }
-        return inserted
-    }
-
-    /**
-     * إضافة أو تحديث نوع موقع تخزيني جديد (StockLocationType).
-     */
-    fun addLocationType(locationType: StockLocationType): StockLocationType {
-        val inserted = stockTable.insertLocationType(locationType)
-        runBlocking {
-            locationTypeDao.insertOrUpdate(inserted.toEntity())
         }
         return inserted
     }
@@ -287,18 +269,7 @@ class StockRepository(
         )
     }
 
-    private fun StockLocationType.toEntity(): StockLocationTypeEntity {
-        return StockLocationTypeEntity(
-            uuid = "location-type-$id",
-            typeId = id,
-            name = name,
-            description = description,
-            icon = icon,
-            customIcon = customIcon,
-            metadata = metadata,
-            syncStatus = SyncStatus.PENDING
-        )
-    }
+
 
     private fun StockLocation.toEntity(): StockLocationEntity {
         return StockLocationEntity(
@@ -310,7 +281,7 @@ class StockRepository(
             parentUuid = parentId?.let { "location-$it" },
             structural = structural,
             external = external,
-            locationTypeId = locationTypeId,
+            locationType = locationType,
             ownerId = ownerId,
             icon = icon,
             customIcon = customIcon,

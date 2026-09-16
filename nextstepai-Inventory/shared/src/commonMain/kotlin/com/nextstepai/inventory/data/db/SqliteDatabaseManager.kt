@@ -149,6 +149,7 @@ object SqliteDatabaseManager {
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN reviewNeeded INTEGER NOT NULL DEFAULT 0").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN deleteOnDeplete INTEGER NOT NULL DEFAULT 0").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN link TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN notes TEXT NOT NULL DEFAULT ''").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'").use { it.step() } }
 
         conn.prepare("""
@@ -161,7 +162,7 @@ object SqliteDatabaseManager {
                 parentUuid TEXT,
                 structural INTEGER NOT NULL DEFAULT 0,
                 external INTEGER NOT NULL DEFAULT 0,
-                locationTypeId INTEGER,
+                locationType TEXT NOT NULL DEFAULT 'SHELF',
                 ownerId INTEGER,
                 icon TEXT NOT NULL DEFAULT 'warehouse',
                 customIcon TEXT NOT NULL DEFAULT '',
@@ -177,21 +178,7 @@ object SqliteDatabaseManager {
         """.trimIndent()).use { it.step() }
 
         runCatching { conn.prepare("ALTER TABLE stock_locations ADD COLUMN parentUuid TEXT").use { it.step() } }
-
-        conn.prepare("""
-            CREATE TABLE IF NOT EXISTS stock_location_types (
-                uuid TEXT PRIMARY KEY NOT NULL,
-                typeId INTEGER NOT NULL,
-                name TEXT NOT NULL UNIQUE,
-                description TEXT NOT NULL DEFAULT '',
-                icon TEXT NOT NULL DEFAULT 'warehouse',
-                customIcon TEXT NOT NULL DEFAULT '',
-                metadata TEXT NOT NULL DEFAULT '{}',
-                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
-                isDeleted INTEGER NOT NULL DEFAULT 0,
-                updatedAt INTEGER NOT NULL DEFAULT 0
-            );
-        """.trimIndent()).use { it.step() }
+        runCatching { conn.prepare("ALTER TABLE stock_locations ADD COLUMN locationType TEXT NOT NULL DEFAULT 'SHELF'").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS stock_item_tracking (

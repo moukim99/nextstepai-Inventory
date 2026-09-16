@@ -12,7 +12,7 @@ class StockLocationDao {
 
     private val selectColumns = """
         uuid, locationId, name, description, parentId, parentUuid, structural, external,
-        locationTypeId, ownerId, icon, customIcon, level, lft, rght, treeId,
+        locationType, ownerId, icon, customIcon, level, lft, rght, treeId,
         metadata, syncStatus, isDeleted, updatedAt
     """.trimIndent()
 
@@ -40,7 +40,7 @@ class StockLocationDao {
         conn.prepare("""
             INSERT OR REPLACE INTO stock_locations (
                 uuid, locationId, name, description, parentId, parentUuid, structural, external,
-                locationTypeId, ownerId, icon, customIcon, level, lft, rght, treeId,
+                locationType, ownerId, icon, customIcon, level, lft, rght, treeId,
                 metadata, syncStatus, isDeleted, updatedAt
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -53,7 +53,7 @@ class StockLocationDao {
             if (entity.parentUuid != null) stmt.bindText(6, entity.parentUuid) else stmt.bindNull(6)
             stmt.bindLong(7, if (entity.structural) 1L else 0L)
             stmt.bindLong(8, if (entity.external) 1L else 0L)
-            if (entity.locationTypeId != null) stmt.bindLong(9, entity.locationTypeId) else stmt.bindNull(9)
+            stmt.bindText(9, entity.locationType)
             if (entity.ownerId != null) stmt.bindLong(10, entity.ownerId) else stmt.bindNull(10)
             stmt.bindText(11, entity.icon)
             stmt.bindText(12, entity.customIcon)
@@ -79,7 +79,7 @@ class StockLocationDao {
             parentUuid = runCatching { if (stmt.isNull(5)) null else stmt.getText(5) }.getOrNull(),
             structural = runCatching { stmt.getLong(6) != 0L }.getOrDefault(false),
             external = runCatching { stmt.getLong(7) != 0L }.getOrDefault(false),
-            locationTypeId = runCatching { if (stmt.isNull(8)) null else stmt.getLong(8) }.getOrNull(),
+            locationType = runCatching { stmt.getText(8) }.getOrDefault("SHELF"),
             ownerId = runCatching { if (stmt.isNull(9)) null else stmt.getLong(9) }.getOrNull(),
             icon = runCatching { stmt.getText(10) }.getOrDefault("warehouse"),
             customIcon = runCatching { stmt.getText(11) }.getOrDefault(""),

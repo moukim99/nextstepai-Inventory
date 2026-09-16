@@ -12,7 +12,6 @@ import androidx.room.TypeConverters
         BomItemSubstituteEntity::class,
         StockItemEntity::class,
         StockLocationEntity::class,
-        StockLocationTypeEntity::class,
         StockItemTrackingEntity::class,
         StockItemTestResultEntity::class,
         StockItemAttachmentEntity::class,
@@ -44,7 +43,6 @@ abstract class AppRoomDatabase : RoomDatabase() {
     abstract fun bomItemDao(): BomItemDao
     abstract fun stockItemDao(): StockItemDao
     abstract fun stockLocationDao(): StockLocationDao
-    abstract fun stockLocationTypeDao(): StockLocationTypeDao
     abstract fun stockItemTrackingDao(): StockItemTrackingDao
     abstract fun stockItemTestResultDao(): StockItemTestResultDao
     abstract fun stockItemAttachmentDao(): StockItemAttachmentDao

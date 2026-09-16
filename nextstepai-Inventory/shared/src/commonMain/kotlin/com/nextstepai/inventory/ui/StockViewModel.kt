@@ -7,7 +7,6 @@ import com.nextstepai.inventory.data.StockItemAttachment
 import com.nextstepai.inventory.data.StockItemTestResult
 import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
-import com.nextstepai.inventory.data.StockLocationType
 import com.nextstepai.inventory.data.StockStatus
 import com.nextstepai.inventory.repository.PartRepository
 import com.nextstepai.inventory.repository.StockRepository
@@ -23,13 +22,11 @@ import kotlinx.coroutines.flow.update
 data class StockUiState(
     val stockItems: List<StockItem> = emptyList(),
     val locations: List<StockLocation> = emptyList(),
-    val locationTypes: List<StockLocationType> = emptyList(),
     val parts: List<Part> = emptyList(),
     val selectedLocationId: Long? = null,
     val selectedPartId: Long? = null,
     val isAddStockDialogOpen: Boolean = false,
     val isAddLocationDialogOpen: Boolean = false,
-    val isAddLocationTypeDialogOpen: Boolean = false,
     val isAddTestResultDialogOpen: Boolean = false,
     val isAddAttachmentDialogOpen: Boolean = false,
     val selectedItemForSplit: StockItem? = null,
@@ -61,7 +58,6 @@ class StockViewModel(
     fun loadData() {
         val allParts = partRepository.getParts()
         val locations = stockRepository.getLocations()
-        val locationTypes = stockRepository.getLocationTypes()
         val allStock = stockRepository.getStockItems().filter { item ->
             (_uiState.value.selectedLocationId == null || item.locationId == _uiState.value.selectedLocationId) &&
                     (_uiState.value.selectedPartId == null || item.partId == _uiState.value.selectedPartId)
@@ -71,7 +67,6 @@ class StockViewModel(
             it.copy(
                 stockItems = allStock,
                 locations = locations,
-                locationTypes = locationTypes,
                 parts = allParts
             )
         }
@@ -87,6 +82,38 @@ class StockViewModel(
         loadData()
     }
 
+    fun addNewPart(
+        name: String,
+        ipn: String = "",
+        description: String = "",
+        categoryId: Long? = null,
+        units: String = "pcs",
+        assembly: Boolean = false,
+        component: Boolean = true,
+        isTemplate: Boolean = false,
+        variantOfId: Long? = null,
+        minimumStock: Double = 0.0,
+        maximumStock: Double? = null,
+        initialStock: Double = 0.0
+    ): Part {
+        val newPart = Part(
+            name = name,
+            ipn = ipn,
+            description = description,
+            categoryId = categoryId,
+            units = units.ifBlank { "pcs" },
+            assembly = assembly,
+            component = component,
+            isTemplate = isTemplate,
+            variantOfId = variantOfId,
+            minimumStock = minimumStock,
+            maximumStock = maximumStock
+        )
+        val inserted = partRepository.addPart(newPart)
+        loadData()
+        return inserted
+    }
+
     fun setAddDialogOpen(isOpen: Boolean) {
         _uiState.update { it.copy(isAddStockDialogOpen = isOpen, errorMessage = null) }
     }
@@ -95,9 +122,7 @@ class StockViewModel(
         _uiState.update { it.copy(isAddLocationDialogOpen = isOpen, errorMessage = null) }
     }
 
-    fun setAddLocationTypeDialogOpen(isOpen: Boolean) {
-        _uiState.update { it.copy(isAddLocationTypeDialogOpen = isOpen, errorMessage = null) }
-    }
+
 
     fun setAddTestResultDialogOpen(isOpen: Boolean) {
         _uiState.update { it.copy(isAddTestResultDialogOpen = isOpen, errorMessage = null) }
@@ -253,64 +278,34 @@ class StockViewModel(
         }
     }
 
-    fun addLocationType(
-        name: String,
-        description: String = "",
-        icon: String = "warehouse",
-        customIcon: String = ""
-    ) {
-        try {
-            val type = StockLocationType(
-                name = name,
-                description = description,
-                icon = icon,
-                customIcon = customIcon
-            )
-            stockRepository.addLocationType(type)
-            _uiState.update {
-                it.copy(
-                    isAddLocationTypeDialogOpen = false,
-                    errorMessage = null,
-                    successMessage = "تم إضافة نوع موقع التخزين بنجاح"
-                )
-            }
-            loadData()
-        } catch (e: IllegalArgumentException) {
-            _uiState.update { it.copy(errorMessage = e.message) }
-        }
-    }
-
     fun addLocation(
         name: String,
         description: String = "",
         parentId: Long? = null,
         structural: Boolean = false,
         external: Boolean = false,
-        locationTypeId: Long? = null,
+        locationType: String = "SHELF",
         icon: String = "warehouse"
-    ) {
-        try {
-            val loc = StockLocation(
-                name = name,
-                description = description,
-                parentId = parentId,
-                structural = structural,
-                external = external,
-                locationTypeId = locationTypeId,
-                icon = icon
+    ): StockLocation {
+        val loc = StockLocation(
+            name = name,
+            description = description,
+            parentId = parentId,
+            structural = structural,
+            external = external,
+            locationType = locationType,
+            icon = icon
+        )
+        val inserted = stockRepository.addLocation(loc)
+        _uiState.update {
+            it.copy(
+                isAddLocationDialogOpen = false,
+                errorMessage = null,
+                successMessage = "تم إنشاء موقع التخزين بنجاح"
             )
-            stockRepository.addLocation(loc)
-            _uiState.update {
-                it.copy(
-                    isAddLocationDialogOpen = false,
-                    errorMessage = null,
-                    successMessage = "تم إنشاء موقع التخزين بنجاح"
-                )
-            }
-            loadData()
-        } catch (e: IllegalArgumentException) {
-            _uiState.update { it.copy(errorMessage = e.message) }
         }
+        loadData()
+        return inserted
     }
 
     fun addStockItem(

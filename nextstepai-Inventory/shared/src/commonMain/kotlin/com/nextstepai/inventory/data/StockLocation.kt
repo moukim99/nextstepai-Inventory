@@ -26,7 +26,7 @@ data class StockLocation(
     val parentId: Long? = null,
     val structural: Boolean = false,
     val external: Boolean = false,
-    val locationTypeId: Long? = null,
+    val locationType: String = "SHELF",
     val ownerId: Long? = null,
     val icon: String = "warehouse",
     val customIcon: String = "",
