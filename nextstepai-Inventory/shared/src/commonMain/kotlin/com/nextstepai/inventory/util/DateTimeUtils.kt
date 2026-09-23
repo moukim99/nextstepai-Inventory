@@ -35,4 +35,16 @@ object DateTimeUtils {
         val second = local.second.toString().padStart(2, '0')
         return "$year-$month-$day $hour:$minute:$second"
     }
+
+    /**
+     * تحويل الختم الزمني بالملي ثانية إلى تاريخ بصيغة YYYY-MM-DD.
+     */
+    fun formatEpochMillisToDate(millis: Long): String {
+        val instant = Instant.fromEpochMilliseconds(millis)
+        val local = instant.toLocalDateTime(TimeZone.currentSystemDefault())
+        val year = local.year
+        val month = local.monthNumber.toString().padStart(2, '0')
+        val day = local.dayOfMonth.toString().padStart(2, '0')
+        return "$year-$month-$day"
+    }
 }

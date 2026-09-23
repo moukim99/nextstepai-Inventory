@@ -356,7 +356,10 @@ class CompanyViewModel(
         isManufacturer: Boolean,
         isCustomer: Boolean,
         currency: String,
-        parentId: Long? = null
+        parentId: Long? = null,
+        imageUrl: String? = null,
+        active: Boolean = true,
+        notes: String = ""
     ) {
         try {
             val c = Company(
@@ -371,7 +374,10 @@ class CompanyViewModel(
                 isManufacturer = isManufacturer,
                 isCustomer = isCustomer,
                 currency = currency.ifBlank { "USD" },
-                parentId = parentId
+                parentId = parentId,
+                imageUrl = imageUrl,
+                active = active,
+                notes = notes
             )
             repository.addCompany(c)
             _uiState.update {
@@ -401,7 +407,10 @@ class CompanyViewModel(
         isManufacturer: Boolean,
         isCustomer: Boolean,
         currency: String,
-        parentId: Long? = null
+        parentId: Long? = null,
+        imageUrl: String? = null,
+        active: Boolean = true,
+        notes: String = ""
     ) {
         try {
             val existing = repository.getCompanyById(id) ?: return
@@ -417,7 +426,10 @@ class CompanyViewModel(
                 isManufacturer = isManufacturer,
                 isCustomer = isCustomer,
                 currency = currency.ifBlank { "USD" },
-                parentId = parentId
+                parentId = parentId,
+                imageUrl = imageUrl,
+                active = active,
+                notes = notes
             )
             repository.updateCompany(updated)
             _uiState.update {

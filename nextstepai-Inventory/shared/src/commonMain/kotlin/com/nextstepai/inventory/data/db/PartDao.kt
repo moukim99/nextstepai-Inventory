@@ -3,6 +3,7 @@ package com.nextstepai.inventory.data.db
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
 import com.nextstepai.inventory.sync.SyncStatus
+import kotlin.time.Clock
 
 /**
  * كائن الوصول لبيانات القطع (PartDao) باستعلامات معلّمة صريحة (Parameterized Bind Queries).
@@ -31,6 +32,44 @@ class PartDao {
         """.trimIndent()).use { stmt ->
             stmt.bindLong(1, limit.toLong())
             stmt.bindLong(2, offset.toLong())
+            while (stmt.step()) {
+                results.add(mapPartEntity(stmt))
+            }
+        }
+        return results
+    }
+
+    suspend fun getParentAssemblies(): List<PartEntity> {
+        val conn = SqliteDatabaseManager.getConnection()
+        val results = mutableListOf<PartEntity>()
+        conn.prepare("""
+            SELECT $selectColumns
+            FROM parts
+            WHERE assembly = 1 AND isDeleted = 0 AND active = 1
+            ORDER BY name ASC
+        """.trimIndent()).use { stmt ->
+            while (stmt.step()) {
+                results.add(mapPartEntity(stmt))
+            }
+        }
+        return results
+    }
+
+    suspend fun getEligibleSubParts(parentPartId: Long): List<PartEntity> {
+        val conn = SqliteDatabaseManager.getConnection()
+        val results = mutableListOf<PartEntity>()
+        conn.prepare("""
+            SELECT $selectColumns
+            FROM parts
+            WHERE component = 1
+              AND id != ?
+              AND id NOT IN (SELECT subPartId FROM bom_items WHERE partId = ? AND isDeleted = 0)
+              AND isDeleted = 0
+              AND active = 1
+            ORDER BY name ASC
+        """.trimIndent()).use { stmt ->
+            stmt.bindLong(1, parentPartId)
+            stmt.bindLong(2, parentPartId)
             while (stmt.step()) {
                 results.add(mapPartEntity(stmt))
             }
@@ -112,6 +151,16 @@ class PartDao {
                 stmt.bindText(2, uuid)
                 stmt.step()
             }
+        }
+    }
+
+    suspend fun addStockToPart(partId: Long, qty: Double) {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("UPDATE parts SET totalInStock = totalInStock + ?, updatedAt = ? WHERE id = ?").use { stmt ->
+            stmt.bindDouble(1, qty)
+            stmt.bindLong(2, Clock.System.now().toEpochMilliseconds())
+            stmt.bindLong(3, partId)
+            stmt.step()
         }
     }
 

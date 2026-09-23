@@ -1,18 +1,36 @@
 package com.nextstepai.inventory.ui
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.nextstepai.inventory.data.AppUser
 import com.nextstepai.inventory.data.BuildItem
 import com.nextstepai.inventory.data.BuildOrder
 import com.nextstepai.inventory.data.BuildOrderLineItem
 import com.nextstepai.inventory.data.BuildStatus
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.StockLocation
+import com.nextstepai.inventory.data.ManufacturingPhase
+import com.nextstepai.inventory.data.ManufacturingPhaseTable
 import com.nextstepai.inventory.repository.BuildOrderRepository
 import com.nextstepai.inventory.repository.PartRepository
+import com.nextstepai.inventory.repository.UserRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+/**
+ * نموذج بيانات أمر البيع والطلب المخصص للزبائن (SalesOrder).
+ */
+data class SalesOrder(
+    val id: Long,
+    val reference: String,
+    val customerName: String,
+    val description: String = "",
+    val quantity: Double = 1.0,
+    val targetDate: String = ""
+)
 
 /**
  * حالة واجهة إدارة أوامر الإنتاج والتصنيع (BuildOrder UI State).
@@ -25,12 +43,23 @@ data class BuildOrderUiState(
         StockLocation(id = 2L, name = "خط التجميع والمكونات (Assembly Line A)"),
         StockLocation(id = 3L, name = "مخزن المنتجات المكتملة (Finished Goods)")
     ),
+    val salesOrders: List<SalesOrder> = listOf(
+        SalesOrder(id = 101L, reference = "SO-2025-101", customerName = "شركة التقنيات المتقدمة", description = "طلب توريد 50 وحدة جهاز تحكم ذكي", quantity = 50.0, targetDate = "2025-03-30"),
+        SalesOrder(id = 102L, reference = "SO-2025-102", customerName = "مؤسسة الحلول الصناعية", description = "طلب تصنيع 20 لوحة تحكم رئيسية v2", quantity = 20.0, targetDate = "2025-04-10"),
+        SalesOrder(id = 103L, reference = "SO-2025-103", customerName = "شركة الأوتوماتيك والتحكم", description = "طلب تجميع مستشعرات حرارة ورطوبة", quantity = 100.0, targetDate = "2025-04-15")
+    ),
+    val users: List<AppUser> = emptyList(),
     val searchQuery: String = "",
+    val selectedPartId: Long? = null,
     val statusFilter: BuildStatus? = null,
+    val isFilterBottomSheetOpen: Boolean = false,
     val selectedBuild: BuildOrder? = null,
     val selectedLineItems: List<BuildOrderLineItem> = emptyList(),
     val allocatedBuildItems: List<BuildItem> = emptyList(),
     val isAddBuildDialogOpen: Boolean = false,
+    val isSelectPhaseBottomSheetOpen: Boolean = false,
+    val selectedPhaseUuid: String? = null,
+    val phases: List<ManufacturingPhase> = emptyList(),
     val errorMessage: String? = null,
     val successMessage: String? = null
 )
@@ -40,7 +69,9 @@ data class BuildOrderUiState(
  */
 class BuildOrderViewModel(
     private val repository: BuildOrderRepository = BuildOrderRepository(),
-    private val partRepository: PartRepository = PartRepository()
+    private val partRepository: PartRepository = PartRepository(),
+    private val userRepository: UserRepository = UserRepository(),
+    private val phaseTable: ManufacturingPhaseTable = ManufacturingPhaseTable()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BuildOrderUiState())
@@ -48,20 +79,33 @@ class BuildOrderViewModel(
 
     init {
         loadData()
+        loadUsers()
+    }
+
+    private fun loadUsers() {
+        viewModelScope.launch {
+            val activeUsers = userRepository.getActiveUsers()
+            _uiState.update { it.copy(users = activeUsers) }
+        }
     }
 
     fun loadData() {
         val assemblies = partRepository.getParts().filter { it.assembly }
-        val builds = repository.searchBuilds(
+        var builds = repository.searchBuilds(
             query = _uiState.value.searchQuery,
             status = _uiState.value.statusFilter
         )
+        if (_uiState.value.selectedPartId != null) {
+            builds = builds.filter { it.partId == _uiState.value.selectedPartId }
+        }
 
         val updatedSelected = _uiState.value.selectedBuild?.let { sel ->
             builds.find { it.id == sel.id }
         }
         val lineItems = updatedSelected?.let { repository.getLineItemsForBuild(it.id) } ?: emptyList()
         val buildItems = updatedSelected?.let { repository.getBuildItemsForBuild(it.id) } ?: emptyList()
+        val allPhases = phaseTable.getAllPhases().sortedBy { it.sequenceOrder }
+        val activePhaseUuid = _uiState.value.selectedPhaseUuid ?: allPhases.firstOrNull()?.uuid
 
         _uiState.update {
             it.copy(
@@ -69,9 +113,36 @@ class BuildOrderViewModel(
                 assemblyParts = assemblies,
                 selectedBuild = updatedSelected,
                 selectedLineItems = lineItems,
-                allocatedBuildItems = buildItems
+                allocatedBuildItems = buildItems,
+                phases = allPhases,
+                selectedPhaseUuid = activePhaseUuid
             )
         }
+    }
+
+    fun setFilterBottomSheetOpen(isOpen: Boolean) {
+        _uiState.update { it.copy(isFilterBottomSheetOpen = isOpen) }
+    }
+
+    fun applyFilters(partId: Long?, status: BuildStatus?) {
+        _uiState.update {
+            it.copy(
+                selectedPartId = partId,
+                statusFilter = status,
+                isFilterBottomSheetOpen = false
+            )
+        }
+        loadData()
+    }
+
+    fun resetFilters() {
+        _uiState.update {
+            it.copy(
+                selectedPartId = null,
+                statusFilter = null
+            )
+        }
+        loadData()
     }
 
     fun onSearchQueryChanged(query: String) {
@@ -94,6 +165,46 @@ class BuildOrderViewModel(
                 allocatedBuildItems = buildItems
             )
         }
+    }
+
+    fun setSelectPhaseBottomSheetOpen(isOpen: Boolean) {
+        _uiState.update { it.copy(isSelectPhaseBottomSheetOpen = isOpen) }
+    }
+
+    fun selectPhase(phaseUuid: String) {
+        _uiState.update { it.copy(selectedPhaseUuid = phaseUuid, isSelectPhaseBottomSheetOpen = false) }
+    }
+
+    fun transferUnitsToNextPhase(buildId: Long, currentPhaseUuid: String, quantity: Double) {
+        val build = _uiState.value.builds.find { it.id == buildId } ?: return
+        val phasesList = _uiState.value.phases
+        val currentPhaseIdx = phasesList.indexOfFirst { it.uuid == currentPhaseUuid }
+        if (currentPhaseIdx == -1) return
+
+        val currentQty = build.phaseQuantities[currentPhaseUuid] ?: 0.0
+        val finalQty = quantity.coerceAtMost(currentQty)
+        
+        if (finalQty <= 0) return
+
+        val newQuantities = build.phaseQuantities.toMutableMap()
+        newQuantities[currentPhaseUuid] = currentQty - finalQty
+
+        val isLastPhase = currentPhaseIdx == phasesList.lastIndex
+        if (isLastPhase) {
+            val newCompleted = build.completedQuantity + finalQty
+            val updatedBuild = build.copy(
+                completedQuantity = newCompleted,
+                phaseQuantities = newQuantities,
+                status = if (newCompleted >= build.quantity) BuildStatus.COMPLETE else build.status
+            )
+            repository.updateBuild(updatedBuild)
+        } else {
+            val nextPhaseUuid = phasesList[currentPhaseIdx + 1].uuid
+            newQuantities[nextPhaseUuid] = (newQuantities[nextPhaseUuid] ?: 0.0) + finalQty
+            val updatedBuild = build.copy(phaseQuantities = newQuantities)
+            repository.updateBuild(updatedBuild)
+        }
+        loadData()
     }
 
     fun autoAllocateBuildOrder(buildId: Long) {
@@ -133,6 +244,7 @@ class BuildOrderViewModel(
         quantity: Double,
         batch: String,
         targetDate: String,
+        startDate: String = "",
         takeFromLocationId: Long? = null,
         destinationLocationId: Long? = null,
         parentId: Long? = null,
@@ -152,6 +264,7 @@ class BuildOrderViewModel(
                 quantity = quantity,
                 batch = batch,
                 targetDate = targetDate,
+                startDate = startDate,
                 takeFromLocationId = takeFromLocationId,
                 destinationLocationId = destinationLocationId,
                 parentId = parentId,
@@ -185,6 +298,22 @@ class BuildOrderViewModel(
         repository.cancelBuildOrder(buildId)
         _uiState.update { it.copy(successMessage = "تم إلغاء أمر التصنيع بنجاح") }
         loadData()
+    }
+
+    fun updateBuildStatus(buildId: Long, newStatus: BuildStatus) {
+        try {
+            repository.updateBuildStatus(buildId, newStatus)
+            val msg = when (newStatus) {
+                BuildStatus.IN_PRODUCTION -> "تم بدء واستئناف عملية التصنيع والإنتاج الفعلي"
+                BuildStatus.CANCELLED -> "تم إيقاف/إلغاء أمر التصنيع بنجاح"
+                BuildStatus.COMPLETE -> "تم إكتمال وتوريد أمر التصنيع بنجاح"
+                else -> "تم تحديث حالة أمر التصنيع بنجاح"
+            }
+            _uiState.update { it.copy(successMessage = msg) }
+            loadData()
+        } catch (e: Exception) {
+            _uiState.update { it.copy(errorMessage = e.message) }
+        }
     }
 
     fun completeBuildOutput(buildId: Long, qty: Double) {

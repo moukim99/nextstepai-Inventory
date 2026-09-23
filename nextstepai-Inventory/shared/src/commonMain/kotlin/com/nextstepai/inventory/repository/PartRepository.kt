@@ -51,7 +51,8 @@ class PartRepository(
     private val partInternalPriceTable: PartInternalPriceTable = PartInternalPriceTable(partTable),
     private val partSalePriceTable: PartSalePriceTable = PartSalePriceTable(partTable),
     private val partStarTable: PartStarTable = PartStarTable(partTable),
-    private val partPricingTable: PartPricingTable = PartPricingTable(partTable, bomItemTable = BomItemTable(), internalPriceTable = partInternalPriceTable),
+    private val bomItemTable: BomItemTable = BomItemTable(),
+    private val partPricingTable: PartPricingTable = PartPricingTable(partTable, bomItemTable = bomItemTable, internalPriceTable = partInternalPriceTable),
     private val batchSyncService: BatchSyncService = BatchSyncService(),
     private val imageProcessor: ImageProcessor = ImageProcessor(maxDimension = 1024, compressionQuality = 85)
 ) {
@@ -104,14 +105,138 @@ class PartRepository(
     }
 
     /**
-     * جلب قائمة جميع القطع المتاحة.
+     * جلب قائمة جميع القطع المتاحة من قاعدة البيانات الدائمة (SQLite).
      */
-    fun getParts(): List<Part> = partTable.getAllParts()
+    fun getParts(): List<Part> {
+        val entities = runBlocking { partDao.getPartsPaged(limit = 1000, offset = 0) }
+        return entities.map { entity ->
+            Part(
+                id = entity.id,
+                name = entity.name,
+                ipn = entity.ipn,
+                description = entity.description,
+                revision = entity.revision,
+                keywords = entity.keywords,
+                categoryId = entity.categoryId,
+                units = entity.units,
+                assembly = entity.assembly,
+                component = entity.component,
+                isTemplate = entity.isTemplate,
+                variantOfId = entity.variantOfId,
+                trackable = entity.trackable,
+                purchaseable = entity.purchaseable,
+                salable = entity.salable,
+                virtual = entity.virtual,
+                active = entity.active,
+                locked = entity.locked,
+                defaultLocationId = entity.defaultLocationId,
+                defaultExpiryDays = entity.defaultExpiryDays,
+                minimumStock = entity.minimumStock,
+                maximumStock = entity.maximumStock,
+                imageUrl = entity.localImagePath,
+                link = entity.link,
+                totalInStock = entity.totalInStock
+            )
+        }
+    }
+
+    /**
+     * جلب المنتجات الأب المؤهلة التي تفعل خيار التجميع الهندسي (assembly = true) من SQLite.
+     */
+    fun getParentAssemblies(): List<Part> {
+        val entities = runBlocking { partDao.getParentAssemblies() }
+        return entities.map { entity ->
+            Part(
+                id = entity.id,
+                name = entity.name,
+                ipn = entity.ipn,
+                description = entity.description,
+                revision = entity.revision,
+                keywords = entity.keywords,
+                categoryId = entity.categoryId,
+                units = entity.units,
+                assembly = entity.assembly,
+                component = entity.component,
+                isTemplate = entity.isTemplate,
+                variantOfId = entity.variantOfId,
+                trackable = entity.trackable,
+                purchaseable = entity.purchaseable,
+                salable = entity.salable,
+                virtual = entity.virtual,
+                active = entity.active,
+                locked = entity.locked,
+                defaultLocationId = entity.defaultLocationId,
+                defaultExpiryDays = entity.defaultExpiryDays,
+                minimumStock = entity.minimumStock,
+                maximumStock = entity.maximumStock,
+                imageUrl = entity.localImagePath,
+                link = entity.link,
+                totalInStock = entity.totalInStock
+            )
+        }
+    }
+
+    /**
+     * جلب القطع الفرعية المتاحة للمكونات مع استبعاد المنتج الأب والمكونات المضافة مسبقاً من SQLite.
+     */
+    fun getEligibleSubParts(parentPartId: Long, existingSubPartIds: List<Long> = emptyList()): List<Part> {
+        val entities = runBlocking { partDao.getEligibleSubParts(parentPartId) }
+        return entities.map { entity ->
+            Part(
+                id = entity.id,
+                name = entity.name,
+                ipn = entity.ipn,
+                description = entity.description,
+                revision = entity.revision,
+                keywords = entity.keywords,
+                categoryId = entity.categoryId,
+                units = entity.units,
+                assembly = entity.assembly,
+                component = entity.component,
+                isTemplate = entity.isTemplate,
+                variantOfId = entity.variantOfId,
+                trackable = entity.trackable,
+                purchaseable = entity.purchaseable,
+                salable = entity.salable,
+                virtual = entity.virtual,
+                active = entity.active,
+                locked = entity.locked,
+                defaultLocationId = entity.defaultLocationId,
+                defaultExpiryDays = entity.defaultExpiryDays,
+                minimumStock = entity.minimumStock,
+                maximumStock = entity.maximumStock,
+                imageUrl = entity.localImagePath,
+                link = entity.link,
+                totalInStock = entity.totalInStock
+            )
+        }.filter { !existingSubPartIds.contains(it.id) }
+    }
 
     /**
      * جلب جميع التصنيفات المتاحة.
      */
     fun getCategories(): List<PartCategory> = partTable.getAllCategories()
+
+    /**
+     * إنشاء تصنيف جديد وإضافته لجدول التصنيفات.
+     */
+    fun addCategory(name: String, description: String = ""): PartCategory {
+        return partTable.insertCategory(name = name, description = description)
+    }
+
+    /**
+     * حذف تصنيف محدد بواسطة المعرف الفريد.
+     */
+    fun deleteCategory(categoryId: Long): Boolean {
+        return partTable.deleteCategory(categoryId)
+    }
+
+    /**
+     * زيادة رصيد المخزون لقطعة محددة وتحديث رصيد الصنف.
+     */
+    fun addStockToPart(partId: Long, quantity: Double): Part? {
+        return partTable.addStockToPart(partId, quantity)
+    }
 
     /**
      * جلب قطعة محددة بواسطة المعرف الفريد.
@@ -171,6 +296,7 @@ class PartRepository(
                     defaultLocationId = inserted.defaultLocationId,
                     defaultExpiryDays = inserted.defaultExpiryDays,
                     totalInStock = inserted.totalInStock,
+                    localImagePath = inserted.imageUrl,
                     link = inserted.link,
                     syncStatus = SyncStatus.PENDING,
                     isDeleted = false,
@@ -181,6 +307,32 @@ class PartRepository(
         // إنشاء سجلات المعاملات الفنية تلقائياً بناءً على PartCategoryParameterTemplate للتصنيف
         categoryParameterTable.autoGenerateParametersForPart(inserted.id, inserted.categoryId)
         return inserted
+    }
+
+    /**
+     * حذف أمني محمي للقطعة مع تطبيق القيود والاشتراطات التشغيلية:
+     * 1. يمنع الحذف إذا كان للقطعة رصيد مخزوني فني فعلي على الرفوف (> 0).
+     * 2. يمنع الحذف إذا كانت القطعة تدخل كمكون في شجرة مواد BOM لقطع أخرى.
+     */
+    fun deletePartWithValidation(partId: Long): Result<Boolean> {
+        val part = partTable.getPartById(partId)
+            ?: return Result.failure(IllegalArgumentException("القطعة المطلوب حذفها غير موجودة بالمنظومة"))
+
+        // الشرط الأول: التأكد من عدم وجود رصيد مخزوني فعلي
+        if (part.totalInStock > 0.0) {
+            return Result.failure(IllegalStateException("لا يمكن حذف القطعة '${part.name}' لأنها تمتلك رصيد مخزوني فني فعلي (${part.totalInStock} ${part.units}). قم بصرف أو تسوية الرصيد أولاً."))
+        }
+
+        // الشرط الثاني: التأكد من عدم استخدام القطعة كعنصر رئيسي في شجرة BOM لمنتجات أخرى
+        val isUsedInBom = bomItemTable.getBomItemsPaged(partId = null, limit = 1000, offset = 0).any { it.subPartId == partId }
+        if (isUsedInBom) {
+            return Result.failure(IllegalStateException("لا يمكن حذف القطعة '${part.name}' لأنها تدخل كبند رئيسي ومكون أساسي في شجرة مواد BOM لمنتجات أخرى."))
+        }
+
+        // الأرشفة والحذف الناعم (Soft Delete)
+        val softDeletedPart = part.copy(active = false, isTemplate = false)
+        updatePart(softDeletedPart)
+        return Result.success(true)
     }
 
     /**
@@ -210,6 +362,41 @@ class PartRepository(
      */
     fun getAllParameterTemplates(): List<PartParameterTemplate> {
         return categoryParameterTable.getAllParameterTemplates()
+    }
+
+    /**
+     * إدراج قالب معامل أو وحدة قياسية جديدة إلى النظام في قاعدة البيانات.
+     */
+    fun addParameterTemplate(name: String, units: String = "", description: String = ""): PartParameterTemplate {
+        val template = PartParameterTemplate(
+            name = name,
+            units = units.ifBlank { name },
+            description = description
+        )
+        return categoryParameterTable.insertParameterTemplate(template)
+    }
+
+    /**
+     * حذف قالب معامل/وحدة من النظام بحذف متتابع (CASCADE) في قاعدة البيانات.
+     */
+    fun deleteParameterTemplate(templateId: Long): Boolean {
+        return categoryParameterTable.deleteParameterTemplate(templateId)
+    }
+
+    /**
+     * حذف قالب معامل/وحدة عن طريق الاسم أو رمز الوحدة في قاعدة البيانات.
+     */
+    fun deleteParameterTemplateByNameOrUnit(unitCode: String): Boolean {
+        val templates = categoryParameterTable.getAllParameterTemplates()
+        val match = templates.find {
+            it.name.equals(unitCode, ignoreCase = true) ||
+            it.units.equals(unitCode, ignoreCase = true)
+        }
+        return if (match != null) {
+            categoryParameterTable.deleteParameterTemplate(match.id)
+        } else {
+            false
+        }
     }
 
     /**
@@ -414,7 +601,47 @@ class PartRepository(
     /**
      * تحديث بيانات قطعة موجودة.
      */
-    fun updatePart(part: Part): Boolean = partTable.updatePart(part)
+    fun updatePart(part: Part): Boolean {
+        val result = partTable.updatePart(part)
+        if (result) {
+            runBlocking {
+                partDao.insertOrUpdate(
+                    PartEntity(
+                        uuid = "part-${part.id}",
+                        id = part.id,
+                        name = part.name,
+                        ipn = part.ipn,
+                        description = part.description,
+                        revision = part.revision,
+                        keywords = part.keywords,
+                        categoryId = part.categoryId,
+                        units = part.units,
+                        assembly = part.assembly,
+                        component = part.component,
+                        isTemplate = part.isTemplate,
+                        variantOfId = part.variantOfId,
+                        trackable = part.trackable,
+                        purchaseable = part.purchaseable,
+                        salable = part.salable,
+                        virtual = part.virtual,
+                        active = part.active,
+                        locked = part.locked,
+                        minimumStock = part.minimumStock,
+                        maximumStock = part.maximumStock,
+                        defaultLocationId = part.defaultLocationId,
+                        defaultExpiryDays = part.defaultExpiryDays,
+                        totalInStock = part.totalInStock,
+                        localImagePath = part.imageUrl,
+                        link = part.link,
+                        syncStatus = SyncStatus.PENDING,
+                        isDeleted = false,
+                        updatedAt = Clock.System.now().toEpochMilliseconds()
+                    )
+                )
+            }
+        }
+        return result
+    }
 
     /**
      * جلب القوالب المتاحة لاستخدامها في خيارات التفرع (Variants).

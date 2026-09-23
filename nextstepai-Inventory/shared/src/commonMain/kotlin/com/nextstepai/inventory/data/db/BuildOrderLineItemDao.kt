@@ -11,7 +11,7 @@ import com.nextstepai.inventory.sync.SyncStatus
 class BuildOrderLineItemDao {
 
     private val selectColumns = """
-        uuid, id, buildId, buildUuid, bomItemId, bomItemUuid, subPartId, subPartName, quantity, allocatedQuantity, consumedQuantity, notes, syncStatus, isDeleted, updatedAt
+        uuid, id, buildId, buildUuid, bomItemId, bomItemUuid, subPartId, subPartName, quantity, allocatedQuantity, consumedQuantity, notes, phaseUuid, unitCost, syncStatus, isDeleted, updatedAt
     """.trimIndent()
 
     suspend fun getLineItemsForBuild(buildId: Long): List<BuildOrderLineItemEntity> {
@@ -92,8 +92,8 @@ class BuildOrderLineItemDao {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO build_order_line_items (
-                uuid, id, buildId, buildUuid, bomItemId, bomItemUuid, subPartId, subPartName, quantity, allocatedQuantity, consumedQuantity, notes, syncStatus, isDeleted, updatedAt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                uuid, id, buildId, buildUuid, bomItemId, bomItemUuid, subPartId, subPartName, quantity, allocatedQuantity, consumedQuantity, notes, phaseUuid, unitCost, syncStatus, isDeleted, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
             stmt.bindLong(2, entity.id)
@@ -107,9 +107,11 @@ class BuildOrderLineItemDao {
             stmt.bindDouble(10, entity.allocatedQuantity)
             stmt.bindDouble(11, entity.consumedQuantity)
             stmt.bindText(12, entity.notes)
-            stmt.bindText(13, entity.syncStatus.name)
-            stmt.bindLong(14, if (entity.isDeleted) 1L else 0L)
-            stmt.bindLong(15, entity.updatedAt)
+            if (entity.phaseUuid != null) stmt.bindText(13, entity.phaseUuid) else stmt.bindNull(13)
+            stmt.bindDouble(14, entity.unitCost)
+            stmt.bindText(15, entity.syncStatus.name)
+            stmt.bindLong(16, if (entity.isDeleted) 1L else 0L)
+            stmt.bindLong(17, entity.updatedAt)
             stmt.step()
         }
     }
@@ -128,9 +130,11 @@ class BuildOrderLineItemDao {
             allocatedQuantity = stmt.getDouble(9),
             consumedQuantity = stmt.getDouble(10),
             notes = stmt.getText(11),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(12)) }.getOrDefault(SyncStatus.PENDING),
-            isDeleted = stmt.getLong(13) != 0L,
-            updatedAt = stmt.getLong(14)
+            phaseUuid = if (stmt.isNull(12)) null else stmt.getText(12),
+            unitCost = runCatching { stmt.getDouble(13) }.getOrDefault(0.0),
+            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(14)) }.getOrDefault(SyncStatus.PENDING),
+            isDeleted = stmt.getLong(15) != 0L,
+            updatedAt = stmt.getLong(16)
         )
     }
 }

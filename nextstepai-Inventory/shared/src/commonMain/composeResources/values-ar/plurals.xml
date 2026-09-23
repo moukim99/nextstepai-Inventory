@@ -4,9 +4,9 @@
         <item quantity="zero">لا توجد قطع</item>
         <item quantity="one">قطعة واحدة</item>
         <item quantity="two">قطعتان</item>
-        <item quantity="few">%d قطع</item>
-        <item quantity="many">%d قطعة</item>
-        <item quantity="other">%d قطعة</item>
+        <item quantity="few">%1$d قطع</item>
+        <item quantity="many">%1$d قطعة</item>
+        <item quantity="other">%1$d قطعة</item>
     </plurals>
     <plurals name="stock_items_count">
         <item quantity="zero">لا توجد عناصر مخزنية</item>

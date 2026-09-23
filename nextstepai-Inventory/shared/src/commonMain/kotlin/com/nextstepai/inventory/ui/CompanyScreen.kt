@@ -113,7 +113,7 @@ fun CompanyScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(IntrinsicSize.Min),
+                        .height(48.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -135,7 +135,19 @@ fun CompanyScreen(
                                 modifier = Modifier.size(18.dp)
                             )
                         },
-                        modifier = Modifier.weight(1f),
+                        trailingIcon = {
+                            if (uiState.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "مسح البحث",
+                                        tint = Color(0xFF64748B),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Search),
                         shape = RoundedCornerShape(12.dp),
@@ -216,169 +228,6 @@ fun CompanyScreen(
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
-
-                // شريط تصفية أدوار الشركات (Filter Chips) - صف واحد محكم بدون سحب جانبي
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 1. الكل
-                    val isAllSelected = uiState.roleFilter == CompanyRoleFilter.ALL
-                    Surface(
-                        onClick = { viewModel.setRoleFilter(CompanyRoleFilter.ALL) },
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (isAllSelected) Color(0xFF4F46E5) else Color.White,
-                        border = BorderStroke(1.dp, if (isAllSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
-                        shadowElevation = if (isAllSelected) 2.dp else 0.dp,
-                        modifier = Modifier.weight(0.8f)
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp)
-                        ) {
-                            Text(
-                                text = "الكل",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.5.sp
-                                ),
-                                color = if (isAllSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    // 2. الموردون
-                    val isSupplierSelected = uiState.roleFilter == CompanyRoleFilter.SUPPLIER_ONLY
-                    Surface(
-                        onClick = { viewModel.setRoleFilter(CompanyRoleFilter.SUPPLIER_ONLY) },
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (isSupplierSelected) Color(0xFF4F46E5) else Color.White,
-                        border = BorderStroke(1.dp, if (isSupplierSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
-                        shadowElevation = if (isSupplierSelected) 2.dp else 0.dp,
-                        modifier = Modifier.weight(1.1f)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp)
-                        ) {
-                            Text(
-                                text = "الموردون 🚚",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.5.sp
-                                ),
-                                color = if (isSupplierSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Surface(
-                                shape = RoundedCornerShape(5.dp),
-                                color = if (isSupplierSelected) Color(0xFF3730A3) else Color(0xFFF1F5F9)
-                            ) {
-                                Text(
-                                    text = uiState.totalSuppliersCount.toString(),
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 9.5.sp
-                                    ),
-                                    color = if (isSupplierSelected) Color.White else Color(0xFF64748B),
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // 3. المصنعون
-                    val isManufacturerSelected = uiState.roleFilter == CompanyRoleFilter.MANUFACTURER_ONLY
-                    Surface(
-                        onClick = { viewModel.setRoleFilter(CompanyRoleFilter.MANUFACTURER_ONLY) },
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (isManufacturerSelected) Color(0xFF4F46E5) else Color.White,
-                        border = BorderStroke(1.dp, if (isManufacturerSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
-                        shadowElevation = if (isManufacturerSelected) 2.dp else 0.dp,
-                        modifier = Modifier.weight(1.1f)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp)
-                        ) {
-                            Text(
-                                text = "المصنعون 🏭",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.5.sp
-                                ),
-                                color = if (isManufacturerSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Surface(
-                                shape = RoundedCornerShape(5.dp),
-                                color = if (isManufacturerSelected) Color(0xFF3730A3) else Color(0xFFF1F5F9)
-                            ) {
-                                Text(
-                                    text = uiState.totalManufacturersCount.toString(),
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 9.5.sp
-                                    ),
-                                    color = if (isManufacturerSelected) Color.White else Color(0xFF64748B),
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // 4. العملاء
-                    val isCustomerSelected = uiState.roleFilter == CompanyRoleFilter.CUSTOMER_ONLY
-                    Surface(
-                        onClick = { viewModel.setRoleFilter(CompanyRoleFilter.CUSTOMER_ONLY) },
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (isCustomerSelected) Color(0xFF4F46E5) else Color.White,
-                        border = BorderStroke(1.dp, if (isCustomerSelected) Color(0xFF4F46E5) else MaterialTheme.colorScheme.outlineVariant),
-                        shadowElevation = if (isCustomerSelected) 2.dp else 0.dp,
-                        modifier = Modifier.weight(1.1f)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp)
-                        ) {
-                            Text(
-                                text = "العملاء 🤝",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.5.sp
-                                ),
-                                color = if (isCustomerSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Surface(
-                                shape = RoundedCornerShape(5.dp),
-                                color = if (isCustomerSelected) Color(0xFF3730A3) else Color(0xFFF1F5F9)
-                            ) {
-                                Text(
-                                    text = uiState.totalCustomersCount.toString(),
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 9.5.sp
-                                    ),
-                                    color = if (isCustomerSelected) Color.White else Color(0xFF64748B),
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
 
                 // شريط إحصائي ملخص (Stat Summary Bar)
                 Row(
@@ -495,7 +344,7 @@ fun CompanyScreen(
             companyToEdit = uiState.companyToEdit,
             errorMessage = uiState.errorMessage,
             onDismiss = { viewModel.setAddDialogOpen(false) },
-            onConfirm = { name, desc, web, phone, email, addr, contact, isSup, isMan, isCust, curr, parentId ->
+            onConfirm = { name, desc, web, phone, email, addr, contact, isSup, isMan, isCust, curr, parentId, imageUrl, active, notes ->
                 if (uiState.companyToEdit != null) {
                     viewModel.updateCompany(
                         id = uiState.companyToEdit!!.id,
@@ -510,10 +359,29 @@ fun CompanyScreen(
                         isManufacturer = isMan,
                         isCustomer = isCust,
                         currency = curr,
-                        parentId = parentId
+                        parentId = parentId,
+                        imageUrl = imageUrl,
+                        active = active,
+                        notes = notes
                     )
                 } else {
-                    viewModel.addCompany(name, desc, web, phone, email, addr, contact, isSup, isMan, isCust, curr, parentId)
+                    viewModel.addCompany(
+                        name = name,
+                        description = desc,
+                        website = web,
+                        phone = phone,
+                        email = email,
+                        address = addr,
+                        contact = contact,
+                        isSupplier = isSup,
+                        isManufacturer = isMan,
+                        isCustomer = isCust,
+                        currency = curr,
+                        parentId = parentId,
+                        imageUrl = imageUrl,
+                        active = active,
+                        notes = notes
+                    )
                 }
             }
         )
@@ -2798,7 +2666,10 @@ private fun AddCompanyBottomSheet(
         isManufacturer: Boolean,
         isCustomer: Boolean,
         currency: String,
-        parentId: Long?
+        parentId: Long?,
+        imageUrl: String?,
+        active: Boolean,
+        notes: String
     ) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -2816,6 +2687,10 @@ private fun AddCompanyBottomSheet(
     var currency by remember(companyToEdit) { mutableStateOf(companyToEdit?.currency ?: "USD") }
     var selectedParentId by remember(companyToEdit) { mutableStateOf<Long?>(companyToEdit?.parentId) }
     var selectedCountry by remember { mutableStateOf(CountryRepository.defaultCountry()) }
+
+    var imageUrl by remember(companyToEdit) { mutableStateOf(companyToEdit?.imageUrl ?: "") }
+    var active by remember(companyToEdit) { mutableStateOf(companyToEdit?.active ?: true) }
+    var notes by remember(companyToEdit) { mutableStateOf(companyToEdit?.notes ?: "") }
 
     var isParentSelectionSheetOpen by remember { mutableStateOf(false) }
     var isCurrencySelectionSheetOpen by remember { mutableStateOf(false) }
@@ -2869,7 +2744,7 @@ private fun AddCompanyBottomSheet(
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
                             color = Color(0xFF0F172A)
                         )
-                        Text("سجل الموردين والمصنّعين (InventTree System)", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = Color(0xFF64748B))
+                        Text("سجل الموردين والمصنّعين (InvenTree System)", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = Color(0xFF64748B))
                     }
                 }
 
@@ -2913,6 +2788,25 @@ private fun AddCompanyBottomSheet(
                     placeholder = { Text("توضيح تخصص الشركة، المكونات الدقيقة، خطوط الإنتاج والوكالات...") },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                // Logo Path / Image Selection Field (logoPath -> Image Picker / URL)
+                OutlinedTextField(
+                    value = imageUrl,
+                    onValueChange = { imageUrl = it },
+                    label = { Text("مسار الشعار / صورة الشركة (logoPath)") },
+                    placeholder = { Text("https://example.com/logo.png أو/images/logo.png") },
+                    leadingIcon = { Icon(Icons.Default.Image, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
+                    trailingIcon = {
+                        if (imageUrl.isNotEmpty()) {
+                            IconButton(onClick = { imageUrl = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "مسح", tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
 
@@ -3037,6 +2931,79 @@ private fun AddCompanyBottomSheet(
                     label = "رمز العملة المعتمدة للتعامل"
                 )
 
+                // Active / Archive Status Switch Field (active)
+                Surface(
+                    onClick = { active = !active },
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (active) Color(0xFFECFDF5) else Color(0xFFFEF2F2),
+                    border = BorderStroke(1.5.dp, if (active) Color(0xFF10B981) else Color(0xFFEF4444)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (active) Color(0xFF10B981) else Color(0xFFEF4444)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (active) Icons.Default.CheckCircle else Icons.Default.Archive,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = if (active) "الشركة مفعلة ونشطة في النظام" else "الشركة مؤرشفة (غير نشطة)",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.5.sp),
+                                    color = Color(0xFF0F172A)
+                                )
+                                Text(
+                                    text = if (active) "تظهر في قوائم الموردين وأوامر الشراء" else "مخفية من المعاملات النشطة والطلبات الجديدة",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                    color = Color(0xFF64748B)
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = active,
+                            onCheckedChange = { active = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF10B981),
+                                uncheckedThumbColor = Color.White,
+                                uncheckedTrackColor = Color(0xFFCBD5E1)
+                            )
+                        )
+                    }
+                }
+
+                // Multiline Additional Notes Field (notes)
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("ملاحظات تعاقدية وفنية إضافية (notes)") },
+                    placeholder = { Text("اكتب أي شروط تعاقدية، شروط شحن، أو ملاحظات خاصة بالتعامل...") },
+                    leadingIcon = { Icon(Icons.Default.Notes, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
+                    minLines = 3,
+                    maxLines = 5,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
                 // Company Roles Section
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -3141,7 +3108,23 @@ private fun AddCompanyBottomSheet(
                         onClick = {
                             if (name.isNotBlank()) {
                                 val formattedPhone = if (phone.isBlank()) "" else "${selectedCountry.dialCode} $phone"
-                                onConfirm(name, description, website, formattedPhone, email, address, contact, isSupplier, isManufacturer, isCustomer, currency, selectedParentId)
+                                onConfirm(
+                                    name,
+                                    description,
+                                    website,
+                                    formattedPhone,
+                                    email,
+                                    address,
+                                    contact,
+                                    isSupplier,
+                                    isManufacturer,
+                                    isCustomer,
+                                    currency,
+                                    selectedParentId,
+                                    imageUrl.ifBlank { null },
+                                    active,
+                                    notes
+                                )
                             }
                         },
                         enabled = name.isNotBlank(),
@@ -4700,6 +4683,7 @@ private fun EditLegalRecordBottomSheet(
     var issuingAuthority by remember { mutableStateOf(currentRecord?.issuingAuthority ?: "") }
     var issueDate by remember { mutableStateOf(currentRecord?.issueDate ?: "") }
     var expiryDate by remember { mutableStateOf(currentRecord?.expiryDate ?: "") }
+    var showExpiryDatePicker by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -4961,19 +4945,61 @@ private fun EditLegalRecordBottomSheet(
 
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("تاريخ الانتهاء", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF334155))
-                        OutlinedTextField(
-                            value = expiryDate,
-                            onValueChange = { expiryDate = it },
-                            placeholder = { Text("2029-01-15") },
-                            leadingIcon = { Icon(Icons.Default.Event, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFFF8FAFC),
-                                unfocusedContainerColor = Color(0xFFF8FAFC)
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = expiryDate,
+                                onValueChange = { expiryDate = it },
+                                readOnly = true,
+                                placeholder = { Text("2029-01-15") },
+                                leadingIcon = { Icon(Icons.Default.Event, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(18.dp)) },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showExpiryDatePicker = true },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color(0xFFF8FAFC),
+                                    unfocusedContainerColor = Color(0xFFF8FAFC)
+                                )
                             )
-                        )
+
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable { showExpiryDatePicker = true }
+                            )
+                        }
+
+                        if (showExpiryDatePicker) {
+                            val datePickerState = rememberDatePickerState(
+                                initialSelectedDateMillis = Clock.System.now().toEpochMilliseconds()
+                            )
+                            DatePickerDialog(
+                                onDismissRequest = { showExpiryDatePicker = false },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        datePickerState.selectedDateMillis?.let { millis ->
+                                            val instant = Instant.fromEpochMilliseconds(millis)
+                                            val dateTime = instant.toLocalDateTime(TimeZone.UTC)
+                                            val year = dateTime.year
+                                            val month = dateTime.monthNumber.toString().padStart(2, '0')
+                                            val day = dateTime.dayOfMonth.toString().padStart(2, '0')
+                                            expiryDate = "$year-$month-$day"
+                                        }
+                                        showExpiryDatePicker = false
+                                    }) {
+                                        Text("تأكيد الاختيار", fontWeight = FontWeight.Bold)
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showExpiryDatePicker = false }) {
+                                        Text("إلغاء")
+                                    }
+                                }
+                            ) {
+                                DatePicker(state = datePickerState)
+                            }
+                        }
                     }
                 }
             }
@@ -5279,6 +5305,7 @@ private fun AddManufacturerPartBottomSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddManufacturerPartParameterDialog(
     errorMessage: String?,
@@ -5289,29 +5316,56 @@ private fun AddManufacturerPartParameterDialog(
     var value by remember { mutableStateOf("5V") }
     var units by remember { mutableStateOf("V") }
 
-    AlertDialog(
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("إضافة معامل تقني لقطعة المصنّع", fontWeight = FontWeight.Bold) },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (name.isNotBlank() && value.isNotBlank()) onConfirm(name, value, units)
-                },
-                enabled = name.isNotBlank() && value.isNotBlank()
-            ) { Text("حفظ المعامل") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (errorMessage != null) Text(errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("اسم الخاصية / المعامل (Voltage / Resistance) *") }, singleLine = true)
-                OutlinedTextField(value = value, onValueChange = { value = it }, label = { Text("القيمة التقنية (5V / 10k) *") }, singleLine = true)
-                OutlinedTextField(value = units, onValueChange = { units = it }, label = { Text("وحدة القياس (V / Ohm / uF)") }, singleLine = true)
-            }
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 6.dp)
+                    .width(48.dp)
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFCBD5E1))
+            )
         }
-    )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text("إضافة معامل تقني لقطعة المصنّع", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            if (errorMessage != null) Text(errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("اسم الخاصية / المعامل (Voltage / Resistance) *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = value, onValueChange = { value = it }, label = { Text("القيمة التقنية (5V / 10k) *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = units, onValueChange = { units = it }, label = { Text("وحدة القياس (V / Ohm / uF)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onDismiss) { Text("إلغاء") }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = {
+                        if (name.isNotBlank() && value.isNotBlank()) onConfirm(name, value, units)
+                    },
+                    enabled = name.isNotBlank() && value.isNotBlank()
+                ) { Text("حفظ المعامل") }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddManufacturerPartAttachmentDialog(
     errorMessage: String?,
@@ -5322,27 +5376,53 @@ private fun AddManufacturerPartAttachmentDialog(
     var link by remember { mutableStateOf("") }
     var comment by remember { mutableStateOf("ورقة مواصفات فنية (Datasheet)") }
 
-    AlertDialog(
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("إضافة مرفق لقطعة المصنّع", fontWeight = FontWeight.Bold) },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (path.isNotBlank() || link.isNotBlank()) onConfirm(path, link, comment)
-                },
-                enabled = path.isNotBlank() || link.isNotBlank()
-            ) { Text("رفع الحفظ") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (errorMessage != null) Text(errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                OutlinedTextField(value = comment, onValueChange = { comment = it }, label = { Text("الوصف / نوع المرفق") }, singleLine = true)
-                OutlinedTextField(value = path, onValueChange = { path = it }, label = { Text("مسار الملف (Datasheet.pdf)") }, singleLine = true)
-                OutlinedTextField(value = link, onValueChange = { link = it }, label = { Text("أو رابط المستند الإلكتروني") }, singleLine = true)
-            }
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 6.dp)
+                    .width(48.dp)
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFCBD5E1))
+            )
         }
-    )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text("إضافة مرفق لقطعة المصنّع", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            if (errorMessage != null) Text(errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            OutlinedTextField(value = comment, onValueChange = { comment = it }, label = { Text("الوصف / نوع المرفق") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = path, onValueChange = { path = it }, label = { Text("مسار الملف (Datasheet.pdf)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = link, onValueChange = { link = it }, label = { Text("أو رابط المستند الإلكتروني") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onDismiss) { Text("إلغاء") }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = {
+                        if (path.isNotBlank() || link.isNotBlank()) onConfirm(path, link, comment)
+                    },
+                    enabled = path.isNotBlank() || link.isNotBlank()
+                ) { Text("رفع الحفظ") }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -5587,6 +5667,7 @@ private fun AddSupplierPartBottomSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddPriceBreakDialog(
     defaultCurrency: String,
@@ -5598,44 +5679,70 @@ private fun AddPriceBreakDialog(
     var priceStr by remember { mutableStateOf("1.5") }
     var currency by remember { mutableStateOf(defaultCurrency) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("إضافة شريحة سعر متدرجة", fontWeight = FontWeight.Bold) },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val qty = qtyStr.toDoubleOrNull() ?: 0.0
-                    val pr = priceStr.toDoubleOrNull() ?: 0.0
-                    onConfirm(qty, pr, currency.ifBlank { defaultCurrency })
-                },
-                enabled = (qtyStr.toDoubleOrNull() ?: 0.0) > 0
-            ) { Text("حفظ") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (errorMessage != null) Text(errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                OutlinedTextField(value = qtyStr, onValueChange = { qtyStr = it }, label = { Text("الحد الأدنى للكمية (Min Quantity) *") }, singleLine = true)
-                OutlinedTextField(value = priceStr, onValueChange = { priceStr = it }, label = { Text("سعر الوحدة (Unit Price) *") }, singleLine = true)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-                var isPickerOpen by remember { mutableStateOf(false) }
-                CurrencySelectorField(
-                    selectedCurrencyCode = currency,
-                    onOpenPicker = { isPickerOpen = true },
-                    label = "العملة (تستخدم عملة الشركة افتراضياً)"
-                )
-                if (isPickerOpen) {
-                    CurrencySelectionBottomSheet(
-                        selectedCurrencyCode = currency,
-                        onDismiss = { isPickerOpen = false },
-                        onCurrencySelected = { selectedCurr ->
-                            currency = selectedCurr.code
-                        }
-                    )
-                }
-            }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 6.dp)
+                    .width(48.dp)
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFCBD5E1))
+            )
         }
-    )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text("إضافة شريحة سعر متدرجة", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            if (errorMessage != null) Text(errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            OutlinedTextField(value = qtyStr, onValueChange = { qtyStr = it }, label = { Text("الحد الأدنى للكمية (Min Quantity) *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = priceStr, onValueChange = { priceStr = it }, label = { Text("سعر الوحدة (Unit Price) *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+
+            var isPickerOpen by remember { mutableStateOf(false) }
+            CurrencySelectorField(
+                selectedCurrencyCode = currency,
+                onOpenPicker = { isPickerOpen = true },
+                label = "العملة (تستخدم عملة الشركة افتراضياً)"
+            )
+            if (isPickerOpen) {
+                CurrencySelectionBottomSheet(
+                    selectedCurrencyCode = currency,
+                    onDismiss = { isPickerOpen = false },
+                    onCurrencySelected = { selectedCurr ->
+                        currency = selectedCurr.code
+                    }
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onDismiss) { Text("إلغاء") }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = {
+                        val qty = qtyStr.toDoubleOrNull() ?: 0.0
+                        val pr = priceStr.toDoubleOrNull() ?: 0.0
+                        onConfirm(qty, pr, currency.ifBlank { defaultCurrency })
+                    },
+                    enabled = (qtyStr.toDoubleOrNull() ?: 0.0) > 0
+                ) { Text("حفظ") }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -5649,6 +5756,7 @@ private fun CompanyFilterBottomSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var searchQuery by remember { mutableStateOf("") }
+    var selectedTab by remember { mutableIntStateOf(0) }
     var selectedCountries by remember { mutableStateOf(uiState.selectedCountries) }
     var selectedScope by remember { mutableStateOf(uiState.selectedScope) }
 
@@ -5707,7 +5815,7 @@ private fun CompanyFilterBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.70f)
+                .fillMaxHeight(0.85f)
         ) {
             // 1. Header Section
             Row(
@@ -5733,7 +5841,7 @@ private fun CompanyFilterBottomSheet(
                     }
                     Column {
                         Text("تصفية الشركات والشركاء", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp), color = Color(0xFF0F172A))
-                        Text("تحديد الشركات المعروضة حسب الدولة ومقر العمليات", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = Color(0xFF64748B))
+                        Text("تحديد الشركات المعروضة حسب نوع العلاقة والبلدان", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = Color(0xFF64748B))
                     }
                 }
 
@@ -5767,113 +5875,192 @@ private fun CompanyFilterBottomSheet(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("ابحث عن اسم الدولة أو الرمز (السعودية، الصين...)") },
+                    placeholder = { Text("ابحث عن اسم الشركة، الدولة أو الرمز...") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp)) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = null, tint = Color(0xFF64748B))
+                            }
+                        }
+                    },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Search),
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                // Section 1: Countries Selector
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 2. شريط التبويبات المزدوجة
+                Surface(
+                    color = Color(0xFFF1F5F9),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("البلدان المتاحة للتوريد والتصنيع", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.5.sp), color = Color(0xFF0F172A))
-                            if (selectedCountries.isNotEmpty()) {
-                                Surface(color = Color(0xFFEEF2FF), shape = RoundedCornerShape(10.dp)) {
-                                    Text("${selectedCountries.size} محددة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp), color = Color(0xFF4338CA), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                                }
+                        Surface(
+                            onClick = { selectedTab = 0 },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (selectedTab == 0) Color.White else Color.Transparent,
+                            shadowElevation = if (selectedTab == 0) 2.dp else 0.dp,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "🏢 نوع وطبيعة العلاقة",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    ),
+                                    color = if (selectedTab == 0) Color(0xFF4F46E5) else Color(0xFF64748B)
+                                )
                             }
                         }
-                        Text("حسب السجلات المسجلة", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp), color = Color(0xFF94A3B8))
-                    }
 
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
-                        border = BorderStroke(1.dp, Color(0xFFF1F5F9)),
+                        Surface(
+                            onClick = { selectedTab = 1 },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (selectedTab == 1) Color.White else Color.Transparent,
+                            shadowElevation = if (selectedTab == 1) 2.dp else 0.dp,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "🌐 النطاق والبلدان المعتمدة",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    ),
+                                    color = if (selectedTab == 1) Color(0xFF4F46E5) else Color(0xFF64748B)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (selectedTab == 0) {
+                    // تبويب نوع العلاقة
+                    Surface(
+                        color = Color(0xFFF8FAFC),
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
-                            modifier = Modifier.padding(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (filteredCountries.isEmpty()) {
-                                Text(
-                                    text = "لا توجد بلدان تطابق نتائج البحث",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                                    color = Color(0xFF64748B),
-                                    modifier = Modifier.padding(12.dp)
-                                )
-                            } else {
-                                filteredCountries.forEach { country ->
-                                    val countryName = country.nameAr
-                                    val isChecked = selectedCountries.contains(countryName)
-                                    val count = remember(country.code, uiState.companies) {
-                                        uiState.companies.count { comp ->
-                                            val stats = uiState.companyStatsMap[comp.id]
-                                            val addrNorm = ((stats?.primaryAddress ?: "") + " " + comp.address).normalizeArabic()
-                                            val cNameArNorm = country.nameAr.normalizeArabic()
-                                            val cNameEnNorm = country.nameEn.normalizeArabic()
-                                            addrNorm.contains(cNameArNorm) ||
-                                            addrNorm.contains(cNameEnNorm) ||
-                                            comp.phone.startsWith(country.dialCode) ||
-                                            (country.code == "SA" && (addrNorm.contains("الرياض") || addrNorm.contains("جده") || addrNorm.contains("السعوديه"))) ||
-                                            (country.code == "CN" && (addrNorm.contains("الصين") || addrNorm.contains("شنغهاي")))
+                            val scopes = listOf(
+                                Triple("ALL", "جميع الشركات والشركاء", "عرض كافة الموردين والمصنعين والعملاء"),
+                                Triple("SUPPLIERS", "شركات التوريد فقط (Suppliers)", "موردو المكونات والقطع الإلكترونية"),
+                                Triple("MANUFACTURERS", "الشركات المصنعة فقط (Manufacturers)", "المصنعون الأصليون للشريحة أو القطعة"),
+                                Triple("CUSTOMERS", "العملاء وجهات الشحن (Customers)", "عملاء المنتجات النهائية والخدمات اللوجستية")
+                            )
+
+                            scopes.forEach { (scope, label, desc) ->
+                                val isSelected = selectedScope == scope
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { selectedScope = scope }
+                                        .padding(vertical = 4.dp)
+                                ) {
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = { selectedScope = scope },
+                                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF4F46E5))
+                                    )
+                                    Column {
+                                        Text(
+                                            text = label,
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                                        )
+                                        Text(
+                                            text = desc,
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                            color = Color(0xFF64748B)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Section 1: Countries Selector
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        filteredCountries.forEach { country ->
+                            val countryName = country.nameAr
+                            val isChecked = selectedCountries.contains(countryName)
+                            val count = remember(country.code, uiState.companies) {
+                                uiState.companies.count { comp ->
+                                    val stats = uiState.companyStatsMap[comp.id]
+                                    val addrNorm = ((stats?.primaryAddress ?: "") + " " + comp.address).normalizeArabic()
+                                    val cNameArNorm = country.nameAr.normalizeArabic()
+                                    val cNameEnNorm = country.nameEn.normalizeArabic()
+                                    addrNorm.contains(cNameArNorm) ||
+                                    addrNorm.contains(cNameEnNorm) ||
+                                    comp.phone.startsWith(country.dialCode) ||
+                                    (country.code == "SA" && (addrNorm.contains("الرياض") || addrNorm.contains("جده") || addrNorm.contains("السعوديه"))) ||
+                                    (country.code == "CN" && (addrNorm.contains("الصين") || addrNorm.contains("شنغهاي")))
+                                }
+                            }
+
+                            Surface(
+                                onClick = {
+                                    selectedCountries = if (isChecked) selectedCountries - countryName else selectedCountries + countryName
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isChecked) Color(0xFFEEF2FF).copy(alpha = 0.6f) else Color.White,
+                                border = BorderStroke(1.dp, if (isChecked) Color(0xFFC7D2FE) else Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(country.flagEmoji, fontSize = 20.sp)
+                                        Column {
+                                            Text(country.nameAr, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF0F172A))
+                                            Text("${country.nameEn} • ${country.dialCode}", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF64748B))
                                         }
                                     }
 
-                                    Surface(
-                                        onClick = {
-                                            selectedCountries = if (isChecked) selectedCountries - countryName else selectedCountries + countryName
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = if (isChecked) Color(0xFFEEF2FF).copy(alpha = 0.6f) else Color.White,
-                                        border = BorderStroke(1.dp, if (isChecked) Color(0xFFC7D2FE) else Color(0xFFE2E8F0)),
-                                        modifier = Modifier.fillMaxWidth()
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(10.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
+                                        Surface(
+                                            color = if (count > 0) Color(0xFFECFDF5) else Color(0xFFF1F5F9),
+                                            shape = RoundedCornerShape(6.dp),
+                                            border = BorderStroke(1.dp, if (count > 0) Color(0xFFA7F3D0) else Color(0xFFE2E8F0))
                                         ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                Text(country.flagEmoji, fontSize = 20.sp)
-                                                Column {
-                                                    Text(country.nameAr, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp), color = Color(0xFF0F172A))
-                                                    Text("${country.nameEn} • ${country.dialCode}", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF64748B))
-                                                }
-                                            }
-
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Surface(
-                                                    color = if (count > 0) Color(0xFFECFDF5) else Color(0xFFF1F5F9),
-                                                    shape = RoundedCornerShape(6.dp),
-                                                    border = BorderStroke(1.dp, if (count > 0) Color(0xFFA7F3D0) else Color(0xFFE2E8F0))
-                                                ) {
-                                                    Text("$count شركة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp), color = if (count > 0) Color(0xFF047857) else Color(0xFF64748B), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                                                }
-
-                                                Checkbox(
-                                                    checked = isChecked,
-                                                    onCheckedChange = { checked ->
-                                                        selectedCountries = if (checked) selectedCountries + countryName else selectedCountries - countryName
-                                                    }
-                                                )
-                                            }
+                                            Text("$count شركة", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp), color = if (count > 0) Color(0xFF047857) else Color(0xFF64748B), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                                         }
+
+                                        Checkbox(
+                                            checked = isChecked,
+                                            onCheckedChange = { checked ->
+                                                selectedCountries = if (checked) selectedCountries + countryName else selectedCountries - countryName
+                                            }
+                                        )
                                     }
                                 }
                             }

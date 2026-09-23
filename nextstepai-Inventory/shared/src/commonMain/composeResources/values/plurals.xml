@@ -4,9 +4,9 @@
         <item quantity="zero">No parts</item>
         <item quantity="one">1 part</item>
         <item quantity="two">2 parts</item>
-        <item quantity="few">%d parts</item>
-        <item quantity="many">%d parts</item>
-        <item quantity="other">%d parts</item>
+        <item quantity="few">%1$d parts</item>
+        <item quantity="many">%1$d parts</item>
+        <item quantity="other">%1$d parts</item>
     </plurals>
     <plurals name="stock_items_count">
         <item quantity="zero">No stock items</item>

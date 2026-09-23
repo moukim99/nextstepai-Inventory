@@ -20,7 +20,7 @@ class PurchaseOrderDao {
         val results = mutableListOf<PurchaseOrderEntity>()
 
         val sql = """
-            SELECT uuid, reference, supplierId, supplierName, statusCode, description, orderCurrency, targetDate, totalCost, syncStatus, isDeleted, updatedAt
+            SELECT uuid, reference, supplierId, supplierName, statusCode, description, orderCurrency, targetDate, totalCost, sourceType, sourceReferenceUuid, destinationLocationUuid, syncStatus, isDeleted, updatedAt
             FROM purchase_orders
             WHERE isDeleted = 0
               AND (? IS NULL OR supplierId = ?)
@@ -73,7 +73,7 @@ class PurchaseOrderDao {
         val results = mutableListOf<PurchaseOrderEntity>()
 
         conn.prepare("""
-            SELECT uuid, reference, supplierId, supplierName, statusCode, description, orderCurrency, targetDate, totalCost, syncStatus, isDeleted, updatedAt
+            SELECT uuid, reference, supplierId, supplierName, statusCode, description, orderCurrency, targetDate, totalCost, sourceType, sourceReferenceUuid, destinationLocationUuid, syncStatus, isDeleted, updatedAt
             FROM purchase_orders
             WHERE syncStatus = ?
             ORDER BY updatedAt ASC
@@ -92,8 +92,8 @@ class PurchaseOrderDao {
     suspend fun insertOrUpdateOrder(entity: PurchaseOrderEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
-            INSERT OR REPLACE INTO purchase_orders (uuid, reference, supplierId, supplierName, statusCode, description, orderCurrency, targetDate, totalCost, syncStatus, isDeleted, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO purchase_orders (uuid, reference, supplierId, supplierName, statusCode, description, orderCurrency, targetDate, totalCost, sourceType, sourceReferenceUuid, destinationLocationUuid, syncStatus, isDeleted, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
             stmt.bindText(2, entity.reference)
@@ -104,9 +104,12 @@ class PurchaseOrderDao {
             stmt.bindText(7, entity.orderCurrency)
             stmt.bindText(8, entity.targetDate)
             stmt.bindDouble(9, entity.totalCost)
-            stmt.bindText(10, entity.syncStatus.name)
-            stmt.bindLong(11, if (entity.isDeleted) 1L else 0L)
-            stmt.bindLong(12, entity.updatedAt)
+            stmt.bindText(10, entity.sourceType)
+            if (entity.sourceReferenceUuid != null) stmt.bindText(11, entity.sourceReferenceUuid) else stmt.bindNull(11)
+            if (entity.destinationLocationUuid != null) stmt.bindText(12, entity.destinationLocationUuid) else stmt.bindNull(12)
+            stmt.bindText(13, entity.syncStatus.name)
+            stmt.bindLong(14, if (entity.isDeleted) 1L else 0L)
+            stmt.bindLong(15, entity.updatedAt)
             stmt.step()
         }
     }
@@ -153,9 +156,12 @@ class PurchaseOrderDao {
             orderCurrency = stmt.getText(6),
             targetDate = stmt.getText(7),
             totalCost = stmt.getDouble(8),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(9)) }.getOrDefault(SyncStatus.PENDING),
-            isDeleted = stmt.getLong(10) != 0L,
-            updatedAt = stmt.getLong(11)
+            sourceType = runCatching { stmt.getText(9) }.getOrDefault("MANUAL"),
+            sourceReferenceUuid = if (stmt.isNull(10)) null else stmt.getText(10),
+            destinationLocationUuid = if (stmt.isNull(11)) null else stmt.getText(11),
+            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(12)) }.getOrDefault(SyncStatus.PENDING),
+            isDeleted = stmt.getLong(13) != 0L,
+            updatedAt = stmt.getLong(14)
         )
     }
 

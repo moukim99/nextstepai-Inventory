@@ -86,4 +86,97 @@ class ViewModelPerformanceAndUiTest {
         assertNotNull(state.parts)
         assertTrue(duration.inWholeMilliseconds < 200, "استغرق استعلام وتصفية القطع في PartViewModel زماً أطول من المتوقع: ${duration.inWholeMilliseconds} ms")
     }
+
+    @OptIn(ExperimentalTime::class)
+    @Test
+    fun testStockViewModelLocationFilterPerformance() {
+        val viewModel = StockViewModel()
+
+        val duration = measureTime {
+            viewModel.setFilterBottomSheetOpen(true)
+            assertTrue(viewModel.uiState.value.isFilterBottomSheetOpen)
+
+            val locs = viewModel.uiState.value.locations
+            if (locs.isNotEmpty()) {
+                val locId = locs.first().id
+                viewModel.applyLocationFilters(setOf(locId))
+                assertEquals(setOf(locId), viewModel.uiState.value.selectedLocationIds)
+                assertFalse(viewModel.uiState.value.isFilterBottomSheetOpen)
+
+                viewModel.toggleLocationFilter(locId)
+                assertTrue(viewModel.uiState.value.selectedLocationIds.isEmpty())
+
+                viewModel.filterByLocation(locId)
+                assertEquals(setOf(locId), viewModel.uiState.value.selectedLocationIds)
+
+                viewModel.clearLocationFilters()
+                assertTrue(viewModel.uiState.value.selectedLocationIds.isEmpty())
+            } else {
+                viewModel.clearLocationFilters()
+            }
+        }
+
+        assertTrue(duration.inWholeMilliseconds < 200, "استغرق فلتر المستودعات في StockViewModel زماً أطول من المتوقع: ${duration.inWholeMilliseconds} ms")
+    }
+
+    @OptIn(ExperimentalTime::class)
+    @Test
+    fun testBomViewModelPerformanceAndSequentialAdd() {
+        val viewModel = BomViewModel()
+
+        val duration = measureTime {
+            // 1. اختبار السرعة للتصفية والبحث
+            viewModel.onSearchQueryChanged("مقاومة")
+            viewModel.onSearchQueryChanged("")
+            viewModel.setFilterSheetOpen(true)
+            viewModel.applyFilters(mandatory = true, optional = false, consumable = false, allowVariants = false)
+            viewModel.resetFilters()
+
+            // 2. اختبار سرعة تسلسل الحفظ والمتابعة (Save & Continue)
+            val parentParts = viewModel.uiState.value.parentParts
+            val components = viewModel.uiState.value.allParts.filter { it.component }
+
+            if (parentParts.isNotEmpty() && components.isNotEmpty()) {
+                val parentId = parentParts.first().id
+                val subPartId = components.first().id
+
+                // إضافة مكون بتدفق الحفظ والمتابعة (closeDialog = false)
+                viewModel.addBomItem(
+                    subPartId = subPartId,
+                    quantity = 2.0,
+                    reference = "R10, R11",
+                    optional = false,
+                    consumable = false,
+                    allowVariants = false,
+                    inherited = false,
+                    note = "اختبار أداء الإدخال المتتابع",
+                    unit = "pcs",
+                    parentPartIdOverride = parentId,
+                    closeDialog = false
+                )
+
+                assertTrue(viewModel.uiState.value.isAddBomDialogOpen)
+                assertNotNull(viewModel.uiState.value.successMessage)
+
+                // إضافة مكون بتدفق الحفظ وإنهاء (closeDialog = true)
+                viewModel.addBomItem(
+                    subPartId = subPartId,
+                    quantity = 1.0,
+                    reference = "U5",
+                    optional = false,
+                    consumable = false,
+                    allowVariants = false,
+                    inherited = false,
+                    note = "اختبار الإغلاق",
+                    unit = "pcs",
+                    parentPartIdOverride = parentId,
+                    closeDialog = true
+                )
+
+                assertFalse(viewModel.uiState.value.isAddBomDialogOpen)
+            }
+        }
+
+        assertTrue(duration.inWholeMilliseconds < 300, "استغرق أداء وحفظ BomViewModel زماً أطول من المتوقع: ${duration.inWholeMilliseconds} ms")
+    }
 }

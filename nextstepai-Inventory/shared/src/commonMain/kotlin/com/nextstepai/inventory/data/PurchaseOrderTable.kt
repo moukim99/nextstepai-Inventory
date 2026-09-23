@@ -60,6 +60,9 @@ data class PurchaseOrder(
     val responsibleUserId: Long? = null,
     val orderCurrency: String = "USD",
     val destinationLocationId: Long? = null,
+    val sourceType: String = "MANUAL",
+    val sourceReferenceUuid: String? = null,
+    val destinationLocationUuid: String? = null,
     val notes: String = "",
     val link: String = "",
     val lineItems: List<PurchaseOrderLineItem> = emptyList()

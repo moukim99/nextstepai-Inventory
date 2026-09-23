@@ -3,6 +3,7 @@ package com.nextstepai.inventory.data.db
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
 import com.nextstepai.inventory.sync.SyncStatus
+import kotlin.time.Clock
 
 /**
  * كائن الوصول لبيانات المخزون الفعلي (StockItemDao) باستعلامات معلّمة صريحة (Parameterized Bind Queries).
@@ -113,6 +114,25 @@ class StockItemDao {
             stmt.bindText(28, entity.syncStatus.name)
             stmt.bindLong(29, if (entity.isDeleted) 1L else 0L)
             stmt.bindLong(30, entity.updatedAt)
+            stmt.step()
+        }
+    }
+
+    suspend fun insertStockItemForPO(partId: Long, qty: Double, purchasePrice: Double, currency: String, batch: String) {
+        val conn = SqliteDatabaseManager.getConnection()
+        val uuid = "stock-po-${Clock.System.now().toEpochMilliseconds()}"
+        conn.prepare("""
+            INSERT INTO stock_items (
+                uuid, partId, quantity, purchasePrice, purchasePriceCurrency, batch, statusCode, syncStatus, isDeleted, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, 10, 'PENDING', 0, ?)
+        """.trimIndent()).use { stmt ->
+            stmt.bindText(1, uuid)
+            stmt.bindLong(2, partId)
+            stmt.bindDouble(3, qty)
+            stmt.bindDouble(4, purchasePrice)
+            stmt.bindText(5, currency)
+            stmt.bindText(6, batch)
+            stmt.bindLong(7, Clock.System.now().toEpochMilliseconds())
             stmt.step()
         }
     }

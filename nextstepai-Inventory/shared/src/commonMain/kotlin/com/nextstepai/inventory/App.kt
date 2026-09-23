@@ -33,7 +33,13 @@ private enum class Screen {
 @Composable
 @Preview
 fun App() {
-    var themeMode by remember { mutableStateOf(AppThemeMode.SYSTEM) }
+    val settingsViewModel = remember { SettingsViewModel() }
+    val settingsUiState by settingsViewModel.uiState.collectAsState()
+
+    val themeMode = remember(settingsUiState.settings.themeMode) {
+        runCatching { AppThemeMode.valueOf(settingsUiState.settings.themeMode) }
+            .getOrDefault(AppThemeMode.SYSTEM)
+    }
 
     AppTheme(themeMode = themeMode) {
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
@@ -52,13 +58,34 @@ fun App() {
                 val buildViewModel = remember { BuildOrderViewModel() }
                 val loginUiState by loginViewModel.uiState.collectAsState()
                 var currentScreen by remember { mutableStateOf(Screen.WAREHOUSE) }
+                var warehouseResetKey by remember { mutableIntStateOf(0) }
+                var productionResetKey by remember { mutableIntStateOf(0) }
+                var managementResetKey by remember { mutableIntStateOf(0) }
+
+                val reloadAllData = remember {
+                    {
+                        partViewModel.loadData()
+                        bomViewModel.loadData()
+                        stockViewModel.loadData()
+                        companyViewModel.loadData()
+                        poViewModel.loadData()
+                        buildViewModel.loadData()
+                    }
+                }
+
+                LaunchedEffect(currentScreen) {
+                    reloadAllData()
+                }
 
                 if (loginUiState.isLoggedIn) {
                     NavigationSuiteScaffold(
                         navigationSuiteItems = {
                             item(
                                 selected = currentScreen == Screen.WAREHOUSE,
-                                onClick = { currentScreen = Screen.WAREHOUSE },
+                                onClick = {
+                                    currentScreen = Screen.WAREHOUSE
+                                    warehouseResetKey++
+                                },
                                 icon = {
                                     Icon(
                                         imageVector = AppIcons.Warehouse,
@@ -70,7 +97,10 @@ fun App() {
                             )
                             item(
                                 selected = currentScreen == Screen.PRODUCTION,
-                                onClick = { currentScreen = Screen.PRODUCTION },
+                                onClick = {
+                                    currentScreen = Screen.PRODUCTION
+                                    productionResetKey++
+                                },
                                 icon = {
                                     Icon(
                                         imageVector = AppIcons.Builds,
@@ -82,7 +112,10 @@ fun App() {
                             )
                             item(
                                 selected = currentScreen == Screen.MANAGEMENT,
-                                onClick = { currentScreen = Screen.MANAGEMENT },
+                                onClick = {
+                                    currentScreen = Screen.MANAGEMENT
+                                    managementResetKey++
+                                },
                                 icon = {
                                     Icon(
                                         imageVector = AppIcons.Management,
@@ -108,35 +141,54 @@ fun App() {
                     ) {
                         when (currentScreen) {
                             Screen.WAREHOUSE -> {
-                                WarehouseScreen(
-                                    partViewModel = partViewModel,
-                                    stockViewModel = stockViewModel,
-                                    onBackClick = { currentScreen = Screen.WAREHOUSE }
-                                )
+                                key(warehouseResetKey) {
+                                    WarehouseScreen(
+                                        partViewModel = partViewModel,
+                                        stockViewModel = stockViewModel,
+                                        onBackClick = {
+                                            currentScreen = Screen.WAREHOUSE
+                                            warehouseResetKey++
+                                        }
+                                    )
+                                }
                             }
                             Screen.PRODUCTION -> {
-                                ProductionScreen(
-                                    buildOrderViewModel = buildViewModel,
-                                    bomViewModel = bomViewModel,
-                                    onBackClick = { currentScreen = Screen.PRODUCTION }
-                                )
+                                key(productionResetKey) {
+                                    ProductionScreen(
+                                        buildOrderViewModel = buildViewModel,
+                                        bomViewModel = bomViewModel,
+                                        onBackClick = {
+                                            currentScreen = Screen.PRODUCTION
+                                            productionResetKey++
+                                        }
+                                    )
+                                }
                             }
                             Screen.MANAGEMENT -> {
-                                ManagementScreen(
-                                    companyViewModel = companyViewModel,
-                                    purchaseOrderViewModel = poViewModel,
-                                    onBackClick = { currentScreen = Screen.MANAGEMENT }
-                                )
+                                key(managementResetKey) {
+                                    ManagementScreen(
+                                        companyViewModel = companyViewModel,
+                                        purchaseOrderViewModel = poViewModel,
+                                        onBackClick = {
+                                            currentScreen = Screen.MANAGEMENT
+                                            managementResetKey++
+                                        }
+                                    )
+                                }
                             }
                             Screen.SETTINGS -> {
                                 SettingsScreen(
                                     loginUiState = loginUiState,
                                     themeMode = themeMode,
-                                    onThemeModeChange = { themeMode = it },
+                                    onThemeModeChange = { mode ->
+                                        settingsViewModel.updateThemeMode(mode)
+                                    },
+                                    settingsViewModel = settingsViewModel,
                                     onLogoutClick = {
                                         currentScreen = Screen.WAREHOUSE
                                         loginViewModel.performLogout()
-                                    }
+                                    },
+                                    onDataChanged = reloadAllData
                                 )
                             }
                         }

@@ -1,7 +1,13 @@
 package com.nextstepai.inventory.data.db
 
 import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.SQLiteStatement
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import java.sql.DriverManager
+import java.sql.PreparedStatement
+import java.sql.ResultSet
+import java.sql.SQLException
+import java.sql.Types
 
 object SqliteDatabaseManager {
     private var connection: SQLiteConnection? = null
@@ -14,10 +20,29 @@ object SqliteDatabaseManager {
 
     private fun openDatabase(): SQLiteConnection {
         val dbPath = getDatabasePath()
-        val driver = BundledSQLiteDriver()
-        val conn = driver.open(dbPath)
+        val conn = try {
+            val driver = BundledSQLiteDriver()
+            driver.open(dbPath)
+        } catch (e: Throwable) {
+            createJdbcConnection(dbPath)
+        }
         createTables(conn)
         return conn
+    }
+
+    private fun createJdbcConnection(dbPath: String): SQLiteConnection {
+        runCatching { Class.forName("org.sqlite.JDBC") }
+        val jdbcConn = DriverManager.getConnection("jdbc:sqlite:$dbPath")
+        return object : SQLiteConnection {
+            override fun prepare(sql: String): SQLiteStatement {
+                val stmt = jdbcConn.prepareStatement(sql)
+                return JdbcSqliteStatement(stmt)
+            }
+
+            override fun close() {
+                jdbcConn.close()
+            }
+        }
     }
 
     private fun createTables(conn: SQLiteConnection) {
@@ -93,6 +118,8 @@ object SqliteDatabaseManager {
             );
         """.trimIndent()).use { it.step() }
 
+        runCatching { conn.prepare("ALTER TABLE bom_items ADD COLUMN phaseUuid TEXT").use { it.step() } }
+
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS stock_items (
                 uuid TEXT PRIMARY KEY NOT NULL,
@@ -166,6 +193,7 @@ object SqliteDatabaseManager {
                 ownerId INTEGER,
                 icon TEXT NOT NULL DEFAULT 'warehouse',
                 customIcon TEXT NOT NULL DEFAULT '',
+                address TEXT NOT NULL DEFAULT '',
                 level INTEGER NOT NULL DEFAULT 0,
                 lft INTEGER NOT NULL DEFAULT 0,
                 rght INTEGER NOT NULL DEFAULT 0,
@@ -179,6 +207,35 @@ object SqliteDatabaseManager {
 
         runCatching { conn.prepare("ALTER TABLE stock_locations ADD COLUMN parentUuid TEXT").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_locations ADD COLUMN locationType TEXT NOT NULL DEFAULT 'SHELF'").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_locations ADD COLUMN customCapacity REAL").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_locations ADD COLUMN isBulkGenerated INTEGER NOT NULL DEFAULT 0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_locations ADD COLUMN address TEXT NOT NULL DEFAULT ''").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS stock_location_types (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                typeId INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                icon TEXT NOT NULL DEFAULT 'warehouse',
+                customIcon TEXT NOT NULL DEFAULT '',
+                length REAL NOT NULL DEFAULT 0.0,
+                width REAL NOT NULL DEFAULT 0.0,
+                height REAL NOT NULL DEFAULT 0.0,
+                maxWeight REAL NOT NULL DEFAULT 0.0,
+                maxVolume REAL NOT NULL DEFAULT 0.0,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE stock_location_types ADD COLUMN length REAL NOT NULL DEFAULT 0.0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_location_types ADD COLUMN width REAL NOT NULL DEFAULT 0.0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_location_types ADD COLUMN height REAL NOT NULL DEFAULT 0.0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_location_types ADD COLUMN maxWeight REAL NOT NULL DEFAULT 0.0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_location_types ADD COLUMN maxVolume REAL NOT NULL DEFAULT 0.0").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS stock_item_tracking (
@@ -244,6 +301,8 @@ object SqliteDatabaseManager {
         runCatching { conn.prepare("ALTER TABLE stock_item_attachments ADD COLUMN stockItemUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
 
         // إنشاء فهارس الأداء لحقول المزامنة والربط المحلي (Performance Indexes)
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_bom_items_sync ON bom_items(syncStatus, isDeleted, updatedAt)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_mfg_phases_sync ON manufacturing_phases(syncStatus, isDeleted, updatedAt)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_items_partId ON stock_items(partId)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_items_locationUuid ON stock_items(locationUuid)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_locations_parentUuid ON stock_locations(parentUuid)").use { it.step() } }
@@ -498,6 +557,9 @@ object SqliteDatabaseManager {
                 orderCurrency TEXT NOT NULL DEFAULT 'USD',
                 targetDate TEXT NOT NULL DEFAULT '',
                 totalCost REAL NOT NULL DEFAULT 0.0,
+                sourceType TEXT NOT NULL DEFAULT 'MANUAL',
+                sourceReferenceUuid TEXT,
+                destinationLocationUuid TEXT,
                 syncStatus TEXT NOT NULL DEFAULT 'PENDING',
                 isDeleted INTEGER NOT NULL DEFAULT 0,
                 updatedAt INTEGER NOT NULL DEFAULT 0
@@ -505,6 +567,9 @@ object SqliteDatabaseManager {
         """.trimIndent()).use { it.step() }
 
         runCatching { conn.prepare("ALTER TABLE purchase_orders ADD COLUMN supplierUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE purchase_orders ADD COLUMN sourceType TEXT NOT NULL DEFAULT 'MANUAL'").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE purchase_orders ADD COLUMN sourceReferenceUuid TEXT").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE purchase_orders ADD COLUMN destinationLocationUuid TEXT").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS purchase_order_lines (
@@ -522,6 +587,53 @@ object SqliteDatabaseManager {
         """.trimIndent()).use { it.step() }
 
         runCatching { conn.prepare("ALTER TABLE purchase_order_lines ADD COLUMN supplierPartUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS sales_orders (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                reference TEXT NOT NULL,
+                customerId INTEGER NOT NULL DEFAULT 0,
+                customerUuid TEXT NOT NULL DEFAULT '',
+                customerName TEXT NOT NULL DEFAULT '',
+                statusCode INTEGER NOT NULL DEFAULT 10,
+                description TEXT NOT NULL DEFAULT '',
+                orderCurrency TEXT NOT NULL DEFAULT 'USD',
+                targetDate TEXT NOT NULL DEFAULT '',
+                totalPrice REAL NOT NULL DEFAULT 0.0,
+                sourceType TEXT NOT NULL DEFAULT 'MANUAL',
+                sourceReferenceUuid TEXT,
+                notes TEXT NOT NULL DEFAULT '',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE sales_orders ADD COLUMN sourceType TEXT NOT NULL DEFAULT 'MANUAL'").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE sales_orders ADD COLUMN sourceReferenceUuid TEXT").use { it.step() } }
+
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_sales_orders_customerId ON sales_orders(customerId)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_sales_orders_statusCode ON sales_orders(statusCode)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_sales_order_lines_orderUuid ON sales_order_lines(orderUuid)").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS sales_order_lines (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                orderUuid TEXT NOT NULL,
+                orderId INTEGER NOT NULL DEFAULT 0,
+                partId INTEGER NOT NULL DEFAULT 0,
+                partUuid TEXT NOT NULL DEFAULT '',
+                partName TEXT NOT NULL DEFAULT '',
+                quantity REAL NOT NULL DEFAULT 1.0,
+                unitPrice REAL NOT NULL DEFAULT 0.0,
+                allocatedQuantity REAL NOT NULL DEFAULT 0.0,
+                shippedQuantity REAL NOT NULL DEFAULT 0.0,
+                notes TEXT NOT NULL DEFAULT '',
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS build_orders (
@@ -613,6 +725,8 @@ object SqliteDatabaseManager {
                 allocatedQuantity REAL NOT NULL DEFAULT 0.0,
                 consumedQuantity REAL NOT NULL DEFAULT 0.0,
                 notes TEXT NOT NULL DEFAULT '',
+                phaseUuid TEXT,
+                unitCost REAL NOT NULL DEFAULT 0.0,
                 syncStatus TEXT NOT NULL DEFAULT 'PENDING',
                 isDeleted INTEGER NOT NULL DEFAULT 0,
                 updatedAt INTEGER NOT NULL DEFAULT 0
@@ -621,6 +735,23 @@ object SqliteDatabaseManager {
 
         runCatching { conn.prepare("ALTER TABLE build_order_line_items ADD COLUMN buildUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE build_order_line_items ADD COLUMN bomItemUuid TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_order_line_items ADD COLUMN phaseUuid TEXT").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE build_order_line_items ADD COLUMN unitCost REAL NOT NULL DEFAULT 0.0").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS manufacturing_phases (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                id INTEGER NOT NULL DEFAULT 0,
+                partUuid TEXT,
+                name TEXT NOT NULL,
+                sequenceOrder INTEGER NOT NULL DEFAULT 1,
+                description TEXT NOT NULL DEFAULT '',
+                isSystemDefault INTEGER NOT NULL DEFAULT 0,
+                syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
 
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_line_items_buildId ON build_order_line_items(buildId)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_line_items_buildUuid ON build_order_line_items(buildUuid)").use { it.step() } }
@@ -636,6 +767,10 @@ object SqliteDatabaseManager {
                 defaultLocationId INTEGER
             );
         """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE part_categories ADD COLUMN description TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE part_categories ADD COLUMN structural INTEGER NOT NULL DEFAULT 0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE part_categories ADD COLUMN defaultLocationId INTEGER").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS bom_item_substitutes (
@@ -656,6 +791,11 @@ object SqliteDatabaseManager {
             );
         """.trimIndent()).use { it.step() }
 
+        runCatching { conn.prepare("ALTER TABLE part_parameter_templates ADD COLUMN units TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE part_parameter_templates ADD COLUMN description TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE part_parameter_templates ADD COLUMN choices TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE part_parameter_templates ADD COLUMN checkbox INTEGER NOT NULL DEFAULT 0").use { it.step() } }
+
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS part_category_parameter_templates (
                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -664,6 +804,8 @@ object SqliteDatabaseManager {
                 defaultValue TEXT
             );
         """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE part_category_parameter_templates ADD COLUMN defaultValue TEXT").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS part_parameters (
@@ -674,6 +816,8 @@ object SqliteDatabaseManager {
                 dataNumeric REAL
             );
         """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE part_parameters ADD COLUMN dataNumeric REAL").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS part_related (
@@ -694,6 +838,11 @@ object SqliteDatabaseManager {
                 requiresAttachment INTEGER NOT NULL DEFAULT 0
             );
         """.trimIndent()).use { it.step() }
+
+        runCatching { conn.prepare("ALTER TABLE part_test_templates ADD COLUMN description TEXT NOT NULL DEFAULT ''").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE part_test_templates ADD COLUMN required INTEGER NOT NULL DEFAULT 1").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE part_test_templates ADD COLUMN requiresValue INTEGER NOT NULL DEFAULT 0").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE part_test_templates ADD COLUMN requiresAttachment INTEGER NOT NULL DEFAULT 0").use { it.step() } }
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS part_attachments (
@@ -790,6 +939,19 @@ object SqliteDatabaseManager {
         """.trimIndent()).use { it.step() }
 
         conn.prepare("""
+            CREATE TABLE IF NOT EXISTS inflow_preferences (
+                id INTEGER PRIMARY KEY NOT NULL DEFAULT 1,
+                pinnedInflowIds TEXT NOT NULL DEFAULT 'PURCHASE_ORDER,INTERNAL_BUILD',
+                customInflowText TEXT NOT NULL DEFAULT ''
+            );
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
+            INSERT OR IGNORE INTO inflow_preferences (id, pinnedInflowIds, customInflowText)
+            VALUES (1, 'PURCHASE_ORDER,INTERNAL_BUILD', '');
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
             CREATE TABLE IF NOT EXISTS notifications_history (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 title TEXT NOT NULL,
@@ -812,7 +974,181 @@ object SqliteDatabaseManager {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_companyUuid ON notifications_history(companyUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_triggered_schedule ON notifications_history(isTriggered, scheduledDate);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications_history(isRead, isDeleted);").use { it.step() } }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS app_users (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT '',
+                active INTEGER NOT NULL DEFAULT 1,
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        runCatching {
+            val userCount = conn.prepare("SELECT COUNT(*) FROM app_users").use { stmt ->
+                if (stmt.step()) stmt.getLong(0) else 0L
+            }
+            if (userCount == 0L) {
+                val seedUsers = listOf(
+                    Triple("usr-001", "مدير الإنتاج والتصنيع", "مدير الإنتاج والتصنيع"),
+                    Triple("usr-002", "مشرف خط التجميع", "مشرف خط التجميع"),
+                    Triple("usr-003", "مهندس الجودة والسلامة", "مهندس الجودة السلامة"),
+                    Triple("usr-004", "مدير المستودع والخدمات اللوجستية", "مدير المستودع"),
+                    Triple("usr-005", "مدير النظام (Admin)", "مدير النظام"),
+                    Triple("usr-006", "فريق التشغيل والتجميع", "فريق التشغيل")
+                )
+                seedUsers.forEach { (uuid, name, role) ->
+                    conn.prepare("""
+                        INSERT OR IGNORE INTO app_users (uuid, name, role, active, isDeleted, updatedAt)
+                        VALUES (?, ?, ?, 1, 0, 1700000000000);
+                    """.trimIndent()).use { stmt ->
+                        stmt.bindText(1, uuid)
+                        stmt.bindText(2, name)
+                        stmt.bindText(3, role)
+                        stmt.step()
+                    }
+                }
+            }
+        }
+
+        runCatching {
+            val typeCount = conn.prepare("SELECT COUNT(*) FROM stock_location_types").use { stmt ->
+                if (stmt.step()) stmt.getLong(0) else 0L
+            }
+            if (typeCount == 0L) {
+                val seedTypes = listOf(
+                    listOf("type-000", 0L, "SITE", "منشأة تخزينية أو مجمع لوجستي جغرافي مستودعي", "place", "", 50.0, 50.0, 10.0, 0.0, 0.0),
+                    listOf("type-001", 1L, "SHELF", "رف تخزين قياسي لقطع ومكونات الإنتاج", "shelves", "", 1.2, 0.5, 2.0, 150.0, 1.2),
+                    listOf("type-002", 2L, "PALLET_RACK", "رف طبالي صناعي ثقيل في المستودع الرئيسي", "warehouse", "", 2.7, 1.1, 4.5, 2500.0, 13.3),
+                    listOf("type-003", 3L, "BIN", "صندوق/درج حفظ معزول للمكونات والدائريات الصغيرة", "inventory_2", "", 0.3, 0.2, 0.15, 25.0, 0.009),
+                    listOf("type-004", 4L, "AISLE", "ممر مرور وتنظيم أرفف التخزين", "door", "", 10.0, 2.5, 5.0, 0.0, 0.0),
+                    listOf("type-005", 5L, "ZONE", "قسم أو منطقة تخزينية معتمدة", "grid_view", "", 15.0, 10.0, 6.0, 0.0, 0.0)
+                )
+                seedTypes.forEach { row ->
+                    conn.prepare("""
+                        INSERT OR IGNORE INTO stock_location_types (
+                            uuid, typeId, name, description, icon, customIcon,
+                            length, width, height, maxWeight, maxVolume,
+                            metadata, syncStatus, isDeleted, updatedAt
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', 'SYNCED', 0, 1700000000000);
+                    """.trimIndent()).use { stmt ->
+                        stmt.bindText(1, row[0] as String)
+                        stmt.bindLong(2, row[1] as Long)
+                        stmt.bindText(3, row[2] as String)
+                        stmt.bindText(4, row[3] as String)
+                        stmt.bindText(5, row[4] as String)
+                        stmt.bindText(6, row[5] as String)
+                        stmt.bindDouble(7, row[6] as Double)
+                        stmt.bindDouble(8, row[7] as Double)
+                        stmt.bindDouble(9, row[8] as Double)
+                        stmt.bindDouble(10, row[9] as Double)
+                        stmt.bindDouble(11, row[10] as Double)
+                        stmt.step()
+                    }
+                }
+            }
+        }
     }
 }
 
 expect fun getDatabasePath(): String
+
+private class JdbcSqliteStatement(private val stmt: PreparedStatement) : SQLiteStatement {
+    private var resultSet: ResultSet? = null
+    private var isQuery: Boolean? = null
+
+    override fun step(): Boolean {
+        if (isQuery == null) {
+            val hasResultSet = try {
+                stmt.execute()
+            } catch (e: SQLException) {
+                false
+            }
+            if (hasResultSet) {
+                resultSet = stmt.resultSet
+                isQuery = true
+            } else {
+                isQuery = false
+            }
+        }
+
+        val rs = resultSet
+        return if (rs != null) {
+            rs.next()
+        } else {
+            false
+        }
+    }
+
+    override fun bindText(index: Int, value: String) {
+        stmt.setString(index, value)
+    }
+
+    override fun bindLong(index: Int, value: Long) {
+        stmt.setLong(index, value)
+    }
+
+    override fun bindDouble(index: Int, value: Double) {
+        stmt.setDouble(index, value)
+    }
+
+    override fun bindNull(index: Int) {
+        stmt.setNull(index, java.sql.Types.NULL)
+    }
+
+    override fun bindBlob(index: Int, value: ByteArray) {
+        stmt.setBytes(index, value)
+    }
+
+    override fun getText(index: Int): String {
+        return resultSet?.getString(index + 1) ?: ""
+    }
+
+    override fun getLong(index: Int): Long {
+        return resultSet?.getLong(index + 1) ?: 0L
+    }
+
+    override fun getDouble(index: Int): Double {
+        return resultSet?.getDouble(index + 1) ?: 0.0
+    }
+
+    override fun getBlob(index: Int): ByteArray {
+        return resultSet?.getBytes(index + 1) ?: ByteArray(0)
+    }
+
+    override fun isNull(index: Int): Boolean {
+        val rs = resultSet ?: return true
+        val obj = rs.getObject(index + 1)
+        return obj == null || rs.wasNull()
+    }
+
+    override fun getColumnCount(): Int {
+        return resultSet?.metaData?.columnCount ?: 0
+    }
+
+    override fun getColumnName(index: Int): String {
+        return resultSet?.metaData?.getColumnName(index + 1) ?: ""
+    }
+
+    override fun getColumnType(index: Int): Int {
+        return resultSet?.metaData?.getColumnType(index + 1) ?: 0
+    }
+
+    override fun clearBindings() {
+        stmt.clearParameters()
+    }
+
+    override fun reset() {
+        resultSet?.close()
+        resultSet = null
+        isQuery = null
+    }
+
+    override fun close() {
+        resultSet?.close()
+        stmt.close()
+    }
+}

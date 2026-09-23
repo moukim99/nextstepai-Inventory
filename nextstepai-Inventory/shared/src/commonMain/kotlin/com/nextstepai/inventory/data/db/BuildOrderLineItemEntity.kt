@@ -1,6 +1,7 @@
 package com.nextstepai.inventory.data.db
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.nextstepai.inventory.sync.SyncStatus
 import com.nextstepai.inventory.sync.SyncableEntity
@@ -9,7 +10,10 @@ import kotlin.time.Clock
 /**
  * تمثيل كيان بند ومخرجات أمر التصنيع (BuildOrderLineItemEntity) في قاعدة بيانات Room المحلية.
  */
-@Entity(tableName = "build_order_line_items")
+@Entity(
+    tableName = "build_order_line_items",
+    indices = [Index(value = ["syncStatus", "isDeleted", "updatedAt"])]
+)
 data class BuildOrderLineItemEntity(
     @PrimaryKey
     override val uuid: String,
@@ -24,6 +28,8 @@ data class BuildOrderLineItemEntity(
     val allocatedQuantity: Double = 0.0,
     val consumedQuantity: Double = 0.0,
     val notes: String = "",
+    val phaseUuid: String? = null,
+    val unitCost: Double = 0.0,
     override val syncStatus: SyncStatus = SyncStatus.PENDING,
     override val isDeleted: Boolean = false,
     override val updatedAt: Long = Clock.System.now().toEpochMilliseconds(),

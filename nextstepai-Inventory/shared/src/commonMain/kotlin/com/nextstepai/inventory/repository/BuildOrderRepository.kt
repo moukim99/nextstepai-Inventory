@@ -16,6 +16,8 @@ import com.nextstepai.inventory.data.db.BuildOrderLineItemEntity
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
+import com.nextstepai.inventory.data.PartPricingTable
+import com.nextstepai.inventory.data.db.StockItemDao
 import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 
@@ -29,6 +31,8 @@ class BuildOrderRepository(
     private val buildDao: BuildOrderDao = BuildOrderDao(),
     private val lineItemDao: BuildOrderLineItemDao = BuildOrderLineItemDao(),
     private val buildItemDao: BuildItemDao = BuildItemDao(),
+    private val stockDao: StockItemDao = StockItemDao(),
+    private val partPricingTable: PartPricingTable = PartPricingTable(),
     private val batchSyncService: BatchSyncService = BatchSyncService()
 ) {
     /**
@@ -44,20 +48,115 @@ class BuildOrderRepository(
     }
 
     /**
-     * البحث والفلترة في أوامر التصنيع.
+     * البحث والفلترة في أوامر التصنيع من قاعدة البيانات الدائمة (SQLite).
      */
     fun searchBuilds(
         query: String = "",
         partId: Long? = null,
         status: BuildStatus? = null
     ): List<BuildOrder> {
-        return buildTable.searchBuilds(query = query, partId = partId, status = status)
+        val entities = runBlocking {
+            buildDao.getBuildOrdersPaged(
+                partId = partId,
+                statusCode = status?.code,
+                limit = 500,
+                offset = 0
+            )
+        }
+        if (entities.isNotEmpty()) {
+            var result = entities.mapIndexed { index, entity ->
+                BuildOrder(
+                    id = index + 1L,
+                    reference = entity.reference,
+                    title = entity.title,
+                    partId = entity.partId,
+                    partName = entity.partName,
+                    quantity = entity.quantity,
+                    completedQuantity = entity.completedQuantity,
+                    status = BuildStatus.fromCode(entity.statusCode),
+                    batch = entity.batch,
+                    targetDate = entity.targetDate,
+                    startDate = entity.startDate,
+                    completionDate = entity.completionDate,
+                    creationDate = entity.creationDate,
+                    parentId = entity.parentId,
+                    salesOrderId = entity.salesOrderId,
+                    takeFromLocationId = entity.takeFromLocationId,
+                    destinationLocationId = entity.destinationLocationId,
+                    issuedBy = entity.issuedBy,
+                    responsible = entity.responsible,
+                    notes = entity.notes,
+                    link = entity.link
+                )
+            }
+            if (query.isNotBlank()) {
+                result = result.filter {
+                    it.reference.contains(query, ignoreCase = true) ||
+                    it.title.contains(query, ignoreCase = true) ||
+                    it.partName.contains(query, ignoreCase = true) ||
+                    it.batch.contains(query, ignoreCase = true)
+                }
+            }
+            return result
+        }
+        return emptyList()
+    }
+
+    /**
+     * جلب سعر التكلفة المعتمد للبند وفق تسلسل الأولوية (Historical Snapshot -> StockItem -> PartPricing).
+     */
+    private fun resolveUnitCostForSubPart(subPartId: Long, storedCost: Double): Double {
+        if (storedCost > 0.0) return storedCost
+
+        // 1. سعر الشراء الفعلي المسجل في جدول المخزون للقطعة الفرعية
+        val stockItems = runBlocking {
+            runCatching { stockDao.getStockItemsPaged(partId = subPartId, limit = 10) }.getOrDefault(emptyList())
+        }
+        val stockPrice = stockItems.firstOrNull { it.purchasePrice > 0.0 }?.purchasePrice
+        if (stockPrice != null && stockPrice > 0.0) {
+            return stockPrice
+        }
+
+        // 2. النطاق المالي المحسوب في جدول PartPricing
+        val pricing = partPricingTable.getPricingForPart(subPartId)
+        if (pricing != null) {
+            val price = pricing.purchaseCostMin ?: pricing.internalCostMin ?: pricing.overallMin
+            if (price != null && price > 0.0) {
+                return price
+            }
+        }
+
+        // 3. القيمة الافتراضية
+        return 12.0
     }
 
     /**
      * جلب بنود ومخرجات أمر التصنيع المحددة.
      */
     fun getLineItemsForBuild(buildId: Long): List<BuildOrderLineItem> {
+        val dbItems = runBlocking {
+            runCatching { lineItemDao.getLineItemsForBuild(buildId) }.getOrDefault(emptyList())
+        }
+        if (dbItems.isNotEmpty()) {
+            return dbItems.map { entity ->
+                val resolvedCost = resolveUnitCostForSubPart(entity.subPartId, entity.unitCost)
+                BuildOrderLineItem(
+                    id = entity.id,
+                    buildId = entity.buildId,
+                    buildUuid = entity.buildUuid,
+                    bomItemId = entity.bomItemId,
+                    bomItemUuid = entity.bomItemUuid,
+                    subPartId = entity.subPartId,
+                    subPartName = entity.subPartName,
+                    quantity = entity.quantity,
+                    allocatedQuantity = entity.allocatedQuantity,
+                    consumedQuantity = entity.consumedQuantity,
+                    notes = entity.notes,
+                    phaseUuid = entity.phaseUuid,
+                    unitCost = resolvedCost
+                )
+            }
+        }
         return lineItemTable.getLineItemsForBuild(buildId)
     }
 
@@ -81,6 +180,8 @@ class BuildOrderRepository(
                     allocatedQuantity = inserted.allocatedQuantity,
                     consumedQuantity = inserted.consumedQuantity,
                     notes = inserted.notes,
+                    phaseUuid = inserted.phaseUuid,
+                    unitCost = inserted.unitCost,
                     syncStatus = SyncStatus.PENDING
                 )
             )
@@ -93,6 +194,10 @@ class BuildOrderRepository(
      */
     fun getBuildItemsForBuild(buildId: Long): List<BuildItem> {
         return buildItemTable.getBuildItemsForBuild(buildId)
+    }
+
+    fun updateBuild(build: BuildOrder) {
+        buildTable.updateBuild(build)
     }
 
     /**
@@ -213,6 +318,13 @@ class BuildOrderRepository(
      */
     fun cancelBuildOrder(buildId: Long): Boolean {
         return buildTable.cancelBuildOrder(buildId)
+    }
+
+    /**
+     * تحديث حالة أمر التصنيع المباشرة.
+     */
+    fun updateBuildStatus(buildId: Long, newStatus: BuildStatus): Boolean {
+        return buildTable.updateStatus(buildId, newStatus)
     }
 
     /**

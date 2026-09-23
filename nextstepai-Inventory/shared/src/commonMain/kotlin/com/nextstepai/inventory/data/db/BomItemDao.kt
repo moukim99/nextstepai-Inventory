@@ -15,7 +15,7 @@ class BomItemDao {
         val results = mutableListOf<BomItemEntity>()
         val sql = if (partId != null) {
             """
-                SELECT uuid, partId, subPartId, quantity, reference, optional, consumable, allowVariants, inherited, note, checksum, syncStatus, isDeleted, updatedAt
+                SELECT uuid, partId, subPartId, quantity, reference, optional, consumable, allowVariants, inherited, note, checksum, phaseUuid, syncStatus, isDeleted, updatedAt
                 FROM bom_items
                 WHERE isDeleted = 0 AND partId = ?
                 ORDER BY updatedAt DESC
@@ -23,7 +23,7 @@ class BomItemDao {
             """.trimIndent()
         } else {
             """
-                SELECT uuid, partId, subPartId, quantity, reference, optional, consumable, allowVariants, inherited, note, checksum, syncStatus, isDeleted, updatedAt
+                SELECT uuid, partId, subPartId, quantity, reference, optional, consumable, allowVariants, inherited, note, checksum, phaseUuid, syncStatus, isDeleted, updatedAt
                 FROM bom_items
                 WHERE isDeleted = 0
                 ORDER BY updatedAt DESC
@@ -51,7 +51,7 @@ class BomItemDao {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<BomItemEntity>()
         conn.prepare("""
-            SELECT uuid, partId, subPartId, quantity, reference, optional, consumable, allowVariants, inherited, note, checksum, syncStatus, isDeleted, updatedAt
+            SELECT uuid, partId, subPartId, quantity, reference, optional, consumable, allowVariants, inherited, note, checksum, phaseUuid, syncStatus, isDeleted, updatedAt
             FROM bom_items
             WHERE syncStatus = ?
             ORDER BY updatedAt ASC
@@ -70,8 +70,8 @@ class BomItemDao {
     suspend fun insertOrUpdate(entity: BomItemEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
-            INSERT OR REPLACE INTO bom_items (uuid, partId, subPartId, quantity, reference, optional, consumable, allowVariants, inherited, note, checksum, syncStatus, isDeleted, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO bom_items (uuid, partId, subPartId, quantity, reference, optional, consumable, allowVariants, inherited, note, checksum, phaseUuid, syncStatus, isDeleted, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
             stmt.bindLong(2, entity.partId)
@@ -84,9 +84,20 @@ class BomItemDao {
             stmt.bindLong(9, if (entity.inherited) 1L else 0L)
             stmt.bindText(10, entity.note)
             stmt.bindText(11, entity.checksum)
-            stmt.bindText(12, entity.syncStatus.name)
-            stmt.bindLong(13, if (entity.isDeleted) 1L else 0L)
-            stmt.bindLong(14, entity.updatedAt)
+            if (entity.phaseUuid != null) stmt.bindText(12, entity.phaseUuid) else stmt.bindNull(12)
+            stmt.bindText(13, entity.syncStatus.name)
+            stmt.bindLong(14, if (entity.isDeleted) 1L else 0L)
+            stmt.bindLong(15, entity.updatedAt)
+            stmt.step()
+        }
+    }
+
+    suspend fun softDeleteByIdOrUuid(id: Long, uuid: String, updatedAt: Long) {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("UPDATE bom_items SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ? OR rowid = ?").use { stmt ->
+            stmt.bindLong(1, updatedAt)
+            stmt.bindText(2, uuid)
+            stmt.bindLong(3, id)
             stmt.step()
         }
     }
@@ -116,9 +127,10 @@ class BomItemDao {
             inherited = stmt.getLong(8) != 0L,
             note = stmt.getText(9),
             checksum = stmt.getText(10),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(11)) }.getOrDefault(SyncStatus.PENDING),
-            isDeleted = stmt.getLong(12) != 0L,
-            updatedAt = stmt.getLong(13)
+            phaseUuid = if (stmt.isNull(11)) null else stmt.getText(11),
+            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(12)) }.getOrDefault(SyncStatus.PENDING),
+            isDeleted = stmt.getLong(13) != 0L,
+            updatedAt = stmt.getLong(14)
         )
     }
 }

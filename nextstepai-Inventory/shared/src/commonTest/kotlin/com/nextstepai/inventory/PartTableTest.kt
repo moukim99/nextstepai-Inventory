@@ -80,6 +80,57 @@ class PartTableTest {
     }
 
     @Test
+    fun testTemplateFetchAndVariantAssignment() {
+        val partTable = PartTable()
+        val repository = PartRepository(partTable)
+
+        // 1. إنشاء قطعة معرفة كقالب تجريدي قياسي (isTemplate = true)
+        val templatePart = repository.addPart(
+            Part(
+                name = "قالب مستشعر الحرارة والرطوبة",
+                ipn = "TMP-SENSOR-TMPL",
+                isTemplate = true
+            )
+        )
+
+        assertTrue(templatePart.id > 0)
+        assertTrue(templatePart.isTemplate)
+
+        // 2. التحقق من جلب القوالب القياسية فقط عبر getTemplateParts()
+        val templatesList = repository.getTemplateParts()
+        assertTrue(templatesList.any { it.id == templatePart.id })
+
+        // 3. إنشاء صنف عادي مشتق مربوط بـ variantOfId للـ Template
+        val variantPart = repository.addPart(
+            Part(
+                name = "مستشعر حرارة رقمي DHT22",
+                ipn = "SENS-DHT22-01",
+                isTemplate = false,
+                variantOfId = templatePart.id
+            )
+        )
+
+        assertEquals(templatePart.id, variantPart.variantOfId)
+
+        // 4. إنشاء صنف أصلي مستقل بدونه (variantOfId = null)
+        val standalonePart = repository.addPart(
+            Part(
+                name = "صنف أصلي مستقل",
+                ipn = "STNDALONE-01",
+                isTemplate = false,
+                variantOfId = null
+            )
+        )
+
+        assertEquals(null, standalonePart.variantOfId)
+
+        // 5. التحقق من جلب الأصناف المشتقة للقالب
+        val variants = partTable.getVariantsOf(templatePart.id)
+        assertEquals(1, variants.size)
+        assertEquals(variantPart.id, variants.first().id)
+    }
+
+    @Test
     fun testExplicitLimitOffsetPaging() = runBlocking {
         val dao = PartDao()
         val now = Clock.System.now().toEpochMilliseconds()

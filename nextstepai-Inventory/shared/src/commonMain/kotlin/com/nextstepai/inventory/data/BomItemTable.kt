@@ -18,6 +18,7 @@ package com.nextstepai.inventory.data
  */
 data class BomItem(
     val id: Long = 0L,
+    val uuid: String = "",
     val partId: Long,
     val subPartId: Long,
     val quantity: Double = 1.0,
@@ -27,7 +28,8 @@ data class BomItem(
     val allowVariants: Boolean = false,
     val inherited: Boolean = false,
     val note: String = "",
-    val checksum: String = ""
+    val checksum: String = "",
+    val phaseUuid: String? = null
 )
 
 /**
@@ -64,6 +66,13 @@ class BomItemTable {
         seedSampleBomData()
     }
 
+    fun clearAll() {
+        bomItems.clear()
+        substitutes.clear()
+        nextId = 1L
+        nextSubstituteId = 1L
+    }
+
     private fun seedSampleBomData() {
         // إضافة بنود BOM تجريبية للقطعة المجمعة (المنتج الأب)
         insertBomItem(
@@ -95,16 +104,16 @@ class BomItemTable {
      */
     fun insertBomItem(bomItem: BomItem): BomItem {
         require(bomItem.partId != bomItem.subPartId) {
-            "خطأ في قيد التجميع: لا يمكن للقطعة أن تحتوي على نفسها كمكون فرعي (partId != subPartId)"
+            "خطأ تجميع: لا يمكن إضافة المنتج الأب كمكون فرعي لنفسه."
         }
 
         require(bomItem.quantity > 0.0) {
-            "الكمية المطلوبة يجب أن تكون قيمة موجبة أكبر من صفر (quantity > 0)."
+            "تنبيه الكمية: يجب أن تكون الكمية المطلوبة قيمة موجبة أكبر من صفر."
         }
 
         val exists = bomItems.any { it.partId == bomItem.partId && it.subPartId == bomItem.subPartId }
         require(!exists) {
-            "المكون الفرعي مضاف بالفعل لهذا المنتج الأب. يرجى تعديل الكمية أو المراجع الهندسية بدلاً من التكرار."
+            "المكون الفرعي مضاف بالفعل لهذا المنتج. يمكنك تعديل كميته بدلاً من تكرار إدراجه."
         }
 
         val generatedChecksum = calculateChecksum(bomItem)
@@ -134,6 +143,33 @@ class BomItemTable {
     }
 
     /**
+     * تحديث بند قائمة مواد موجود.
+     */
+    fun updateBomItem(bomItem: BomItem): BomItem {
+        val index = bomItems.indexOfFirst { it.id == bomItem.id }
+        if (index != -1) {
+            val updated = bomItem.copy(checksum = calculateChecksum(bomItem))
+            bomItems[index] = updated
+            return updated
+        } else {
+            return insertBomItem(bomItem)
+        }
+    }
+
+    /**
+     * حذف بند قائمة مواد باستخدام UUID الفريد وتطبيق الحذف المتتابع (CASCADE).
+     */
+    fun deleteBomItemByUuid(uuid: String): Boolean {
+        if (uuid.isBlank()) return false
+        val targetItem = bomItems.find { it.uuid == uuid || "bom-${it.id}" == uuid }
+        if (targetItem != null) {
+            substitutes.removeIf { it.bomItemId == targetItem.id }
+            return bomItems.removeIf { it.uuid == uuid || "bom-${it.id}" == uuid }
+        }
+        return false
+    }
+
+    /**
      * حذف بند قائمة مواد وتطبيق الحذف المتتابع (CASCADE) على جميع البدائل المعرفة عليه في BomItemSubstitute.
      */
     fun deleteBomItem(id: Long): Boolean {
@@ -158,7 +194,7 @@ class BomItemTable {
 
         // 1. منع التطابق الذاتي مع المكون الأساسي
         require(substitutePartId != bomItem.subPartId) {
-            "لا يمكن إضافة نفس المكون الأساسي كقطعة بديلة لنفس البند! (Self-Substitution Prevention)"
+            "لا يمكن إضافة المكون الأساسي كقطعة بديلة لنفس البند."
         }
 
         // 2. منع التصادم مع القطعة التجميعية الأصل
@@ -176,7 +212,7 @@ class BomItemTable {
         val targetPart = partsList.find { it.id == substitutePartId }
         if (targetPart != null) {
             require(targetPart.component) {
-                "القطعة المحددة ليست معرفة كمكون تصنيعي (component = true)."
+                "القطعة المحددة غير معرفة كمكون تصنيعي (component = true)."
             }
         }
 

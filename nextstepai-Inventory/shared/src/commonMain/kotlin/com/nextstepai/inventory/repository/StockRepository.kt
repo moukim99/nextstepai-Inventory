@@ -1,12 +1,17 @@
 package com.nextstepai.inventory.repository
 
 import com.nextstepai.inventory.data.StockItem
+import com.nextstepai.inventory.data.StockStatus
 import com.nextstepai.inventory.data.StockItemAttachment
 import com.nextstepai.inventory.data.StockItemTable
 import com.nextstepai.inventory.data.StockItemTestResult
 import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
+import com.nextstepai.inventory.data.StockLocationType
 import com.nextstepai.inventory.data.StockTrackingType
+import com.nextstepai.inventory.data.db.NotificationHistoryDao
+import com.nextstepai.inventory.data.db.NotificationHistoryEntity
+import com.nextstepai.inventory.data.db.PartDao
 import com.nextstepai.inventory.data.db.StockItemAttachmentDao
 import com.nextstepai.inventory.data.db.StockItemAttachmentEntity
 import com.nextstepai.inventory.data.db.StockItemDao
@@ -17,6 +22,7 @@ import com.nextstepai.inventory.data.db.StockItemTrackingDao
 import com.nextstepai.inventory.data.db.StockItemTrackingEntity
 import com.nextstepai.inventory.data.db.StockLocationDao
 import com.nextstepai.inventory.data.db.StockLocationEntity
+import com.nextstepai.inventory.data.db.StockLocationTypeDao
 import com.nextstepai.inventory.media.ImageProcessor
 import com.nextstepai.inventory.media.ProcessedImage
 import com.nextstepai.inventory.sync.BatchSyncService
@@ -37,6 +43,8 @@ class StockRepository(
     private val trackingDao: StockItemTrackingDao = StockItemTrackingDao(),
     private val testResultDao: StockItemTestResultDao = StockItemTestResultDao(),
     private val attachmentDao: StockItemAttachmentDao = StockItemAttachmentDao(),
+    private val notificationDao: NotificationHistoryDao = NotificationHistoryDao(),
+    private val partDao: PartDao = PartDao(),
     private val batchSyncService: BatchSyncService = BatchSyncService(),
     private val imageProcessor: ImageProcessor = ImageProcessor(maxDimension = 1024, compressionQuality = 85)
 ) {
@@ -53,14 +61,89 @@ class StockRepository(
     }
 
     /**
-     * جلب كافة السجلات المخزنية الفعلية.
+     * جلب كافة السجلات المخزنية الفعلية من قاعدة البيانات الدائمة (SQLite).
      */
-    fun getStockItems(): List<StockItem> = stockTable.getAllStockItems()
+    fun getStockItems(): List<StockItem> {
+        val entities = runBlocking { stockDao.getStockItemsPaged(limit = 1000, offset = 0) }
+        return entities.mapIndexed { index, entity ->
+            StockItem(
+                id = index + 1L,
+                partId = entity.partId,
+                locationId = entity.locationId ?: 1L,
+                quantity = entity.quantity,
+                serial = entity.serial,
+                batch = entity.batch,
+                status = StockStatus.fromCode(entity.statusCode),
+                packaging = entity.packaging,
+                purchasePrice = entity.purchasePrice,
+                expiryDate = entity.expiryDate,
+                stocktakeDate = entity.stocktakeDate,
+                notes = entity.notes
+            )
+        }
+    }
 
     /**
-     * جلب كافة مواقع التخزين المتاحة.
+     * جلب كافة مواقع التخزين المتاحة من SQLite مع السقوط الآمن على الجدول المحلي.
      */
-    fun getLocations(): List<StockLocation> = stockTable.getAllLocations()
+    fun getLocations(): List<StockLocation> {
+        val entities = runCatching { runBlocking { locationDao.getAllLocations() } }.getOrDefault(emptyList())
+        if (entities.isNotEmpty()) {
+            return entities.map { entity ->
+                StockLocation(
+                    id = entity.locationId,
+                    name = entity.name,
+                    description = entity.description,
+                    parentId = entity.parentId,
+                    structural = entity.structural,
+                    external = entity.external,
+                    locationType = entity.locationType,
+                    ownerId = entity.ownerId,
+                    icon = entity.icon,
+                    customIcon = entity.customIcon,
+                    address = entity.address,
+                    customCapacity = entity.customCapacity,
+                    isBulkGenerated = entity.isBulkGenerated,
+                    level = entity.level,
+                    lft = entity.lft,
+                    rght = entity.rght,
+                    treeId = entity.treeId,
+                    metadata = entity.metadata
+                )
+            }
+        }
+        return stockTable.getAllLocations()
+    }
+
+    /**
+     * جلب كافة أنواع وقوالب مواقع التخزين المتاحة مع مواصفاتها الهندسية.
+     */
+    fun getLocationTypes(): List<StockLocationType> {
+        val locationTypeDao = StockLocationTypeDao()
+        val entities = runCatching { runBlocking { locationTypeDao.getAllLocationTypes() } }.getOrDefault(emptyList())
+        return entities.map { entity ->
+            StockLocationType(
+                id = entity.typeId,
+                name = entity.name,
+                description = entity.description,
+                icon = entity.icon,
+                customIcon = entity.customIcon,
+                length = entity.length,
+                width = entity.width,
+                height = entity.height,
+                maxWeight = entity.maxWeight,
+                maxVolume = entity.maxVolume,
+                metadata = entity.metadata
+            )
+        }
+    }
+
+    /**
+     * حساب توليد المسار الهرمي الكامل التراكمي للموقع من الجذر حتى النهاية.
+     */
+    fun getFullPathForLocation(locationId: Long?, separator: String = " / "): String {
+        return stockTable.getFullPathForLocation(locationId, separator)
+    }
 
 
 
@@ -132,6 +215,17 @@ class StockRepository(
     }
 
     /**
+     * إضافة دفعة مواقع تخزينية متسلسلة جديدة (Bulk Location Generator).
+     */
+    fun addBatchLocations(locations: List<StockLocation>): List<StockLocation> {
+        val insertedList = stockTable.insertBatchLocations(locations)
+        runBlocking {
+            locationDao.insertBatchLocations(insertedList.map { it.toEntity() })
+        }
+        return insertedList
+    }
+
+    /**
      * إضافة وحدة مخزنية جديدة وتسجيل حركة الإنشاء آلياً.
      */
     fun addStockItem(item: StockItem): StockItem {
@@ -140,8 +234,31 @@ class StockRepository(
             stockDao.insertOrUpdate(inserted.toEntity())
             val trackings = stockTable.getTrackingForStockItem(inserted.id)
             trackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
+            checkAndInsertLowStockNotification(inserted.partId)
         }
         return inserted
+    }
+
+    private suspend fun checkAndInsertLowStockNotification(partId: Long) {
+        runCatching {
+            val allStock = stockTable.getAllStockItems().filter { it.partId == partId }
+            val currentTotalStock = allStock.sumOf { it.quantity }
+            val parts = partDao.getPartsPaged(limit = 1000, offset = 0)
+            val part = parts.find { it.id == partId }
+            if (part != null && part.minimumStock > 0.0 && currentTotalStock <= part.minimumStock) {
+                val now = Clock.System.now().toEpochMilliseconds()
+                val notif = NotificationHistoryEntity(
+                    uuid = "low-stock-${part.id}-$now",
+                    title = "⚠️ تنبيه انخفاض المخزون: ${part.name}",
+                    message = "وصل الرصيد الفعلي لـ '${part.name}' إلى $currentTotalStock ${part.units}، وهو أقل من أو يساوي الحد الأدنى المحدد (${part.minimumStock} ${part.units}).",
+                    notificationType = "LOW_STOCK_ALERT",
+                    targetEntityUuid = "part-${part.id}",
+                    scheduledDate = now,
+                    isTriggered = true
+                )
+                notificationDao.insertOrUpdate(notif)
+            }
+        }
     }
 
     /**
@@ -285,6 +402,9 @@ class StockRepository(
             ownerId = ownerId,
             icon = icon,
             customIcon = customIcon,
+            address = address,
+            customCapacity = customCapacity,
+            isBulkGenerated = isBulkGenerated,
             level = level,
             lft = lft,
             rght = rght,

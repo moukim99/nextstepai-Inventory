@@ -104,6 +104,19 @@ class StockItemTable {
         seedSampleStockData()
     }
 
+    fun clearAll() {
+        stockItems.clear()
+        locations.clear()
+        trackingLogs.clear()
+        testResults.clear()
+        stockAttachments.clear()
+        nextStockId = 1L
+        nextLocationId = 1L
+        nextTrackingId = 1L
+        nextTestResultId = 1L
+        nextAttachmentId = 1L
+    }
+
     private fun seedSampleStockData() {
         val loc1 = insertLocation("المستودع الرئيسي - رف A1", "مستودع المكونات الإلكترونية", locationType = "SHELF")
         val loc2 = insertLocation("مستودع التجميع - رف B3", "مستودع المنتجات النهائية", locationType = "WAREHOUSE")
@@ -216,9 +229,40 @@ class StockItemTable {
     }
 
     /**
+     * إدراج مجموعة مواقع تخزينية دفعة واحدة (Bulk Location Generation).
+     */
+    fun insertBatchLocations(newLocations: List<StockLocation>): List<StockLocation> {
+        val inserted = mutableListOf<StockLocation>()
+        newLocations.forEach { loc ->
+            val created = insertLocation(loc)
+            inserted.add(created)
+        }
+        return inserted
+    }
+
+    /**
      * جلب جميع مواقع التخزين.
      */
     fun getAllLocations(): List<StockLocation> = locations.toList()
+
+    /**
+     * حساب المسار الهرمي التراكمي الكامل لموقع تخزيني بمرور الأباء وصولاً للجذر مع حماية الحلقات الدائرية.
+     */
+    fun getFullPathForLocation(locationId: Long?, separator: String = " / "): String {
+        if (locationId == null) return "موقع رئيسي (Root)"
+        val visited = mutableSetOf<Long>()
+        val pathNames = mutableListOf<String>()
+        var currId: Long? = locationId
+
+        while (currId != null && !visited.contains(currId)) {
+            visited.add(currId)
+            val loc = locations.find { it.id == currId } ?: break
+            pathNames.add(0, loc.name)
+            currId = loc.parentId
+        }
+
+        return if (pathNames.isNotEmpty()) pathNames.joinToString(separator) else "موقع #$locationId"
+    }
 
     /**
      * إدراج وحدة مخزنية جديدة مع التحقق من القيود:

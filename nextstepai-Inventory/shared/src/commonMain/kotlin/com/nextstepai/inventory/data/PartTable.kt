@@ -82,13 +82,25 @@ class PartTable {
         seedSampleData()
     }
 
+    fun clearAll() {
+        parts.clear()
+        categories.clear()
+        nextPartId = 1L
+        nextCategoryId = 1L
+    }
+
     /**
      * إضافة بيانات أولية تجريبية للقطع والتصنيفات.
      */
     private fun seedSampleData() {
-        val cat1 = insertCategory("مكونات إلكترونية", description = "المقاومات والمكثفات والشرائح")
-        val cat2 = insertCategory("لوحات تحكم ومتحكمات", parentId = cat1.id, description = "المتحكمات الدقيقة")
-        val cat3 = insertCategory("قطع مجمعة واكسسوارات", description = "المنتجات النهائية والمجموعات")
+        val cat1 = insertCategory("مكونات إلكترونية وكهربائية", description = "مقاومات، مكثفات، بوردات، حساسات، محولات، كابلات")
+        val cat2 = insertCategory("مواد كيميائية وسوائل", description = "كحول إيزوبروبيل، مذيبات، دهانات، غراء، زيوت، شحوم")
+        insertCategory("مواد ولوازم تجميع واستهلاك", description = "قصدير لحام، أسلاك لحام، معجون حراري، أشرطة لاصقة، فلاتر")
+        insertCategory("قطع ميكانيكية وعتاد صلب", description = "براغي، صواميل، مسامير، حوامل معدنية، زنبركات")
+        insertCategory("خامات ومواد أولية", description = "صفائح بلاستيك، ألمنيوم، خشب، أنابيب، أسلاك غير مقطوعة")
+        insertCategory("تغليف ومواد شحن", description = "كراتين، لفائف فقاعية، أكياس حماية، ملصقات")
+        insertCategory("قطع غيار وصيانة", description = "محركات بديلة، شفرات، رؤوس كاوية لحام، سيور نقل")
+        val cat8 = insertCategory("منتجات جاهزة وتجميعات تامة", description = "أجهزة مكتملة الصنع، بضائع مستوردة معروضة للبيع")
 
         insertPart(
             Part(
@@ -133,7 +145,7 @@ class PartTable {
                 ipn = "TMP-SENSOR-TMPL",
                 description = "قالب تجريدي لسلسلة مستشعرات الحرارة",
                 keywords = "sensor temperature humidity template",
-                categoryId = cat3.id,
+                categoryId = cat8.id,
                 isTemplate = true,
                 assembly = true,
                 component = false,
@@ -148,7 +160,7 @@ class PartTable {
                 ipn = "TMP-SENSOR-DHT22",
                 description = "مستشعر حرارة ورطوبة رقمي عالي الدقة (مشتق من القالب)",
                 keywords = "dht22 sensor temperature variant",
-                categoryId = cat3.id,
+                categoryId = cat8.id,
                 isTemplate = false,
                 variantOfId = templatePart.id,
                 assembly = true,
@@ -182,6 +194,21 @@ class PartTable {
     fun getAllCategories(): List<PartCategory> = categories.toList()
 
     /**
+     * حذف تصنيف محدد من القائمة وتحديث القطع المرتبطة به.
+     */
+    fun deleteCategory(categoryId: Long): Boolean {
+        val removed = categories.removeAll { it.id == categoryId }
+        if (removed) {
+            parts.forEachIndexed { index, part ->
+                if (part.categoryId == categoryId) {
+                    parts[index] = part.copy(categoryId = null)
+                }
+            }
+        }
+        return removed
+    }
+
+    /**
      * إدراج قطعة جديدة مع التحقق من شروط التبعية الشجرية للقطع (Template/Variant Rules).
      */
     fun insertPart(part: Part): Part {
@@ -210,6 +237,22 @@ class PartTable {
             return true
         }
         return false
+    }
+
+    /**
+     * زيادة رصيد المخزون لقطعة محددة وتحديث إجمالي المخزون.
+     */
+    fun addStockToPart(partId: Long, quantity: Double): Part? {
+        val index = parts.indexOfFirst { it.id == partId }
+        if (index != -1) {
+            val current = parts[index]
+            val updated = current.copy(
+                totalInStock = current.totalInStock + quantity
+            )
+            parts[index] = updated
+            return updated
+        }
+        return null
     }
 
     /**

@@ -60,7 +60,7 @@ class CompanyRepository(
     }
 
     /**
-     * البحث والفلترة في الشركات.
+     * البحث والفلترة في الشركات من قاعدة البيانات الدائمة (SQLite).
      */
     fun searchCompanies(
         query: String = "",
@@ -69,19 +69,55 @@ class CompanyRepository(
         customerOnly: Boolean = false,
         activeOnly: Boolean = true
     ): List<Company> {
-        return companyTable.searchCompanies(
-            query = query,
-            supplierOnly = supplierOnly,
-            manufacturerOnly = manufacturerOnly,
-            customerOnly = customerOnly,
-            activeOnly = activeOnly
-        )
+        val entities = runBlocking {
+            companyDao.getCompaniesPaged(
+                supplierOnly = supplierOnly,
+                manufacturerOnly = manufacturerOnly,
+                customerOnly = customerOnly,
+                limit = 500,
+                offset = 0
+            )
+        }
+        if (entities.isNotEmpty()) {
+            var result = entities.mapIndexed { index, entity ->
+                Company(
+                    id = index + 1L,
+                    name = entity.name,
+                    description = entity.description,
+                    website = entity.website,
+                    phone = entity.phone,
+                    email = entity.email,
+                    isSupplier = entity.isSupplier,
+                    isManufacturer = entity.isManufacturer,
+                    isCustomer = entity.isCustomer,
+                    active = entity.active,
+                    currency = entity.currency,
+                    imageUrl = entity.logoPath,
+                    notes = entity.notes
+                )
+            }
+            if (activeOnly) {
+                result = result.filter { it.active }
+            }
+            if (query.isNotBlank()) {
+                result = result.filter {
+                    it.name.contains(query, ignoreCase = true) ||
+                    it.description.contains(query, ignoreCase = true) ||
+                    it.email.contains(query, ignoreCase = true)
+                }
+            }
+            return result
+        }
+        return emptyList()
     }
 
     /**
-     * جلب شركة حسب المعرف.
+     * جلب شركة حسب المعرف من SQLite.
      */
-    fun getCompanyById(id: Long): Company? = companyTable.getCompanyById(id)
+    fun getCompanyById(id: Long): Company? {
+        val companies = searchCompanies()
+        return companies.find { it.id == id } ?: companyTable.getCompanyById(id)
+    }
 
     /**
      * إضافة شركة جديدة مع تحديث الكيان المحلي القابل للمزامنة.
@@ -102,6 +138,7 @@ class CompanyRepository(
                     isCustomer = inserted.isCustomer,
                     active = inserted.active,
                     currency = inserted.currency,
+                    logoPath = inserted.imageUrl,
                     notes = inserted.notes,
                     metadata = inserted.metadata,
                     parentUuid = inserted.parentId?.let { "company-$it" },
@@ -131,6 +168,7 @@ class CompanyRepository(
                     isCustomer = updated.isCustomer,
                     active = updated.active,
                     currency = updated.currency,
+                    logoPath = updated.imageUrl,
                     notes = updated.notes,
                     metadata = updated.metadata,
                     parentUuid = updated.parentId?.let { "company-$it" },

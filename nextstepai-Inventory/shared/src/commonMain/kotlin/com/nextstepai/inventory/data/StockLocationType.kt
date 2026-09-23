@@ -16,6 +16,11 @@ data class StockLocationType(
     val description: String = "",
     val icon: String = "warehouse",
     val customIcon: String = "",
+    val length: Double = 0.0,
+    val width: Double = 0.0,
+    val height: Double = 0.0,
+    val maxWeight: Double = 0.0,
+    val maxVolume: Double = 0.0,
     val metadata: String = "{}"
 ) {
     /**
@@ -23,4 +28,24 @@ data class StockLocationType(
      */
     val effectiveIcon: String
         get() = customIcon.ifBlank { icon }
+
+    val calculatedVolume: Double
+        get() = if (maxVolume > 0.0) maxVolume else (length * width * height)
+
+    fun hasPhysicalSpecs(): Boolean =
+        length > 0.0 || width > 0.0 || height > 0.0 || maxWeight > 0.0 || maxVolume > 0.0
+
+    fun formatSpecsBadge(): String {
+        val parts = mutableListOf<String>()
+        if (length > 0.0 && width > 0.0 && height > 0.0) {
+            parts.add("الأبعاد: ${length}×${width}×${height} م")
+        }
+        if (maxWeight > 0.0) {
+            parts.add("أقصى حمولة: ${maxWeight} كجم")
+        }
+        if (calculatedVolume > 0.0) {
+            parts.add("الحجم: ${calculatedVolume} م³")
+        }
+        return if (parts.isNotEmpty()) parts.joinToString(" | ") else "مواصفات قياسية عامة"
+    }
 }

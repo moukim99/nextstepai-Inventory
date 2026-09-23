@@ -13,21 +13,32 @@ import com.kashif.cameraK.state.CameraKState
 import kotlinx.coroutines.launch
 
 /**
- * مكون الكاميرا القياسي للتطبيق والمبني باستخدام مكتبة CameraK الرسمية لمنصة Jetpack Compose.
+ * مكون الكاميرا القياسي للتطبيق والمبني باستخدام مكتبة CameraK و CameraX الرسمية لمنصة Jetpack Compose.
+ * يتيح عرض بث فيديو الكاميرا الحي والتقاط الصور المباشرة وتحليل إطارات الرمز الشريطي (Barcode / QR Code) لحظياً.
  */
 @Composable
 fun AppCameraKView(
     onImageCaptured: (ByteArray) -> Unit,
     onClose: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onBarcodeDetected: ((String) -> Unit)? = null
 ) {
     val cameraState by rememberCameraKState(config = CameraConfiguration())
     val scope = rememberCoroutineScope()
 
     Box(modifier = modifier.fillMaxSize()) {
+        // 1. عرض بث الكاميرا الحي التفاعلي في الخلفية
+        PlatformCameraPreview(
+            modifier = Modifier.fillMaxSize(),
+            onImageCaptured = onImageCaptured,
+            onBarcodeDetected = onBarcodeDetected
+        )
+
+        // 2. تراكب أزرار التحكم والتعليمات فوق بث الكاميرا
         when (val state = cameraState) {
             is CameraKState.Ready -> {
                 val controller = state.controller
+
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -36,9 +47,9 @@ fun AppCameraKView(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "الكاميرا جاهزة (CameraK)",
+                        text = "قارئ الباركود والكاميرا المباشرة (CameraK & CameraX)",
                         style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onBackground
+                        color = MaterialTheme.colorScheme.onPrimary
                     )
 
                     Row(
@@ -63,17 +74,16 @@ fun AppCameraKView(
                                             onImageCaptured(result.byteArray)
                                         }
                                         is ImageCaptureResult.SuccessWithFile -> {
-                                            // Handle file result if needed
                                             onImageCaptured(ByteArray(0))
                                         }
                                         is ImageCaptureResult.Error -> {
-                                            // Fallback error handling
+                                            // Fallback handling
                                         }
                                     }
                                 }
                             }
                         ) {
-                            Text("التقاط صورة")
+                            Text("التقاط صنف")
                         }
                     }
                 }
@@ -83,7 +93,7 @@ fun AppCameraKView(
             }
             is CameraKState.Error -> {
                 Text(
-                    text = "خطأ في الكاميرا: ${state.message}",
+                    text = "خطأ في تشغيل الكاميرا: ${state.message}",
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.align(Alignment.Center)
                 )

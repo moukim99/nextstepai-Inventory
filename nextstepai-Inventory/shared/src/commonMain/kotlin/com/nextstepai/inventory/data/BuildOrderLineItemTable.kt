@@ -25,7 +25,9 @@ data class BuildOrderLineItem(
     val quantity: Double = 1.0,
     val allocatedQuantity: Double = 0.0,
     val consumedQuantity: Double = 0.0,
-    val notes: String = ""
+    val notes: String = "",
+    val phaseUuid: String? = null,
+    val unitCost: Double = 12.0
 ) {
     /**
      * نسبة التخصيص المحجوزة من المخزون للبند.

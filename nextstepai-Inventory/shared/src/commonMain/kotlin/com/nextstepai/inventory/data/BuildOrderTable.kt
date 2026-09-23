@@ -60,13 +60,18 @@ data class BuildOrder(
     val issuedBy: String = "",
     val responsible: String = "",
     val notes: String = "",
-    val link: String = ""
+    val link: String = "",
+    val phaseQuantities: Map<String, Double> = emptyMap() // map of phase uuid to quantity
 ) {
     /**
-     * نسبة اكتمال عملية التصنيع والإنتاج الحالي.
+     * نسبة اكتمال عملية التصنيع والإنتاج الحالي بناء على الكمية المكتملة في المرحلة الأخيرة.
      */
     val completionPercentage: Float
-        get() = if (quantity > 0) ((completedQuantity / quantity) * 100.0).coerceIn(0.0, 100.0).toFloat() else 0f
+        get() = if (status == BuildStatus.COMPLETE) 100f else if (quantity > 0) ((completedQuantity / quantity) * 100.0).coerceIn(0.0, 100.0).toFloat() else 0f
+
+    val displayCompletedQuantity: Double
+        get() = if (status == BuildStatus.COMPLETE) quantity else completedQuantity
+
 
     /**
      * هل تم استيفاء كامل الكمية المطلوبة للبناء.
@@ -131,14 +136,27 @@ class BuildOrderTable {
         if (index != -1) {
             val current = builds[index]
             if (current.status == BuildStatus.PENDING) {
+                // Initialize all quantity in the first phase
+                val defaultPhaseMap = mapOf("phase-def-1" to current.quantity)
                 builds[index] = current.copy(
                     status = BuildStatus.IN_PRODUCTION,
-                    startDate = "2025-02-15"
+                    startDate = "2025-02-15",
+                    phaseQuantities = defaultPhaseMap
                 )
                 return true
             }
         }
         return false
+    }
+
+    /**
+     * تحديث أمر الإنتاج
+     */
+    fun updateBuild(updatedBuild: BuildOrder) {
+        val index = builds.indexOfFirst { it.id == updatedBuild.id }
+        if (index != -1) {
+            builds[index] = updatedBuild
+        }
     }
 
     /**
@@ -173,6 +191,19 @@ class BuildOrderTable {
                 builds[index] = current.copy(status = BuildStatus.CANCELLED)
                 return true
             }
+        }
+        return false
+    }
+
+    /**
+     * تحديث حالة أمر التصنيع المباشرة (Update Build Status).
+     */
+    fun updateStatus(buildId: Long, newStatus: BuildStatus): Boolean {
+        val index = builds.indexOfFirst { it.id == buildId }
+        if (index != -1) {
+            val current = builds[index]
+            builds[index] = current.copy(status = newStatus)
+            return true
         }
         return false
     }

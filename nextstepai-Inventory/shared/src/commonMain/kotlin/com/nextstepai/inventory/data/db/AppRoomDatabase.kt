@@ -32,7 +32,8 @@ import androidx.room.TypeConverters
         PartInternalPriceEntity::class,
         PartStarEntity::class,
         PartSalePriceEntity::class,
-        NotificationHistoryEntity::class
+        NotificationHistoryEntity::class,
+        AppUserEntity::class
     ],
     version = 1,
     exportSchema = false
@@ -52,4 +53,5 @@ abstract class AppRoomDatabase : RoomDatabase() {
     abstract fun buildOrderLineItemDao(): BuildOrderLineItemDao
     abstract fun buildItemDao(): BuildItemDao
     abstract fun notificationHistoryDao(): NotificationHistoryDao
+    abstract fun appUserDao(): AppUserDao
 }

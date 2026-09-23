@@ -51,6 +51,7 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.androidx.room.runtime)
             implementation(libs.androidx.sqlite.bundled)
+            implementation("org.xerial:sqlite-jdbc:3.49.1.0")
             implementation(libs.kotlinx.datetime)
             implementation(libs.androidx.datastore.preferences)
             implementation(libs.jetbrains.adaptive)

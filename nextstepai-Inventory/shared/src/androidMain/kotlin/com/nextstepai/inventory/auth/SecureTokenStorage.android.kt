@@ -15,21 +15,15 @@ import java.io.File
 
 actual class SecureTokenStorage actual constructor() {
 
-    private val context: Context
+    private val inMemoryTokens = mutableMapOf<String, String>()
+
+    private val context: Context?
         get() = AppContextHolder.appContext
-            ?: throw IllegalStateException("AppContextHolder.appContext must be initialized on Android")
 
-    private val dataStore = PreferenceDataStoreFactory.create(
-        produceFile = { File(context.filesDir, "datastore/secure_tokens.preferences_pb") }
-    )
-
-    private val accessTokenKey = stringPreferencesKey("encrypted_access_token")
-    private val refreshTokenKey = stringPreferencesKey("encrypted_refresh_token")
-
-    private fun getAead(): Aead {
+    private fun getAead(ctx: Context): Aead {
         AeadConfig.register()
         val keysetHandle = AndroidKeysetManager.Builder()
-            .withSharedPref(context, "tink_keyset_prefs", "tink_master_key_preference")
+            .withSharedPref(ctx, "tink_keyset_prefs", "tink_master_key_preference")
             .withKeyTemplate(KeyTemplates.get("AES256_GCM"))
             .withMasterKeyUri("android-keystore://_nextstepai_master_key_")
             .build()
@@ -38,7 +32,20 @@ actual class SecureTokenStorage actual constructor() {
     }
 
     actual suspend fun saveTokens(tokens: AuthTokens) {
-        val aead = getAead()
+        val ctx = context
+        if (ctx == null) {
+            inMemoryTokens["access"] = tokens.accessToken
+            inMemoryTokens["refresh"] = tokens.refreshToken
+            return
+        }
+
+        val dataStore = PreferenceDataStoreFactory.create(
+            produceFile = { File(ctx.filesDir, "datastore/secure_tokens.preferences_pb") }
+        )
+        val accessTokenKey = stringPreferencesKey("encrypted_access_token")
+        val refreshTokenKey = stringPreferencesKey("encrypted_refresh_token")
+
+        val aead = getAead(ctx)
         val encryptedAccess = Base64.encodeToString(aead.encrypt(tokens.accessToken.toByteArray(Charsets.UTF_8), null), Base64.NO_WRAP)
         val encryptedRefresh = Base64.encodeToString(aead.encrypt(tokens.refreshToken.toByteArray(Charsets.UTF_8), null), Base64.NO_WRAP)
 
@@ -49,12 +56,25 @@ actual class SecureTokenStorage actual constructor() {
     }
 
     actual suspend fun getTokens(): AuthTokens? {
+        val ctx = context
+        if (ctx == null) {
+            val access = inMemoryTokens["access"] ?: return null
+            val refresh = inMemoryTokens["refresh"] ?: return null
+            return AuthTokens(accessToken = access, refreshToken = refresh)
+        }
+
+        val dataStore = PreferenceDataStoreFactory.create(
+            produceFile = { File(ctx.filesDir, "datastore/secure_tokens.preferences_pb") }
+        )
+        val accessTokenKey = stringPreferencesKey("encrypted_access_token")
+        val refreshTokenKey = stringPreferencesKey("encrypted_refresh_token")
+
         val prefs = dataStore.data.firstOrNull() ?: return null
         val encAccess = prefs[accessTokenKey] ?: return null
         val encRefresh = prefs[refreshTokenKey] ?: return null
 
         return try {
-            val aead = getAead()
+            val aead = getAead(ctx)
             val access = String(aead.decrypt(Base64.decode(encAccess, Base64.NO_WRAP), null), Charsets.UTF_8)
             val refresh = String(aead.decrypt(Base64.decode(encRefresh, Base64.NO_WRAP), null), Charsets.UTF_8)
             AuthTokens(accessToken = access, refreshToken = refresh)
@@ -64,6 +84,18 @@ actual class SecureTokenStorage actual constructor() {
     }
 
     actual suspend fun clearTokens() {
+        val ctx = context
+        if (ctx == null) {
+            inMemoryTokens.clear()
+            return
+        }
+
+        val dataStore = PreferenceDataStoreFactory.create(
+            produceFile = { File(ctx.filesDir, "datastore/secure_tokens.preferences_pb") }
+        )
+        val accessTokenKey = stringPreferencesKey("encrypted_access_token")
+        val refreshTokenKey = stringPreferencesKey("encrypted_refresh_token")
+
         dataStore.edit { prefs ->
             prefs.remove(accessTokenKey)
             prefs.remove(refreshTokenKey)

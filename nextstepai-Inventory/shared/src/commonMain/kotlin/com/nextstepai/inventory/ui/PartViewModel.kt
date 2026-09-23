@@ -17,10 +17,15 @@ import com.nextstepai.inventory.data.SupplierPart
 import com.nextstepai.inventory.data.db.PartInternalPriceEntity
 import com.nextstepai.inventory.data.db.PartPricingEntity
 import com.nextstepai.inventory.data.db.PartSalePriceEntity
+import com.nextstepai.inventory.data.StockLocation
+import com.nextstepai.inventory.data.StockItem
+import com.nextstepai.inventory.data.StockStatus
+import kotlin.time.Clock
 import com.nextstepai.inventory.repository.BomRepository
 import com.nextstepai.inventory.repository.CompanyRepository
 import com.nextstepai.inventory.repository.PartRepository
 import com.nextstepai.inventory.repository.PartsSummary
+import com.nextstepai.inventory.repository.StockRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,6 +37,7 @@ import kotlinx.coroutines.flow.update
 data class PartUiState(
     val parts: List<Part> = emptyList(),
     val categories: List<PartCategory> = emptyList(),
+    val stockLocations: List<StockLocation> = emptyList(),
     val templateParts: List<Part> = emptyList(),
     val summary: PartsSummary = PartsSummary(0, 0, 0, 0, 0, 0),
     val searchQuery: String = "",
@@ -53,7 +59,11 @@ data class PartUiState(
     val starredPartIds: Set<Long> = emptySet(),
     val lowStockOnlyFilter: Boolean = false,
     val assemblyOnlyFilter: Boolean = false,
+    val componentOnlyFilter: Boolean = false,
+    val purchaseableOnlyFilter: Boolean = false,
+    val salableOnlyFilter: Boolean = false,
     val starredOnlyFilter: Boolean = false,
+    val isFilterBottomSheetOpen: Boolean = false,
     val selectedPart: Part? = null,
     val isAddPartDialogOpen: Boolean = false,
     val isAddCategoryParamDialogOpen: Boolean = false,
@@ -69,7 +79,8 @@ data class PartUiState(
 class PartViewModel(
     private val repository: PartRepository = PartRepository(),
     private val bomRepository: BomRepository = BomRepository(),
-    private val companyRepository: CompanyRepository = CompanyRepository()
+    private val companyRepository: CompanyRepository = CompanyRepository(),
+    private val stockRepository: StockRepository = StockRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PartUiState())
@@ -90,6 +101,7 @@ class PartViewModel(
         val summary = repository.getPartsSummary()
         val starredIds = repository.getStarredPartIdsForUser(1L).toSet()
         val allCompanies = companyRepository.getCompanies()
+        val stockLocations = stockRepository.getLocations()
 
         val filteredParts = repository.searchParts(
             query = _uiState.value.searchQuery,
@@ -104,6 +116,7 @@ class PartViewModel(
             it.copy(
                 parts = filteredParts,
                 categories = categories,
+                stockLocations = stockLocations,
                 templateParts = templateParts,
                 summary = summary,
                 starredPartIds = starredIds,
@@ -232,6 +245,55 @@ class PartViewModel(
                 selectedPartManufacturerParts = mfgParts,
                 selectedPartSupplierParts = supParts
             )
+        }
+    }
+
+    /**
+     * استلام شحنة ومخزون جديد بجدول stock_items وتسجيل حركة التتبع آلياً بجدول stock_item_tracking.
+     */
+    fun receiveStockItem(
+        partId: Long,
+        locationId: Long?,
+        quantity: Double,
+        packaging: String = "صندوق",
+        batch: String = "",
+        serial: String = "",
+        purchasePrice: Double = 0.0,
+        purchasePriceCurrency: String = "USD",
+        expiryDate: String = "",
+        notes: String = ""
+    ) {
+        val part = repository.getPartById(partId) ?: return
+        try {
+            val generatedBatch = batch.ifBlank { "BATCH-${Clock.System.now().toEpochMilliseconds().toString().takeLast(6)}" }
+            val stockItem = StockItem(
+                partId = partId,
+                locationId = locationId,
+                quantity = quantity,
+                packaging = packaging.ifBlank { "صندوق" },
+                batch = generatedBatch,
+                serial = serial,
+                purchasePrice = purchasePrice,
+                purchasePriceCurrency = purchasePriceCurrency,
+                expiryDate = expiryDate,
+                notes = notes,
+                status = StockStatus.OK
+            )
+
+            val insertedStock = stockRepository.addStockItem(stockItem)
+            repository.addStockToPart(partId, quantity)
+
+            _uiState.update { state ->
+                state.copy(
+                    message = "تم استلام الشحنة (${insertedStock.quantity} ${part.units}) وتوثيقها بجدول المخزون والتتبع بنجاح"
+                )
+            }
+            loadData()
+            selectPart(part)
+        } catch (e: Exception) {
+            _uiState.update { state ->
+                state.copy(message = "خطأ أثناء استلام الشحنة: ${e.message}")
+            }
         }
     }
 
@@ -401,6 +463,66 @@ class PartViewModel(
     }
 
     /**
+     * إنشاء تصنيف جديد سريع وإضافته إلى القائمة في النظام.
+     */
+    fun addNewCategory(name: String, description: String = ""): PartCategory {
+        val newCategory = repository.addCategory(name, description)
+        _uiState.update { it.copy(
+            categories = repository.getCategories(),
+            message = "تم إنشاء التصنيف '${newCategory.name}' بنجاح"
+        )}
+        return newCategory
+    }
+
+    /**
+     * حذف تصنيف محدد من قائمة التصنيفات.
+     */
+    fun deleteCategory(categoryId: Long) {
+        val success = repository.deleteCategory(categoryId)
+        if (success) {
+            _uiState.update { it.copy(
+                categories = repository.getCategories(),
+                selectedCategoryId = if (it.selectedCategoryId == categoryId) null else it.selectedCategoryId,
+                message = "تم حذف التصنيف بنجاح"
+            )}
+            loadData()
+        }
+    }
+
+    /**
+     * حذف أمني محمي للقطعة مع تطبيق القيود والاشتراطات التشغيلية.
+     */
+    fun deletePart(partId: Long) {
+        val result = repository.deletePartWithValidation(partId)
+        result.onSuccess {
+            _uiState.update { state ->
+                state.copy(
+                    selectedPart = if (state.selectedPart?.id == partId) null else state.selectedPart,
+                    message = "تم حذف وأرشفة القطعة بنجاح"
+                )
+            }
+            loadData()
+        }.onFailure { exception ->
+            _uiState.update { state ->
+                state.copy(
+                    message = exception.message ?: "فشل حذف القطعة"
+                )
+            }
+        }
+    }
+
+    /**
+     * استلام مخزون جديد لقطعة محددة وتحديث إجمالي المخزون.
+     */
+    fun addStockForPart(partId: Long, quantity: Double) {
+        val updated = repository.addStockToPart(partId, quantity)
+        if (updated != null) {
+            _uiState.update { it.copy(message = "تم استلام وإضافة كمية ($quantity) إلى مخزون '${updated.name}' بنجاح") }
+            loadData()
+        }
+    }
+
+    /**
      * فتح أو إغلاق حوار إضافة قطعة جديدة.
      */
     fun setAddPartDialogOpen(isOpen: Boolean) {
@@ -408,35 +530,58 @@ class PartViewModel(
     }
 
     /**
-     * إضافة قطعة جديدة وفق الحقول الأساسية لجدول Part.
+     * إضافة قطعة جديدة وفق الحقول الأساسية والفرعية المتقدمة لجدول Part.
      */
     fun addNewPart(
         name: String,
-        ipn: String,
-        description: String,
-        categoryId: Long?,
-        units: String,
-        assembly: Boolean,
-        component: Boolean,
-        isTemplate: Boolean,
-        variantOfId: Long?,
-        minimumStock: Double,
+        ipn: String = "",
+        description: String = "",
+        categoryId: Long? = null,
+        units: String = "pcs",
+        assembly: Boolean = false,
+        component: Boolean = true,
+        isTemplate: Boolean = false,
+        variantOfId: Long? = null,
+        minimumStock: Double = 0.0,
         maximumStock: Double? = null,
-        initialStock: Double
+        revision: String = "",
+        keywords: String = "",
+        trackable: Boolean = false,
+        purchaseable: Boolean = true,
+        salable: Boolean = false,
+        virtual: Boolean = false,
+        defaultLocationId: Long? = null,
+        defaultExpiryDays: Int? = null,
+        link: String = "",
+        imageUrl: String? = null,
+        active: Boolean = true,
+        locked: Boolean = false
     ) {
         val newPart = Part(
             name = name,
             ipn = ipn,
             description = description,
+            revision = revision,
+            keywords = keywords,
             categoryId = categoryId,
             units = units.ifBlank { "pcs" },
             assembly = assembly,
             component = component,
             isTemplate = isTemplate,
             variantOfId = variantOfId,
+            trackable = trackable,
+            purchaseable = purchaseable,
+            salable = salable,
+            virtual = virtual,
+            active = active,
+            locked = locked,
+            defaultLocationId = defaultLocationId,
+            defaultExpiryDays = defaultExpiryDays,
             minimumStock = minimumStock,
             maximumStock = maximumStock,
-            totalInStock = initialStock,
+            imageUrl = imageUrl,
+            totalInStock = 0.0,
+            link = link,
             creationDate = "2025-02-15"
         )
 
@@ -540,6 +685,49 @@ class PartViewModel(
         refreshFilteredParts()
     }
 
+    fun setFilterBottomSheetOpen(isOpen: Boolean) {
+        _uiState.update { it.copy(isFilterBottomSheetOpen = isOpen) }
+    }
+
+    fun applyFilters(
+        categoryId: Long?,
+        lowStock: Boolean,
+        assembly: Boolean,
+        component: Boolean,
+        purchaseable: Boolean,
+        salable: Boolean,
+        starred: Boolean
+    ) {
+        _uiState.update {
+            it.copy(
+                selectedCategoryId = categoryId,
+                lowStockOnlyFilter = lowStock,
+                assemblyOnlyFilter = assembly,
+                componentOnlyFilter = component,
+                purchaseableOnlyFilter = purchaseable,
+                salableOnlyFilter = salable,
+                starredOnlyFilter = starred,
+                isFilterBottomSheetOpen = false
+            )
+        }
+        refreshFilteredParts()
+    }
+
+    fun resetFilters() {
+        _uiState.update {
+            it.copy(
+                selectedCategoryId = null,
+                lowStockOnlyFilter = false,
+                assemblyOnlyFilter = false,
+                componentOnlyFilter = false,
+                purchaseableOnlyFilter = false,
+                salableOnlyFilter = false,
+                starredOnlyFilter = false
+            )
+        }
+        refreshFilteredParts()
+    }
+
     private fun refreshFilteredParts() {
         val state = _uiState.value
         var filtered = repository.searchParts(
@@ -548,6 +736,15 @@ class PartViewModel(
             lowStockOnly = state.lowStockOnlyFilter,
             assemblyOnly = state.assemblyOnlyFilter
         )
+        if (state.componentOnlyFilter) {
+            filtered = filtered.filter { it.component }
+        }
+        if (state.purchaseableOnlyFilter) {
+            filtered = filtered.filter { it.purchaseable }
+        }
+        if (state.salableOnlyFilter) {
+            filtered = filtered.filter { it.salable }
+        }
         if (state.starredOnlyFilter) {
             filtered = filtered.filter { state.starredPartIds.contains(it.id) }
         }
