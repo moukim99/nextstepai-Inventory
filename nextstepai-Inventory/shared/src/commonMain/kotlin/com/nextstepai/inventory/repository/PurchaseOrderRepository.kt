@@ -59,7 +59,7 @@ class PurchaseOrderRepository(
             val allTableOrders = orderTable.getAllOrders()
             var result = entities.mapIndexed { index, entity ->
                 val matchingTableOrder = allTableOrders.find { it.reference.equals(entity.reference, ignoreCase = true) }
-                val numericId = matchingTableOrder?.id ?: (index + 1L)
+                val numericId = entity.uuid.removePrefix("po-").toLongOrNull() ?: matchingTableOrder?.id ?: (index + 1L)
                 val lineItems = matchingTableOrder?.lineItems ?: emptyList()
                 PurchaseOrder(
                     id = numericId,

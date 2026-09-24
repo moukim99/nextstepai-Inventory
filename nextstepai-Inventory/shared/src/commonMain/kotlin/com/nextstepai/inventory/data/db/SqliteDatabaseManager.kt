@@ -158,6 +158,8 @@ object SqliteDatabaseManager {
         """.trimIndent()).use { it.step() }
 
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN locationUuid TEXT").use { it.step() } }
+        runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN partUuid TEXT").use { it.step() } }
+        runCatching { conn.prepare("UPDATE stock_items SET partUuid = 'part-' || partId WHERE partUuid IS NULL OR partUuid = ''").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN purchasePrice REAL NOT NULL DEFAULT 0.0").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN purchasePriceCurrency TEXT NOT NULL DEFAULT 'USD'").use { it.step() } }
         runCatching { conn.prepare("ALTER TABLE stock_items ADD COLUMN purchaseOrderId INTEGER").use { it.step() } }
@@ -304,6 +306,7 @@ object SqliteDatabaseManager {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_bom_items_sync ON bom_items(syncStatus, isDeleted, updatedAt)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_mfg_phases_sync ON manufacturing_phases(syncStatus, isDeleted, updatedAt)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_items_partId ON stock_items(partId)").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_items_partUuid ON stock_items(partUuid)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_items_locationUuid ON stock_items(locationUuid)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_locations_parentUuid ON stock_locations(parentUuid)").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_stock_tracking_itemUuid ON stock_item_tracking(stockItemUuid)").use { it.step() } }

@@ -13,6 +13,8 @@ import com.nextstepai.inventory.data.StockItemTestResult
 import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockLocationType
+import com.nextstepai.inventory.data.capacityUnit
+import com.nextstepai.inventory.data.withCapacityUnit
 import com.nextstepai.inventory.data.StockStatus
 import com.nextstepai.inventory.data.SupplierPart
 import com.nextstepai.inventory.repository.CompanyRepository
@@ -404,7 +406,9 @@ class StockViewModel(
         icon: String = "warehouse",
         ownerId: Long? = null,
         customIcon: String = "",
-        address: String = ""
+        address: String = "",
+        customCapacity: Double? = null,
+        capacityUnit: String = "قطعة"
     ): StockLocation {
         val loc = StockLocation(
             name = name,
@@ -416,8 +420,9 @@ class StockViewModel(
             ownerId = ownerId,
             icon = icon,
             customIcon = customIcon,
-            address = address
-        )
+            address = address,
+            customCapacity = customCapacity
+        ).withCapacityUnit(capacityUnit)
         val inserted = stockRepository.addLocation(loc)
         _uiState.update {
             it.copy(
@@ -428,6 +433,54 @@ class StockViewModel(
         }
         loadData()
         return inserted
+    }
+
+    /**
+     * تحديث بيانات وسعة موقع تخزيني قائم في النظام.
+     */
+    fun updateLocation(location: StockLocation): StockLocation {
+        val updated = stockRepository.updateLocation(location)
+        _uiState.update {
+            it.copy(
+                errorMessage = null,
+                successMessage = "تم تحديث بيانات الموقع التخزيني بنجاح"
+            )
+        }
+        loadData()
+        return updated
+    }
+
+    /**
+     * حفظ وأرشفة لقطة بيانات الملصق المطبوع.
+     */
+    fun saveLocationLabelSnapshot(locationId: Long, snapshotData: String): StockLocation? {
+        val updated = stockRepository.saveLocationLabelSnapshot(locationId, snapshotData)
+        if (updated != null) {
+            loadData()
+        }
+        return updated
+    }
+
+    /**
+     * حذف موقع تخزيني بعد التأكد من اجتياز القيود الأمنية الثلاثية.
+     */
+    fun deleteLocation(locationId: Long) {
+        try {
+            stockRepository.deleteLocation(locationId)
+            _uiState.update {
+                it.copy(
+                    errorMessage = null,
+                    successMessage = "تم حذف الموقع التخزيني بنجاح"
+                )
+            }
+            loadData()
+        } catch (e: IllegalArgumentException) {
+            _uiState.update { it.copy(errorMessage = e.message) }
+        }
+    }
+
+    fun clearMessages() {
+        _uiState.update { it.copy(errorMessage = null, successMessage = null) }
     }
 
     /**

@@ -5,6 +5,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
+        android:name=".MainApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -19,11 +20,6 @@
             android:exported="true"
             android:resizeableActivity="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density">
-            <layout
-                android:defaultWidth="1280dp"
-                android:defaultHeight="800dp"
-                android:minWidth="360dp"
-                android:minHeight="480dp" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

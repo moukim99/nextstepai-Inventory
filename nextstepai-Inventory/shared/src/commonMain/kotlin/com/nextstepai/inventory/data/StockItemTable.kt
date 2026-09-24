@@ -246,6 +246,13 @@ class StockItemTable {
     fun getAllLocations(): List<StockLocation> = locations.toList()
 
     /**
+     * حذف موقع تخزيني من الذاكرة المحلية المؤقتة.
+     */
+    fun deleteLocation(locationId: Long): Boolean {
+        return locations.removeAll { it.id == locationId }
+    }
+
+    /**
      * حساب المسار الهرمي التراكمي الكامل لموقع تخزيني بمرور الأباء وصولاً للجذر مع حماية الحلقات الدائرية.
      */
     fun getFullPathForLocation(locationId: Long?, separator: String = " / "): String {

@@ -80,8 +80,9 @@ class CompanyRepository(
         }
         if (entities.isNotEmpty()) {
             var result = entities.mapIndexed { index, entity ->
+                val parsedId = entity.uuid.removePrefix("company-").toLongOrNull() ?: (index + 1L)
                 Company(
-                    id = index + 1L,
+                    id = parsedId,
                     name = entity.name,
                     description = entity.description,
                     website = entity.website,
@@ -115,8 +116,10 @@ class CompanyRepository(
      * جلب شركة حسب المعرف من SQLite.
      */
     fun getCompanyById(id: Long): Company? {
+        val companyInTable = companyTable.getCompanyById(id)
+        if (companyInTable != null) return companyInTable
         val companies = searchCompanies()
-        return companies.find { it.id == id } ?: companyTable.getCompanyById(id)
+        return companies.find { it.id == id }
     }
 
     /**

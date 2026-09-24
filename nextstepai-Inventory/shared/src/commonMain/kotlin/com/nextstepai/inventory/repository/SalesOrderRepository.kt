@@ -55,7 +55,7 @@ class SalesOrderRepository(
             val allTableOrders = salesOrderTable.getAllOrders()
             var result = entities.mapIndexed { index, entity ->
                 val matchingTableOrder = allTableOrders.find { it.reference.equals(entity.reference, ignoreCase = true) }
-                val numericId = matchingTableOrder?.id ?: (index + 1L)
+                val numericId = entity.uuid.removePrefix("so-").toLongOrNull() ?: matchingTableOrder?.id ?: (index + 1L)
                 val lineItems = matchingTableOrder?.lineItems ?: emptyList()
                 SalesOrder(
                     id = numericId,

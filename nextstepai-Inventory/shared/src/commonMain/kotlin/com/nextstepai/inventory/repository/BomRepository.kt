@@ -38,8 +38,9 @@ class BomRepository(
     fun getBomItemsForPart(partId: Long): List<BomItem> {
         val entities = runBlocking { bomItemDao.getBomItemsPaged(partId = partId, limit = 500, offset = 0) }
         return entities.mapIndexed { index, entity ->
+            val parsedId = entity.uuid.removePrefix("bom-").toLongOrNull() ?: (index + 1L)
             BomItem(
-                id = index + 1L,
+                id = parsedId,
                 uuid = entity.uuid,
                 partId = entity.partId,
                 subPartId = entity.subPartId,

@@ -8,6 +8,8 @@ import com.nextstepai.inventory.data.StockItemTestResult
 import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockLocationType
+import com.nextstepai.inventory.data.labelImagePath
+import com.nextstepai.inventory.data.withLabelSnapshot
 import com.nextstepai.inventory.data.StockTrackingType
 import com.nextstepai.inventory.data.db.NotificationHistoryDao
 import com.nextstepai.inventory.data.db.NotificationHistoryEntity
@@ -30,6 +32,7 @@ import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
 import com.nextstepai.inventory.util.DateTimeUtils
 import kotlinx.coroutines.runBlocking
+import java.io.File
 import kotlin.time.Clock
 
 /**
@@ -53,11 +56,24 @@ class StockRepository(
      */
     suspend fun getStockItemsPaged(
         partId: Long? = null,
+        partUuid: String? = null,
         locationId: Long? = null,
+        locationUuid: String? = null,
         limit: Int = 20,
         offset: Int = 0
     ): List<StockItemEntity> {
-        return stockDao.getStockItemsPaged(partId = partId, locationId = locationId, limit = limit, offset = offset)
+        return stockDao.getStockItemsPaged(
+            partId = partId,
+            partUuid = partUuid,
+            locationId = locationId,
+            locationUuid = locationUuid,
+            limit = limit,
+            offset = offset
+        )
+    }
+
+    suspend fun getStockItemByUuid(uuid: String): StockItemEntity? {
+        return stockDao.getStockItemByUuid(uuid)
     }
 
     /**
@@ -66,8 +82,9 @@ class StockRepository(
     fun getStockItems(): List<StockItem> {
         val entities = runBlocking { stockDao.getStockItemsPaged(limit = 1000, offset = 0) }
         return entities.mapIndexed { index, entity ->
+            val parsedId = entity.uuid.removePrefix("stock-").toLongOrNull() ?: (index + 1L)
             StockItem(
-                id = index + 1L,
+                id = parsedId,
                 partId = entity.partId,
                 locationId = entity.locationId ?: 1L,
                 quantity = entity.quantity,
@@ -212,6 +229,76 @@ class StockRepository(
             locationDao.insertOrUpdate(inserted.toEntity())
         }
         return inserted
+    }
+
+    /**
+     * تحديث بيانات موقع تخزيني قائم في الشجرة الهرمية لمواقع التخزين (StockLocation).
+     */
+    fun updateLocation(location: StockLocation): StockLocation {
+        return addLocation(location)
+    }
+
+    /**
+     * حذف موقع تخزيني حذفاً مرناً (Soft Delete) بعد إجراء الفحوصات الأمنية الثلاثية:
+     * 1. التأكد من عدم وجود عناصر ومواد مخزنة داخل الموقع.
+     * 2. التأكد من عدم وجود مواقع وأرفف فرعية (Child Locations) تابعة له.
+     * 3. التأكد من عدم ارتباطه بأوامر إنتاج وتصنيع نشطة أو أوامر شراء معلقة.
+     */
+    fun deleteLocation(locationId: Long): Boolean {
+        // الفحص الأول: خلو الموقع من العناصر المخزنة
+        val itemsInLoc = getStockItems().filter { it.locationId == locationId }
+        if (itemsInLoc.isNotEmpty()) {
+            throw IllegalArgumentException("لا يمكن حذف الموقع لأنه يحتوي على ${itemsInLoc.size} قطعة مادية مخزنة. يُرجى نقل أو إفراغ المواد أولاً.")
+        }
+
+        // الفحص الثاني: خلو الموقع من الأرفف والمواقع الفرعية
+        val childLocs = getLocations().filter { it.parentId == locationId }
+        if (childLocs.isNotEmpty()) {
+            throw IllegalArgumentException("لا يمكن حذف الموقع لأنه يحتوي على ${childLocs.size} موقع فرعي تابع له. يُرجى نقل أو إعادة تعيين المواقع الفرعية أولاً.")
+        }
+
+        // الفحص الثالث: عدم ارتباط الموقع بأوامر بناء أو شراء معلقة
+        val buildOrdersReferenced = runCatching {
+            BuildOrderRepository().searchBuilds().filter {
+                it.takeFromLocationId == locationId || it.destinationLocationId == locationId
+            }
+        }.getOrDefault(emptyList())
+        if (buildOrdersReferenced.isNotEmpty()) {
+            throw IllegalArgumentException("لا يمكن حذف الموقع لارتباطه بـ ${buildOrdersReferenced.size} أمر تصنيع وبناء نشط.")
+        }
+
+        val purchaseOrdersReferenced = runCatching {
+            PurchaseOrderRepository().searchOrders().filter {
+                it.destinationLocationId == locationId || it.destinationLocationUuid == "location-$locationId"
+            }
+        }.getOrDefault(emptyList())
+        if (purchaseOrdersReferenced.isNotEmpty()) {
+            throw IllegalArgumentException("لا يمكن حذف الموقع لارتباطه بـ ${purchaseOrdersReferenced.size} أمر شراء معلق كوجهة تسليم.")
+        }
+
+        val targetLoc = getLocations().find { it.id == locationId }
+        val removedFromTable = stockTable.deleteLocation(locationId)
+        runBlocking {
+            locationDao.softDeleteLocation(locationId)
+            targetLoc?.labelImagePath?.let { path ->
+                runCatching {
+                    val file = File(path)
+                    if (file.exists()) file.delete()
+                }
+            }
+        }
+        return removedFromTable
+    }
+
+    /**
+     * أرشفة وحفظ لقطة صورة الملصق المادية وتحديث بيانات الأرشفة لجدول الموقع.
+     */
+    fun saveLocationLabelSnapshot(locationId: Long, snapshotData: String): StockLocation? {
+        val targetLoc = getLocations().find { it.id == locationId } ?: return null
+        val genAt = Clock.System.now().toEpochMilliseconds()
+        val imagePath = "files/labels/locations/loc_${targetLoc.effectiveUuid}.webp"
+        val updatedLoc = targetLoc.withLabelSnapshot(imagePath, genAt, snapshotData)
+        return updateLocation(updatedLoc)
     }
 
     /**
@@ -418,6 +505,7 @@ class StockRepository(
         return StockItemEntity(
             uuid = "stock-$id",
             partId = partId,
+            partUuid = "part-$partId",
             locationId = locationId,
             locationUuid = locationId?.let { "location-$it" },
             quantity = quantity,

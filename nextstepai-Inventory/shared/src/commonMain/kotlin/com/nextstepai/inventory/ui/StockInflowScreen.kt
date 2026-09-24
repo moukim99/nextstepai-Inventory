@@ -6,12 +6,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -21,13 +21,17 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FlashOff
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -52,6 +56,10 @@ fun StockInflowScreen(
     val unrecognizedBarcode by viewModel.unrecognizedBarcode.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
 
+    var isTorchOn by remember { mutableStateOf(false) }
+    var showManualInputDialog by remember { mutableStateOf(false) }
+    var manualBarcodeText by remember { mutableStateOf("") }
+
     var customQtyText by remember { mutableStateOf("1") }
     var showCustomQtyDialog by remember { mutableStateOf(false) }
     var selectedPartForCustomQty by remember { mutableStateOf<PartEntity?>(null) }
@@ -73,35 +81,63 @@ fun StockInflowScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = inflowTitle,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        poReference?.let { po ->
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(25.dp),
+                color = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp),
+                shadowElevation = 2.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            ) {
+                TopAppBar(
+                    title = {
+                        Column {
                             Text(
-                                text = "مرتبط بأمر الشراء: $po",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
+                                text = inflowTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            poReference?.let { po ->
+                                Text(
+                                    text = "مرتبط بأمر الشراء: $po",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onClose) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "رجوع"
                             )
                         }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onClose) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "رجوع"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp)
+                    },
+                    actions = {
+                        // 1. زر تشغيل وإيقاف الفلاش (Torch Toggle)
+                        IconButton(onClick = { isTorchOn = !isTorchOn }) {
+                            Icon(
+                                imageVector = if (isTorchOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
+                                contentDescription = "الفلاش",
+                                tint = if (isTorchOn) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        // 2. زر الإدخال اليدوي للباركود
+                        IconButton(onClick = { showManualInputDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Keyboard,
+                                contentDescription = "إدخال يدوي للباركود"
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent
+                    )
                 )
-            )
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         modifier = modifier.fillMaxSize()
@@ -111,7 +147,7 @@ fun StockInflowScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // 1. عرض الكاميرا المتواصل بدقة إطار المسح
+            // 1. عرض بث الكاميرا المتواصل
             AppCameraKView(
                 onBarcodeDetected = { barcode ->
                     viewModel.onBarcodeScanned(barcode)
@@ -123,27 +159,86 @@ fun StockInflowScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // 2. إطار تركيز المسح المباشر (Scanning Reticle)
-            Box(
-                modifier = Modifier
-                    .size(260.dp)
-                    .align(Alignment.Center)
-                    .border(
-                        width = 3.dp,
-                        color = if (detectedPart != null) Color.Green else MaterialTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(16.dp)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.QrCodeScanner,
-                    contentDescription = "إطار المسح",
-                    tint = Color.White.copy(alpha = 0.5f),
-                    modifier = Modifier.size(54.dp)
-                )
+            // 2. التعتيم الجانبي شبه الشفاف وتفريغ نافذة المسح (Darkened Viewfinder Overlay)
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val reticleWidth = 280.dp.toPx()
+                val reticleHeight = 200.dp.toPx()
+                val left = (size.width - reticleWidth) / 2f
+                val top = (size.height - reticleHeight) / 2f
+
+                val overlayColor = Color.Black.copy(alpha = 0.55f)
+
+                // Top mask
+                drawRect(color = overlayColor, topLeft = Offset(0f, 0f), size = Size(size.width, top))
+                // Bottom mask
+                drawRect(color = overlayColor, topLeft = Offset(0f, top + reticleHeight), size = Size(size.width, size.height - (top + reticleHeight)))
+                // Left mask
+                drawRect(color = overlayColor, topLeft = Offset(0f, top), size = Size(left, reticleHeight))
+                // Right mask
+                drawRect(color = overlayColor, topLeft = Offset(left + reticleWidth, top), size = Size(size.width - (left + reticleWidth), reticleHeight))
             }
 
-            // 3. شريحة التراجع الخاطف (Undo Banner) عند إضافة كمية
+            // 3. زوايا التركيز الاحترافية (Laser Corner Brackets)
+            Box(
+                modifier = Modifier
+                    .size(width = 280.dp, height = 200.dp)
+                    .align(Alignment.Center)
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val strokeWidth = 4.dp.toPx()
+                    val cornerLength = 26.dp.toPx()
+                    val cornerColor = if (detectedPart != null) Color(0xFF10B981) else Color.White
+
+                    // Top-Left
+                    drawLine(cornerColor, Offset(0f, 0f), Offset(cornerLength, 0f), strokeWidth)
+                    drawLine(cornerColor, Offset(0f, 0f), Offset(0f, cornerLength), strokeWidth)
+
+                    // Top-Right
+                    drawLine(cornerColor, Offset(size.width, 0f), Offset(size.width - cornerLength, 0f), strokeWidth)
+                    drawLine(cornerColor, Offset(size.width, 0f), Offset(size.width, cornerLength), strokeWidth)
+
+                    // Bottom-Left
+                    drawLine(cornerColor, Offset(0f, size.height), Offset(cornerLength, size.height), strokeWidth)
+                    drawLine(cornerColor, Offset(0f, size.height), Offset(0f, size.height - cornerLength), strokeWidth)
+
+                    // Bottom-Right
+                    drawLine(cornerColor, Offset(size.width, size.height), Offset(size.width - cornerLength, size.height), strokeWidth)
+                    drawLine(cornerColor, Offset(size.width, size.height), Offset(size.width, size.height - cornerLength), strokeWidth)
+                }
+            }
+
+            // 4. شريحة التوجيه العائمة بنمط كبسولة (Floating Pill Badge)
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = Color.Black.copy(alpha = 0.70f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(y = (-130).dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(if (detectedPart != null) Color(0xFF10B981) else Color(0xFF4F46E5))
+                    )
+                    Text(
+                        text = if (detectedPart != null) "تم التعرف على الصنف بنجاح!" else "وجه الكاميرا نحو باركود الصنف",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.5.sp
+                        ),
+                        color = Color.White
+                    )
+                }
+            }
+
+            // 5. شريحة التراجع الخاطف (Undo Banner) عند إضافة كمية
             AnimatedVisibility(
                 visible = uiState.undoWindowActive && uiState.lastAddedItemForUndo != null,
                 enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
@@ -195,7 +290,7 @@ fun StockInflowScreen(
                 }
             }
 
-            // 4. بطاقة التفاعل مع الأصناف المكتشفة (Registered Known Part)
+            // 6. بطاقة التفاعل مع الأصناف المكتشفة (Registered Known Part)
             detectedPart?.let { part ->
                 Card(
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -271,7 +366,7 @@ fun StockInflowScreen(
                 }
             }
 
-            // 5. بطاقة الصنف الجديد غير المسجل (Unregistered New Part Inline Card)
+            // 7. بطاقة الصنف الجديد غير المسجل (Unregistered New Part Inline Card)
             unrecognizedBarcode?.let { barcode ->
                 Card(
                     shape = RoundedCornerShape(24.dp),
@@ -343,7 +438,7 @@ fun StockInflowScreen(
                 }
             }
 
-            // 6. شريط الإنجاز والسلة المصغرة في أسفل الشاشة (Bottom Inflow Bar)
+            // 8. شريط الإنجاز والسلة المصغرة في أسفل الشاشة (Bottom Inflow Bar)
             Card(
                 shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -388,7 +483,7 @@ fun StockInflowScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(uiState.scannedItems, key = { it.tempId }) { item ->
+                            itemsIndexed(uiState.scannedItems, key = { index, item -> "scanned-${item.tempId}-$index" }) { _, item ->
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
                                     color = MaterialTheme.colorScheme.surface,
@@ -449,6 +544,41 @@ fun StockInflowScreen(
                 }
             }
         }
+    }
+
+    // حوار الإدخال اليدوي للباركود
+    if (showManualInputDialog) {
+        AlertDialog(
+            onDismissRequest = { showManualInputDialog = false },
+            title = { Text("إدخال الباركود يدوياً") },
+            text = {
+                OutlinedTextField(
+                    value = manualBarcodeText,
+                    onValueChange = { manualBarcodeText = it },
+                    label = { Text("أدخل رقم IPN / الباركود") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (manualBarcodeText.isNotBlank()) {
+                            viewModel.onBarcodeScanned(manualBarcodeText)
+                        }
+                        showManualInputDialog = false
+                        manualBarcodeText = ""
+                    }
+                ) {
+                    Text("بحث ومسح")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showManualInputDialog = false }) {
+                    Text("إلغاء")
+                }
+            }
+        )
     }
 
     // حوار إدخال الكمية المخصصة

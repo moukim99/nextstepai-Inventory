@@ -32,6 +32,11 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import org.jetbrains.compose.resources.painterResource
+import nextstepai_inventory.shared.generated.resources.Res
+import nextstepai_inventory.shared.generated.resources.app_logo
 import androidx.compose.ui.unit.sp
 
 /**
@@ -178,23 +183,15 @@ private fun LoginMobileLayout(
                     )
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.primaryContainer,
-                                        MaterialTheme.colorScheme.secondaryContainer
-                                    )
-                                )
-                            ),
+                            .fillMaxSize()
+                            .padding(8.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Inventory,
+                        Image(
+                            painter = painterResource(Res.drawable.app_logo),
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(28.dp)
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
 
@@ -621,16 +618,17 @@ private fun LoginDesktopLayout(
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(46.dp)
+                                        .size(48.dp)
                                         .clip(RoundedCornerShape(14.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .padding(4.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.PrecisionManufacturing,
+                                    Image(
+                                        painter = painterResource(Res.drawable.app_logo),
                                         contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(26.dp)
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier.fillMaxSize()
                                     )
                                 }
                                 Column {

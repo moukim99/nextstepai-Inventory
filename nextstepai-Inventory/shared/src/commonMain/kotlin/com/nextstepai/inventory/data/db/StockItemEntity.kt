@@ -14,6 +14,7 @@ data class StockItemEntity(
     @PrimaryKey
     override val uuid: String,
     val partId: Long,
+    val partUuid: String? = null,
     val locationId: Long? = null,
     val locationUuid: String? = null,
     val quantity: Double = 1.0,

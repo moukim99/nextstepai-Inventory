@@ -98,6 +98,10 @@ class BuildOrderLineItemTable {
         return lineItems.filter { it.buildId == buildId }
     }
 
+    fun getLineItemById(id: Long): BuildOrderLineItem? {
+        return lineItems.find { it.id == id }
+    }
+
     fun allocateStock(lineItemId: Long, quantity: Double): Boolean {
         require(quantity > 0) { "كمية التخصيص يجب أن تكون أكبر من الصفر" }
         val index = lineItems.indexOfFirst { it.id == lineItemId }

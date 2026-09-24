@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -306,7 +307,7 @@ fun PartManagementScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(bottom = 80.dp)
                     ) {
-                        items(uiState.parts, key = { "part-${it.id}" }) { part ->
+                        itemsIndexed(uiState.parts, key = { index, part -> "part-${part.id}-$index" }) { _, part ->
                             val category = uiState.categories.find { c -> c.id == part.categoryId }
                             PartItemCard(
                                 part = part,
@@ -447,9 +448,11 @@ private fun PartsTopBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding(),
+            .statusBarsPadding()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(25.dp),
         color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 1.dp,
+        shadowElevation = 2.dp,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
     ) {
         Row(

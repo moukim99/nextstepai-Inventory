@@ -65,8 +65,9 @@ class BuildOrderRepository(
         }
         if (entities.isNotEmpty()) {
             var result = entities.mapIndexed { index, entity ->
+                val parsedId = entity.uuid.removePrefix("build-").toLongOrNull() ?: (index + 1L)
                 BuildOrder(
-                    id = index + 1L,
+                    id = parsedId,
                     reference = entity.reference,
                     title = entity.title,
                     partId = entity.partId,
@@ -260,14 +261,72 @@ class BuildOrderRepository(
      * تخصيص مخزون لبند في أمر التصنيع (Allocate Stock).
      */
     fun allocateStock(lineItemId: Long, quantity: Double): Boolean {
-        return lineItemTable.allocateStock(lineItemId, quantity)
+        val success = lineItemTable.allocateStock(lineItemId, quantity)
+        if (success) {
+            val item = lineItemTable.getLineItemById(lineItemId)
+            if (item != null) {
+                runBlocking {
+                    lineItemDao.insertOrUpdate(
+                        BuildOrderLineItemEntity(
+                            uuid = "lineitem-${item.id}",
+                            id = item.id,
+                            buildId = item.buildId,
+                            buildUuid = item.buildUuid.ifBlank { "build-${item.buildId}" },
+                            bomItemId = item.bomItemId,
+                            bomItemUuid = item.bomItemUuid.ifBlank { "bom-${item.bomItemId}" },
+                            subPartId = item.subPartId,
+                            subPartName = item.subPartName,
+                            quantity = item.quantity,
+                            allocatedQuantity = item.allocatedQuantity,
+                            consumedQuantity = item.consumedQuantity,
+                            notes = item.notes,
+                            phaseUuid = item.phaseUuid,
+                            unitCost = item.unitCost,
+                            syncStatus = SyncStatus.PENDING,
+                            isDeleted = false,
+                            updatedAt = Clock.System.now().toEpochMilliseconds()
+                        )
+                    )
+                }
+            }
+        }
+        return success
     }
 
     /**
      * استهلاك مخزون مخصص للبند (Consume Stock).
      */
     fun consumeStock(lineItemId: Long, quantity: Double): Boolean {
-        return lineItemTable.consumeStock(lineItemId, quantity)
+        val success = lineItemTable.consumeStock(lineItemId, quantity)
+        if (success) {
+            val item = lineItemTable.getLineItemById(lineItemId)
+            if (item != null) {
+                runBlocking {
+                    lineItemDao.insertOrUpdate(
+                        BuildOrderLineItemEntity(
+                            uuid = "lineitem-${item.id}",
+                            id = item.id,
+                            buildId = item.buildId,
+                            buildUuid = item.buildUuid.ifBlank { "build-${item.buildId}" },
+                            bomItemId = item.bomItemId,
+                            bomItemUuid = item.bomItemUuid.ifBlank { "bom-${item.bomItemId}" },
+                            subPartId = item.subPartId,
+                            subPartName = item.subPartName,
+                            quantity = item.quantity,
+                            allocatedQuantity = item.allocatedQuantity,
+                            consumedQuantity = item.consumedQuantity,
+                            notes = item.notes,
+                            phaseUuid = item.phaseUuid,
+                            unitCost = item.unitCost,
+                            syncStatus = SyncStatus.PENDING,
+                            isDeleted = false,
+                            updatedAt = Clock.System.now().toEpochMilliseconds()
+                        )
+                    )
+                }
+            }
+        }
+        return success
     }
 
     /**

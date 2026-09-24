@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -31,6 +32,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.nextstepai.inventory.ui.theme.AppIcons
 import kotlin.time.Clock
 import org.jetbrains.compose.resources.stringResource
@@ -46,7 +49,8 @@ private enum class WarehouseSubView {
     MAIN_DASHBOARD,
     STOCK,
     PARTS,
-    STOCK_INFLOW
+    STOCK_INFLOW,
+    LOCATIONS
 }
 
 /**
@@ -210,6 +214,7 @@ fun WarehouseScreen(
                             categoriesCount = partUiState.categories.size,
                             onOpenStockClick = { currentSubView = WarehouseSubView.STOCK },
                             onOpenPartsClick = { currentSubView = WarehouseSubView.PARTS },
+                            onOpenLocationsClick = { currentSubView = WarehouseSubView.LOCATIONS },
                             modifier = Modifier.padding(paddingValues)
                         )
                     }
@@ -242,13 +247,24 @@ fun WarehouseScreen(
                         onBackClick = { currentSubView = WarehouseSubView.MAIN_DASHBOARD }
                     )
                 }
-                WarehouseSubView.STOCK_INFLOW -> {
-                    StockInflowScreen(
-                        viewModel = inflowViewModel,
-                        inflowTitle = activeInflowOption?.title ?: "استلام توريد خارجي",
-                        poReference = "PO-2025-001",
-                        onClose = { currentSubView = WarehouseSubView.MAIN_DASHBOARD }
+                WarehouseSubView.LOCATIONS -> {
+                    LocationManagementScreen(
+                        viewModel = stockViewModel,
+                        onBackClick = { currentSubView = WarehouseSubView.MAIN_DASHBOARD }
                     )
+                }
+                WarehouseSubView.STOCK_INFLOW -> {
+                    Popup(
+                        onDismissRequest = { currentSubView = WarehouseSubView.MAIN_DASHBOARD },
+                        properties = PopupProperties(focusable = true, clippingEnabled = false)
+                    ) {
+                        StockInflowScreen(
+                            viewModel = inflowViewModel,
+                            inflowTitle = activeInflowOption?.title ?: "استلام توريد خارجي",
+                            poReference = "PO-2025-001",
+                            onClose = { currentSubView = WarehouseSubView.MAIN_DASHBOARD }
+                        )
+                    }
                 }
             }
         }
@@ -263,6 +279,7 @@ private fun WarehouseMainDashboard(
     categoriesCount: Int,
     onOpenStockClick: () -> Unit,
     onOpenPartsClick: () -> Unit,
+    onOpenLocationsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -553,6 +570,111 @@ private fun WarehouseMainDashboard(
                     ) {
                         Text(
                             text = stringResource(Res.string.open_parts),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // 4. بطاقة قسم أماكن وهيكل التخزين (Storage Locations Card)
+        ElevatedCard(
+            onClick = onOpenLocationsClick,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+            colors = CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFFEF3C7)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AccountTree,
+                            contentDescription = null,
+                            tint = Color(0xFFD97706),
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "أماكن وهيكل التخزين",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "إدارة المستودعات، الأرفف، ضبط السعات، وطباعة ملصقات الـ QR الميدانية",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2
+                        )
+                    }
+
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = null,
+                        tint = Color(0xFFD97706),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AssistChip(
+                            onClick = {},
+                            label = { Text("📍 $locationsCount موقع") },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = Color(0xFFFEF3C7),
+                                labelColor = Color(0xFF92400E)
+                            ),
+                            border = null
+                        )
+                    }
+
+                    Button(
+                        onClick = onOpenLocationsClick,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFD97706)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "استعراض المواقع",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.Bold
                             )

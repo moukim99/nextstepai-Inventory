@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -272,7 +273,7 @@ fun PurchaseOrderScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(bottom = 80.dp)
                     ) {
-                        items(uiState.orders, key = { "po-${it.id}" }) { order ->
+                        itemsIndexed(uiState.orders, key = { index, order -> "po-${order.id}-$index" }) { _, order ->
                             PurchaseOrderCard(
                                 order = order,
                                 onClick = { viewModel.selectOrder(order) }
@@ -347,7 +348,9 @@ private fun PurchaseOrdersTopBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding(),
+            .statusBarsPadding()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(25.dp),
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = 2.dp,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))

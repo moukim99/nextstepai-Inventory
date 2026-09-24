@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,20 +52,31 @@ fun SalesOrderScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("أوامر البيع ومحرك تلبية الطلبات", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text("إدارة طلبات العملاء والتحويل التلقائي للتصنيع والشراء", fontSize = 11.5.sp, color = Color(0xFF64748B))
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
-            )
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(25.dp),
+                color = Color.White,
+                shadowElevation = 2.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            ) {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text("أوامر البيع ومحرك تلبية الطلبات", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            Text("إدارة طلبات العملاء والتحويل التلقائي للتصنيع والشراء", fontSize = 11.5.sp, color = Color(0xFF64748B))
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                )
+            }
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
@@ -122,7 +134,7 @@ fun SalesOrderScreen(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(uiState.orders, key = { "so-item-${it.id}" }) { order ->
+                    itemsIndexed(uiState.orders, key = { index, order -> "so-item-${order.id}-$index" }) { _, order ->
                         SalesOrderCard(order = order, onClick = { viewModel.selectOrder(order) })
                     }
                 }

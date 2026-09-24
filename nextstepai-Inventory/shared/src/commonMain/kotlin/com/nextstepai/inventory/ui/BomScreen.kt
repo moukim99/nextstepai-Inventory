@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -334,7 +335,7 @@ fun BomScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(bottom = 80.dp)
                     ) {
-                        items(filteredBomItems, key = { "bom-${it.uuid.ifBlank { it.id.toString() }}" }) { bomItem ->
+                        itemsIndexed(filteredBomItems, key = { index, it -> "bom-${it.uuid.ifBlank { it.id.toString() }}-$index" }) { _, bomItem ->
                             val component = uiState.allParts.find { it.id == bomItem.subPartId }
                             val substitutes = uiState.substitutesMap[bomItem.id] ?: emptyList()
                             BomItemCard(
@@ -449,7 +450,9 @@ private fun BomTopBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding(),
+            .statusBarsPadding()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(25.dp),
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = 2.dp,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))

@@ -172,16 +172,16 @@ object TestDataGenerator {
                 INSERT INTO stock_locations (
                     uuid, locationId, name, description, parentId, parentUuid,
                     structural, external, locationType, ownerId, icon, customIcon,
-                    level, lft, rght, treeId, metadata, syncStatus, isDeleted, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
+                    customCapacity, level, lft, rght, treeId, metadata, syncStatus, isDeleted, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val locations = listOf(
-                    listOf("loc-001", 1L, "المستودع المركزي - الجزائر العاصمة", "المستودع الرئيسي للمواد والقطع", null, null, 1L, 0L, "WAREHOUSE", 1L, "warehouse", "", 0L, 1L, 12L, 1L, "{}"),
-                    listOf("loc-002", 2L, "رف الشرائح والدائريات A-01", "مخصص للمتحكمات والشريحات SMD", 1L, "loc-001", 0L, 0L, "SHELF", 1L, "shelves", "", 1L, 2L, 5L, 1L, "{}"),
-                    listOf("loc-003", 3L, "رف المكونات السلبية B-02", "مخصص للمكثفات والمقاومات والملفات", 1L, "loc-001", 0L, 0L, "SHELF", 1L, "shelves", "", 1L, 6L, 9L, 1L, "{}"),
-                    listOf("loc-004", 4L, "خط الإنتاج والتجميع الرئيسي P-10", "موقع تجميع اللوحات وأوامر البناء", 1L, "loc-001", 0L, 0L, "LINE", 1L, "factory", "", 1L, 10L, 11L, 1L, "{}"),
-                    listOf("loc-005", 5L, "مخزن وهران للتوزيع الغربي", "مستودع فرعي للشحن الإقليمي", null, null, 1L, 0L, "WAREHOUSE", 1L, "warehouse", "", 0L, 13L, 16L, 2L, "{}"),
-                    listOf("loc-006", 6L, "منطقة الفحص والجودة (Quarantine Zone)", "منطقة عزل المنتجات قيد الفحص", 1L, "loc-001", 0L, 0L, "AREA", 1L, "shield", "", 1L, 17L, 18L, 1L, "{}")
+                    listOf("loc-001", 1L, "المستودع المركزي - الجزائر العاصمة", "المستودع الرئيسي للمواد والقطع", null, null, 1L, 0L, "WAREHOUSE", 1L, "warehouse", "", 10000.0, 0L, 1L, 12L, 1L, "{}"),
+                    listOf("loc-002", 2L, "رف الشرائح والدائريات A-01", "مخصص للمتحكمات والشريحات SMD", 1L, "loc-001", 0L, 0L, "SHELF", 1L, "shelves", "", 500.0, 1L, 2L, 5L, 1L, "{}"),
+                    listOf("loc-003", 3L, "رف المكونات السلبية B-02", "مخصص للمكثفات والمقاومات والملفات", 1L, "loc-001", 0L, 0L, "SHELF", 1L, "shelves", "", 1000.0, 1L, 6L, 9L, 1L, "{}"),
+                    listOf("loc-004", 4L, "خط الإنتاج والتجميع الرئيسي P-10", "موقع تجميع اللوحات وأوامر البناء", 1L, "loc-001", 0L, 0L, "LINE", 1L, "factory", "", 250.0, 1L, 10L, 11L, 1L, "{}"),
+                    listOf("loc-005", 5L, "مخزن وهران للتوزيع الغربي", "مستودع فرعي للشحن الإقليمي", null, null, 1L, 0L, "WAREHOUSE", 1L, "warehouse", "", 5000.0, 0L, 13L, 16L, 2L, "{}"),
+                    listOf("loc-006", 6L, "منطقة الفحص والجودة (Quarantine Zone)", "منطقة عزل المنتجات قيد الفحص", 1L, "loc-001", 0L, 0L, "AREA", 1L, "shield", "", 300.0, 1L, 17L, 18L, 1L, "{}")
                 )
                 for (l in locations) {
                     stmt.bindText(1, l[0] as String)
@@ -196,12 +196,13 @@ object TestDataGenerator {
                     stmt.bindLong(10, l[9] as Long)
                     stmt.bindText(11, l[10] as String)
                     stmt.bindText(12, l[11] as String)
-                    stmt.bindLong(13, l[12] as Long)
+                    stmt.bindDouble(13, l[12] as Double)
                     stmt.bindLong(14, l[13] as Long)
                     stmt.bindLong(15, l[14] as Long)
                     stmt.bindLong(16, l[15] as Long)
-                    stmt.bindText(17, l[16] as String)
-                    stmt.bindLong(18, now)
+                    stmt.bindLong(17, l[16] as Long)
+                    stmt.bindText(18, l[17] as String)
+                    stmt.bindLong(19, now)
                     stmt.step()
                     stmt.reset()
                 }

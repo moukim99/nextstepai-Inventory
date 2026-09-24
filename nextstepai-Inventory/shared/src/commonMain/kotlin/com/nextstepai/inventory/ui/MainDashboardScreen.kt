@@ -248,7 +248,9 @@ private fun DashboardTopHeader(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding(),
+            .statusBarsPadding()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(25.dp),
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = 2.dp,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))

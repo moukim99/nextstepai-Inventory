@@ -3,6 +3,7 @@ package com.nextstepai.inventory.data.db
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
 import com.nextstepai.inventory.sync.SyncStatus
+import kotlin.time.Clock
 
 /**
  * كائن الوصول لبيانات مواقع التخزين (StockLocationDao) باستعلامات معلّمة صريحة (Parameterized Bind Queries).
@@ -71,6 +72,23 @@ class StockLocationDao {
             }
         }
         return insertedCount
+    }
+
+    suspend fun softDeleteLocation(locationId: Long, updatedAt: Long = Clock.System.now().toEpochMilliseconds()) {
+        runCatching {
+            val conn = SqliteDatabaseManager.getConnection()
+            val sql = """
+                UPDATE stock_locations
+                SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ?
+                WHERE locationId = ? OR uuid = ?
+            """.trimIndent()
+            conn.prepare(sql).use { stmt ->
+                stmt.bindLong(1, updatedAt)
+                stmt.bindLong(2, locationId)
+                stmt.bindText(3, "location-$locationId")
+                stmt.step()
+            }
+        }
     }
 
     private fun bindLocationEntity(stmt: SQLiteStatement, entity: StockLocationEntity) {

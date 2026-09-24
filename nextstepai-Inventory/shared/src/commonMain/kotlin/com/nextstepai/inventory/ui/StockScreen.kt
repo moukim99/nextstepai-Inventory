@@ -37,6 +37,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nextstepai.inventory.ui.components.CurrencySelectionBottomSheet
 import com.nextstepai.inventory.ui.components.CurrencySelectorField
+import com.nextstepai.inventory.ui.components.PrintableLabelBottomSheet
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
@@ -62,6 +63,9 @@ import com.nextstepai.inventory.data.StockItemTestResult
 import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockLocationType
+import com.nextstepai.inventory.data.capacityUnit
+import com.nextstepai.inventory.data.effectiveCapacity
+import com.nextstepai.inventory.data.calculateOccupancyPercentage
 import com.nextstepai.inventory.data.StockStatus
 import nextstepai_inventory.shared.generated.resources.Res
 import nextstepai_inventory.shared.generated.resources.add_new_stock
@@ -92,35 +96,9 @@ fun StockScreen(
             )
         },
         floatingActionButton = {
-            Column(
-                horizontalAlignment = Alignment.Start,
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+            Box(
                 modifier = Modifier.padding(bottom = 20.dp, start = 12.dp, end = 12.dp)
             ) {
-                // زر إضافة موقع المتموضع أعلى زر إضافة وحدة بنفس الحجم والنمط
-                ExtendedFloatingActionButton(
-                    onClick = { viewModel.setAddLocationDialogOpen(true) },
-                    containerColor = Color.White,
-                    contentColor = Color(0xFF4F46E5),
-                    shape = RoundedCornerShape(18.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 5.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AddLocation,
-                        contentDescription = "إضافة موقع",
-                        tint = Color(0xFF4F46E5),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "إضافة موقع",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.5.sp
-                        )
-                    )
-                }
-
                 // زر إضافة وحدة
                 ExtendedFloatingActionButton(
                     onClick = { viewModel.setAddDialogOpen(true) },
@@ -332,7 +310,7 @@ fun StockScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(bottom = 80.dp)
                     ) {
-                        items(filteredStock, key = { "stock-${it.id}" }) { item ->
+                        itemsIndexed(filteredStock, key = { index, item -> "stock-${item.id}-$index" }) { _, item ->
                             val part = uiState.parts.find { it.id == item.partId }
                             val loc = uiState.locations.find { it.id == item.locationId }
                             StockItemCard(
@@ -455,7 +433,7 @@ fun StockScreen(
             users = uiState.users,
             locationTypes = uiState.locationTypes,
             onDismiss = { viewModel.setAddLocationDialogOpen(false) },
-            onConfirm = { name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address ->
+            onConfirm = { name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address, customCapacity, capacityUnit ->
                 viewModel.addLocation(
                     name = name,
                     description = desc,
@@ -466,10 +444,12 @@ fun StockScreen(
                     icon = icon,
                     ownerId = ownerId,
                     customIcon = customIcon,
-                    address = address
+                    address = address,
+                    customCapacity = customCapacity,
+                    capacityUnit = capacityUnit
                 )
             },
-            onConfirmBulk = { parentId, locationType, prefix, startNum, endNum, padZeros, desc ->
+            onConfirmBulk = { parentId, locationType, prefix, startNum, endNum, padZeros, desc, customCapacity ->
                 viewModel.generateBulkLocations(
                     parentId = parentId,
                     locationType = locationType,
@@ -477,6 +457,7 @@ fun StockScreen(
                     startNumber = startNum,
                     endNumber = endNum,
                     padZeros = padZeros,
+                    customCapacity = customCapacity,
                     description = desc
                 )
             }
@@ -563,9 +544,11 @@ private fun StockTopBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding(),
+            .statusBarsPadding()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(25.dp),
         color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 1.dp,
+        shadowElevation = 2.dp,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
     ) {
         Row(
@@ -996,7 +979,7 @@ private fun StockAttachmentsBottomSheet(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth().weight(1f)
                     ) {
-                        items(attachments, key = { "att-${it.id}" }) { att ->
+                        itemsIndexed(attachments, key = { index, att -> "att-${att.id}-$index" }) { _, att ->
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = Color(0xFFF8FAFC),
@@ -1259,7 +1242,7 @@ private fun StockTestResultsBottomSheet(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth().weight(1f)
                     ) {
-                        items(results, key = { "test-${it.id}" }) { res ->
+                        itemsIndexed(results, key = { index, res -> "test-${res.id}-$index" }) { _, res ->
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = if (res.result) Color(0xFFECFDF5) else Color(0xFFFEF2F2),
@@ -1542,7 +1525,7 @@ private fun StockTrackingHistoryBottomSheet(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth().weight(1f)
                     ) {
-                        items(logs, key = { "track-${it.id}" }) { log ->
+                        itemsIndexed(logs, key = { index, log -> "track-${log.id}-$index" }) { _, log ->
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = Color(0xFFF8FAFC),
@@ -2080,6 +2063,148 @@ private fun SelectOwnerBottomSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun SelectCapacityUnitBottomSheet(
+    selectedUnit: String,
+    onDismiss: () -> Unit,
+    onUnitSelected: (String) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var tempSelectedUnit by remember { mutableStateOf(selectedUnit) }
+
+    val unitOptions = remember {
+        listOf(
+            Triple("قطعة", "📦 قطعة / وحدة مادية (PCS)", "المعيار الافتراضي لعد القطع والمنتجات الفردية"),
+            Triple("كغ", "⚖️ كيلوغرام (Kg)", "معيار الوزن التراكمي للمواد الخام والصب والفلزات"),
+            Triple("طن", "🏗️ طن (Ton)", "معيار الوزن الثقيل للشحنات والحمولات الضخمة"),
+            Triple("م³", "📐 متر مكعب (m³)", "معيار الحجم والاطراد المكاني للأرضيات والحاويات"),
+            Triple("م²", "🏁 متر مربع (m²)", "معيار المساحة المسطحة للحاويات والأرضيات المفتوحة"),
+            Triple("صندوق", "📥 صندوق / حاوية (Bin)", "معيار العد بحجم الصناديق والحاويات التخزينية"),
+            Triple("طبلية", "🪵 طبلية (Pallet)", "معيار الحمولات المرصوفة على المنصات الخشبية"),
+            Triple("بكرة", "🧵 بكرة (Reel)", "معيار بكرات الكوابل والأسلاك والأشرطة")
+        )
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFEEF2FF)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = null,
+                            tint = Color(0xFF4F46E5),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "اختيار وحدة قياس السعة التخزينية",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.5.sp
+                            ),
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            text = "حدد المعيار الفيزيائي لقياس السعة القصوى للرف أو الوعاء",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = Color(0xFF64748B)
+                        )
+                    }
+                }
+
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "إغلاق",
+                        tint = Color(0xFF64748B)
+                    )
+                }
+            }
+
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                unitOptions.forEach { (code, title, desc) ->
+                    val isSelected = tempSelectedUnit == code
+                    Surface(
+                        onClick = {
+                            tempSelectedUnit = code
+                            onUnitSelected(code)
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isSelected) Color(0xFFEEF2FF) else Color(0xFFF8FAFC),
+                        border = BorderStroke(1.dp, if (isSelected) Color(0xFF4F46E5) else Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = title,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.5.sp
+                                    ),
+                                    color = if (isSelected) Color(0xFF3730A3) else Color(0xFF0F172A)
+                                )
+                                Text(
+                                    text = desc,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = Color(0xFF64748B)
+                                )
+                            }
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = Color(0xFF4F46E5),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun LocationTypeSelectionBottomSheet(
     selectedLocationType: String,
     onDismiss: () -> Unit,
@@ -2467,7 +2592,7 @@ private fun ParentLocationSelectionBottomSheet(
                     }
                 }
 
-                items(filteredLocations, key = { "parent-loc-${it.id}" }) { loc ->
+                itemsIndexed(filteredLocations, key = { index, loc -> "parent-loc-${loc.id}-$index" }) { _, loc ->
                     val isSelected = tempSelectedParentId == loc.id
                     val fullParentPath = getFullPathForLocation(locations, loc.parentId, separator = " > ")
                     Surface(
@@ -2583,10 +2708,11 @@ private fun ParentLocationSelectionBottomSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddStockLocationBottomSheet(
+internal fun AddStockLocationBottomSheet(
     locations: List<StockLocation>,
     users: List<AppUser> = emptyList(),
     locationTypes: List<StockLocationType> = emptyList(),
+    initialLocation: StockLocation? = null,
     onDismiss: () -> Unit,
     onConfirm: (
         name: String,
@@ -2598,7 +2724,9 @@ private fun AddStockLocationBottomSheet(
         icon: String,
         ownerId: Long?,
         customIcon: String,
-        address: String
+        address: String,
+        customCapacity: Double?,
+        capacityUnit: String
     ) -> Unit,
     onConfirmBulk: (
         parentId: Long?,
@@ -2607,23 +2735,33 @@ private fun AddStockLocationBottomSheet(
         startNumber: Int,
         endNumber: Int,
         padZeros: Boolean,
-        description: String
+        description: String,
+        customCapacity: Double?
     ) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    val isEditMode = initialLocation != null
     var isBulkMode by remember { mutableStateOf(false) }
+    var showEditConfirmationDialog by remember { mutableStateOf(false) }
 
     // Single Mode States
-    var name by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var address by remember { mutableStateOf("") }
-    var selectedParentId by remember { mutableStateOf<Long?>(null) }
-    var locationType by remember { mutableStateOf("SHELF") }
-    var structural by remember { mutableStateOf(false) }
-    var external by remember { mutableStateOf(false) }
-    var icon by remember { mutableStateOf("shelves") }
-    var selectedOwner by remember { mutableStateOf<AppUser?>(null) }
+    var name by remember { mutableStateOf(initialLocation?.name ?: "") }
+    var description by remember { mutableStateOf(initialLocation?.description ?: "") }
+    var address by remember { mutableStateOf(initialLocation?.address ?: "") }
+    var customCapacityText by remember { mutableStateOf(initialLocation?.customCapacity?.toString() ?: "") }
+    var capacityUnit by remember { mutableStateOf(initialLocation?.capacityUnit ?: "قطعة") }
+    var selectedParentId by remember { mutableStateOf<Long?>(initialLocation?.parentId) }
+    var locationType by remember { mutableStateOf(initialLocation?.locationType ?: "SHELF") }
+    var structural by remember { mutableStateOf(initialLocation?.structural ?: false) }
+    var external by remember { mutableStateOf(initialLocation?.external ?: false) }
+    var icon by remember { mutableStateOf(initialLocation?.icon ?: "shelves") }
+    var selectedOwner by remember {
+        mutableStateOf<AppUser?>(users.find { user ->
+            val uId = user.uuid.filter { it.isDigit() }.toLongOrNull() ?: user.uuid.hashCode().toLong().absoluteValue
+            uId == initialLocation?.ownerId
+        })
+    }
 
     // Bulk Mode States
     var prefix by remember { mutableStateOf("R-") }
@@ -2631,11 +2769,24 @@ private fun AddStockLocationBottomSheet(
     var endNumberText by remember { mutableStateOf("20") }
     var padZeros by remember { mutableStateOf(true) }
     var bulkDescription by remember { mutableStateOf("") }
+    var bulkCapacityText by remember { mutableStateOf("") }
 
     // BottomSheet Pickers State
     var isOwnerPickerOpen by remember { mutableStateOf(false) }
     var isLocationTypePickerOpen by remember { mutableStateOf(false) }
     var isParentLocationPickerOpen by remember { mutableStateOf(false) }
+    var isCapacityUnitPickerOpen by remember { mutableStateOf(false) }
+
+    if (isCapacityUnitPickerOpen) {
+        SelectCapacityUnitBottomSheet(
+            selectedUnit = capacityUnit,
+            onDismiss = { isCapacityUnitPickerOpen = false },
+            onUnitSelected = { unit ->
+                capacityUnit = unit
+                isCapacityUnitPickerOpen = false
+            }
+        )
+    }
 
     if (isOwnerPickerOpen) {
         SelectOwnerBottomSheet(
@@ -2719,7 +2870,7 @@ private fun AddStockLocationBottomSheet(
                     }
                     Column {
                         Text(
-                            text = if (isBulkMode) "توليد مواقع تخزينية متسلسلة" else "إضافة موقع تخزيني جديد",
+                            text = if (isEditMode) "التعديل على موقع تخزين" else if (isBulkMode) "توليد مواقع تخزينية متسلسلة" else "إضافة موقع تخزيني جديد",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp
@@ -2727,7 +2878,7 @@ private fun AddStockLocationBottomSheet(
                             color = Color(0xFF0F172A)
                         )
                         Text(
-                            text = if (isBulkMode) "معالج التوليد الدفعي المتسلسل للأرفف والحاويات" else "إدخال موقع تخزين فريد في شجرة المستودع",
+                            text = if (isEditMode) "تحديث وتعديل كافة حقول بيانات وسعة هذا الموقع" else if (isBulkMode) "معالج التوليد الدفعي المتسلسل للأرفف والحاويات" else "إدخال موقع تخزين فريد في شجرة المستودع",
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                             color = Color(0xFF64748B)
                         )
@@ -2754,71 +2905,73 @@ private fun AddStockLocationBottomSheet(
                     .padding(horizontal = 20.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Creation Mode Toggle (فردي vs توليد متسلسل)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFF1F5F9))
-                        .padding(4.dp)
-                ) {
-                    Surface(
-                        onClick = { isBulkMode = false },
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (!isBulkMode) Color.White else Color.Transparent,
-                        shadowElevation = if (!isBulkMode) 2.dp else 0.dp,
-                        modifier = Modifier.weight(1f)
+                // Creation Mode Toggle (فردي vs توليد متسلسل - يُخفى في حالة التعديل)
+                if (!isEditMode) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFF1F5F9))
+                            .padding(4.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            onClick = { isBulkMode = false },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (!isBulkMode) Color.White else Color.Transparent,
+                            shadowElevation = if (!isBulkMode) 2.dp else 0.dp,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.AddLocation,
-                                contentDescription = null,
-                                tint = if (!isBulkMode) Color(0xFF4F46E5) else Color(0xFF64748B),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "إضافة موقع فردي",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.5.sp
-                                ),
-                                color = if (!isBulkMode) Color(0xFF0F172A) else Color(0xFF64748B)
-                            )
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AddLocation,
+                                    contentDescription = null,
+                                    tint = if (!isBulkMode) Color(0xFF4F46E5) else Color(0xFF64748B),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "إضافة موقع فردي",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.5.sp
+                                    ),
+                                    color = if (!isBulkMode) Color(0xFF0F172A) else Color(0xFF64748B)
+                                )
+                            }
                         }
-                    }
 
-                    Surface(
-                        onClick = { isBulkMode = true },
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (isBulkMode) Color(0xFF4F46E5) else Color.Transparent,
-                        shadowElevation = if (isBulkMode) 2.dp else 0.dp,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            onClick = { isBulkMode = true },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isBulkMode) Color(0xFF4F46E5) else Color.Transparent,
+                            shadowElevation = if (isBulkMode) 2.dp else 0.dp,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.FlashOn,
-                                contentDescription = null,
-                                tint = if (isBulkMode) Color.White else Color(0xFF64748B),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "توليد متسلسل / متعدد ⚡",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.5.sp
-                                ),
-                                color = if (isBulkMode) Color.White else Color(0xFF64748B)
-                            )
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FlashOn,
+                                    contentDescription = null,
+                                    tint = if (isBulkMode) Color.White else Color(0xFF64748B),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "توليد متسلسل / متعدد ⚡",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.5.sp
+                                    ),
+                                    color = if (isBulkMode) Color.White else Color(0xFF64748B)
+                                )
+                            }
                         }
                     }
                 }
@@ -3211,6 +3364,88 @@ private fun AddStockLocationBottomSheet(
                         )
                     }
 
+                    OutlinedTextField(
+                        value = customCapacityText,
+                        onValueChange = { customCapacityText = it },
+                        label = { Text("السعة التخزينية القصوى للموقع (customCapacity)") },
+                        placeholder = { Text("مثال: 500 أو 1000") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF4F46E5),
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        )
+                    )
+
+                    // Capacity Unit Selection Card (Matching design with other pickers)
+                    Surface(
+                        color = Color(0xFFF8FAFC),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isCapacityUnitPickerOpen = true }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFFEEF2FF)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tune,
+                                        contentDescription = null,
+                                        tint = Color(0xFF4F46E5),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                Column {
+                                    Text(
+                                        text = "وحدة قياس السعة التخزينية (Capacity Unit)",
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp
+                                        ),
+                                        color = Color(0xFF0F172A)
+                                    )
+                                    Text(
+                                        text = "المعيار المعتمد: $capacityUnit",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = Color(0xFF4F46E5)
+                                    )
+                                }
+                            }
+
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "اختر وحدة القياس",
+                                tint = Color(0xFF64748B),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
                     // Owner / Supervisor Selection Card
                     Surface(
                         color = Color(0xFFF8FAFC),
@@ -3292,22 +3527,28 @@ private fun AddStockLocationBottomSheet(
                         Button(
                             onClick = {
                                 if (name.isNotBlank()) {
-                                    val calculatedOwnerId = selectedOwner?.let { user ->
-                                        user.uuid.filter { it.isDigit() }.toLongOrNull()
-                                            ?: user.uuid.hashCode().toLong().absoluteValue
+                                    if (isEditMode) {
+                                        showEditConfirmationDialog = true
+                                    } else {
+                                        val calculatedOwnerId = selectedOwner?.let { user ->
+                                            user.uuid.filter { it.isDigit() }.toLongOrNull()
+                                                ?: user.uuid.hashCode().toLong().absoluteValue
+                                        }
+                                        onConfirm(
+                                            name.trim(),
+                                            description.trim(),
+                                            selectedParentId,
+                                            structural,
+                                            external,
+                                            locationType,
+                                            icon,
+                                            calculatedOwnerId,
+                                            "",
+                                            address.trim(),
+                                            customCapacityText.toDoubleOrNull(),
+                                            capacityUnit
+                                        )
                                     }
-                                    onConfirm(
-                                        name.trim(),
-                                        description.trim(),
-                                        selectedParentId,
-                                        structural,
-                                        external,
-                                        locationType,
-                                        icon,
-                                        calculatedOwnerId,
-                                        "",
-                                        address.trim()
-                                    )
                                 }
                             },
                             enabled = name.isNotBlank(),
@@ -3318,8 +3559,63 @@ private fun AddStockLocationBottomSheet(
                             ),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text(stringResource(Res.string.save), fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (isEditMode) "حفظ التحديثات" else stringResource(Res.string.save),
+                                fontWeight = FontWeight.Bold
+                            )
                         }
+                    }
+
+                    if (showEditConfirmationDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showEditConfirmationDialog = false },
+                            icon = {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = null,
+                                    tint = Color(0xFF4F46E5)
+                                )
+                            },
+                            title = {
+                                Text("تأكيد التعديل على الموقع")
+                            },
+                            text = {
+                                Text("هل أنت تأكد من رغبتك في حفظ وتأكيد التحديثات الجديدة على بيانات وسعة موقع التخزين؟")
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        showEditConfirmationDialog = false
+                                        val calculatedOwnerId = selectedOwner?.let { user ->
+                                            user.uuid.filter { it.isDigit() }.toLongOrNull()
+                                                ?: user.uuid.hashCode().toLong().absoluteValue
+                                        }
+                                        onConfirm(
+                                            name.trim(),
+                                            description.trim(),
+                                            selectedParentId,
+                                            structural,
+                                            external,
+                                            locationType,
+                                            icon,
+                                            calculatedOwnerId,
+                                            "",
+                                            address.trim(),
+                                            customCapacityText.toDoubleOrNull(),
+                                            capacityUnit
+                                        )
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
+                                ) {
+                                    Text("تأكيد التحديث")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showEditConfirmationDialog = false }) {
+                                    Text("إلغاء")
+                                }
+                            }
+                        )
                     }
                 } else {
                     // Bulk Location Generator Form Body
@@ -3655,6 +3951,21 @@ private fun AddStockLocationBottomSheet(
                         )
                     )
 
+                    OutlinedTextField(
+                        value = bulkCapacityText,
+                        onValueChange = { bulkCapacityText = it },
+                        label = { Text("السعة التخزينية القصوى لكل موقع مولد") },
+                        placeholder = { Text("مثال: 200 وحدة لكل رف") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF4F46E5),
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                        )
+                    )
+
                     // Live Preview Banner
                     val sNum = startNumberText.toIntOrNull() ?: 1
                     val eNum = endNumberText.toIntOrNull() ?: 20
@@ -3728,7 +4039,8 @@ private fun AddStockLocationBottomSheet(
                                         start,
                                         end,
                                         padZeros,
-                                        bulkDescription.trim()
+                                        bulkDescription.trim(),
+                                        bulkCapacityText.toDoubleOrNull()
                                     )
                                 }
                             },
@@ -5843,14 +6155,14 @@ private fun AddStockItemBottomSheet(
             users = users,
             locationTypes = locationTypes,
             onDismiss = { isAddNewLocationSheetOpen = false },
-            onConfirm = { name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address ->
+            onConfirm = { name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address, customCapacity, capacityUnit ->
                 val insertedLocation = onAddNewLocation(
                     name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address
                 )
                 selectedLocationId = insertedLocation.id
                 isAddNewLocationSheetOpen = false
             },
-            onConfirmBulk = { parentId, locationType, prefix, startNum, endNum, padZeros, desc ->
+            onConfirmBulk = { parentId, locationType, prefix, startNum, endNum, padZeros, desc, customCapacity ->
                 onAddNewLocationBulk?.invoke(parentId, locationType, prefix, startNum, endNum, padZeros, desc)
                 isAddNewLocationSheetOpen = false
             }
@@ -6820,6 +7132,7 @@ private fun StockFilterBottomSheet(
     var searchQuery by remember { mutableStateOf("") }
     var selectedTab by remember { mutableIntStateOf(0) }
     var selectedLocationIds by remember { mutableStateOf(uiState.selectedLocationIds) }
+    var selectedLocationForLabel by remember { mutableStateOf<StockLocation?>(null) }
     var inStockOnly by remember { mutableStateOf(false) }
     var lowStockOnly by remember { mutableStateOf(false) }
     var outOfStockOnly by remember { mutableStateOf(false) }
@@ -7032,6 +7345,16 @@ private fun StockFilterBottomSheet(
                             val count = remember(loc.id, uiState.allStockItems) {
                                 uiState.allStockItems.count { it.locationId == loc.id }
                             }
+                            val totalQty = remember(loc.id, uiState.allStockItems) {
+                                uiState.allStockItems.filter { it.locationId == loc.id }.sumOf { it.quantity }
+                            }
+                            val occupancyPct = loc.calculateOccupancyPercentage(totalQty)
+                            val effectiveCap = loc.effectiveCapacity
+                            val barColor = when {
+                                occupancyPct >= 90.0 -> Color(0xFFEF4444)
+                                occupancyPct >= 70.0 -> Color(0xFFF97316)
+                                else -> Color(0xFF10B981)
+                            }
                             val badgeEmoji = when {
                                 loc.structural -> "🏗️"
                                 loc.external -> "🌐"
@@ -7060,7 +7383,7 @@ private fun StockFilterBottomSheet(
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Text(badgeEmoji, fontSize = 20.sp)
-                                        Column {
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                             Text(
                                                 loc.name,
                                                 style = MaterialTheme.typography.labelMedium.copy(
@@ -7074,12 +7397,37 @@ private fun StockFilterBottomSheet(
                                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
                                                 color = Color(0xFF64748B)
                                             )
+                                            if (!loc.structural) {
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    LinearProgressIndicator(
+                                                        progress = { (occupancyPct / 100.0).toFloat() },
+                                                        modifier = Modifier
+                                                            .width(70.dp)
+                                                            .height(5.dp)
+                                                            .clip(CircleShape),
+                                                        color = barColor,
+                                                        trackColor = Color(0xFFE2E8F0)
+                                                    )
+                                                    Text(
+                                                        "الإشغال: ${occupancyPct.toInt()}% (${totalQty.toInt()}/${effectiveCap.toInt()})",
+                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                            fontSize = 9.5.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        ),
+                                                        color = barColor
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
 
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Surface(
                                             color = if (count > 0) Color(0xFFECFDF5) else Color(0xFFF1F5F9),
@@ -7097,6 +7445,18 @@ private fun StockFilterBottomSheet(
                                             )
                                         }
 
+                                        IconButton(
+                                            onClick = { selectedLocationForLabel = loc },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Print,
+                                                contentDescription = "طباعة ملصق الرف",
+                                                tint = Color(0xFF4F46E5),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+
                                         if (isChecked) {
                                             Icon(
                                                 imageVector = Icons.Default.CheckCircle,
@@ -7109,6 +7469,17 @@ private fun StockFilterBottomSheet(
                                 }
                             }
                         }
+                    }
+
+                    if (selectedLocationForLabel != null) {
+                        val parentPath = remember(selectedLocationForLabel, uiState.locations) {
+                            getFullPathForLocation(uiState.locations, selectedLocationForLabel!!.parentId, separator = " > ")
+                        }
+                        PrintableLabelBottomSheet(
+                            location = selectedLocationForLabel!!,
+                            parentPath = parentPath,
+                            onDismiss = { selectedLocationForLabel = null }
+                        )
                     }
                 } else {
                     // تبويب حالة البضاعة المخزنية

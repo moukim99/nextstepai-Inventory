@@ -47,7 +47,11 @@ compose.desktop {
             copyright = "© 2025 NextStep AI. All rights reserved."
             vendor = "NextStep AI"
 
+            macOS {
+                iconFile.set(project.file("src/main/resources/icon.png"))
+            }
             windows {
+                iconFile.set(project.file("src/main/resources/icon.ico"))
                 shortcut = true
                 menu = true
                 menuGroup = "NextStep AI"
