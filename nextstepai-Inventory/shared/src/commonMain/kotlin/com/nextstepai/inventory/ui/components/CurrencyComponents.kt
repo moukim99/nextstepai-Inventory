@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -343,7 +344,7 @@ fun CurrencySelectionBottomSheet(
                         }
                     }
                 } else {
-                    items(filteredCurrencies, key = { it.code }) { curr ->
+                    itemsIndexed(filteredCurrencies, key = { index, curr -> "${curr.code}-$index" }) { _, curr ->
                         val isSelected = selectedCurrencyCode.equals(curr.code, ignoreCase = true)
                         Surface(
                             onClick = {

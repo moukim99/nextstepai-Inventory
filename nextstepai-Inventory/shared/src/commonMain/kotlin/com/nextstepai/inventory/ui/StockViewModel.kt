@@ -15,6 +15,17 @@ import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockLocationType
 import com.nextstepai.inventory.data.capacityUnit
 import com.nextstepai.inventory.data.withCapacityUnit
+import com.nextstepai.inventory.data.contactPerson
+import com.nextstepai.inventory.data.contactPhone
+import com.nextstepai.inventory.data.withContactInfo
+import com.nextstepai.inventory.data.isPrimary
+import com.nextstepai.inventory.data.withPrimary
+import com.nextstepai.inventory.data.IntermediateNodeSpec
+import com.nextstepai.inventory.data.withWeightInfo
+import com.nextstepai.inventory.data.unitWeight
+import com.nextstepai.inventory.data.totalWeight
+import com.nextstepai.inventory.data.calculatePhysicalOccupancy
+import com.nextstepai.inventory.data.getOccupancySummary
 import com.nextstepai.inventory.data.StockStatus
 import com.nextstepai.inventory.data.SupplierPart
 import com.nextstepai.inventory.repository.CompanyRepository
@@ -408,8 +419,35 @@ class StockViewModel(
         customIcon: String = "",
         address: String = "",
         customCapacity: Double? = null,
-        capacityUnit: String = "قطعة"
+        capacityUnit: String = "قطعة",
+        contactPerson: String? = null,
+        contactPhone: String? = null,
+        isPrimary: Boolean = false,
+        intermediates: List<IntermediateNodeSpec> = emptyList(),
+        generatedNames: List<String> = emptyList()
     ): StockLocation {
+        if (generatedNames.size > 1) {
+            val insertedList = addSequentialLocations(
+                generatedNames = generatedNames,
+                description = description,
+                parentId = parentId,
+                structural = structural,
+                external = external,
+                locationType = locationType,
+                icon = icon,
+                ownerId = ownerId,
+                customIcon = customIcon,
+                baseAddress = address,
+                customCapacity = customCapacity,
+                capacityUnit = capacityUnit,
+                contactPerson = contactPerson,
+                contactPhone = contactPhone,
+                isPrimary = isPrimary,
+                intermediates = intermediates
+            )
+            return insertedList.firstOrNull() ?: StockLocation(name = name)
+        }
+
         val loc = StockLocation(
             name = name,
             description = description,
@@ -422,18 +460,148 @@ class StockViewModel(
             customIcon = customIcon,
             address = address,
             customCapacity = customCapacity
-        ).withCapacityUnit(capacityUnit)
-        val inserted = stockRepository.addLocation(loc)
+        )
+            .withCapacityUnit(capacityUnit)
+            .withContactInfo(contactPerson, contactPhone)
+            .withPrimary(isPrimary)
+
+        val inserted = if (intermediates.isNotEmpty()) {
+            stockRepository.addLocationWithIntermediates(loc, intermediates)
+        } else {
+            stockRepository.addLocation(loc)
+        }
+
         _uiState.update {
             it.copy(
                 isAddLocationDialogOpen = false,
                 errorMessage = null,
-                successMessage = "تم إنشاء موقع التخزين بنجاح"
+                successMessage = if (intermediates.isNotEmpty()) "تم إنشاء الموقع والتسلسل الهرمي بنجاح" else "تم إنشاء موقع التخزين بنجاح"
             )
         }
         loadData()
         return inserted
     }
+
+    /**
+     * توليد وإنشاء دفعة من المواقع التخزينية المتسلسلة من القائمة المحددة للأسماء المولدة.
+     */
+    fun addSequentialLocations(
+        generatedNames: List<String>,
+        description: String = "",
+        parentId: Long? = null,
+        structural: Boolean = false,
+        external: Boolean = false,
+        locationType: String = "SHELF",
+        icon: String = "warehouse",
+        ownerId: Long? = null,
+        customIcon: String = "",
+        baseAddress: String = "",
+        customCapacity: Double? = null,
+        capacityUnit: String = "قطعة",
+        contactPerson: String? = null,
+        contactPhone: String? = null,
+        isPrimary: Boolean = false,
+        intermediates: List<IntermediateNodeSpec> = emptyList()
+    ): List<StockLocation> {
+        if (generatedNames.isEmpty()) return emptyList()
+
+        // 1. Resolve missing intermediate layers if any
+        var targetParentId = parentId
+        if (intermediates.isNotEmpty()) {
+            for (spec in intermediates) {
+                if (spec.existingId != null && spec.existingId > 0L) {
+                    targetParentId = spec.existingId
+                } else if (spec.name.isNotBlank()) {
+                    val newIntermediate = StockLocation(
+                        name = spec.name.trim(),
+                        description = "طبقة وسيطة مضافة آلياً لحشو فجوة الهرمية",
+                        parentId = targetParentId,
+                        structural = true,
+                        locationType = spec.locationType
+                    )
+                    val inserted = stockRepository.addLocation(newIntermediate)
+                    targetParentId = inserted.id
+                }
+            }
+        }
+
+        // 2. Build StockLocation objects for each generated name
+        val locationsToInsert = generatedNames.mapIndexed { index, locName ->
+            val computedAddress = if (baseAddress.contains(" > ")) {
+                val prefixPath = baseAddress.substringBeforeLast(" > ")
+                "$prefixPath > $locName"
+            } else {
+                locName
+            }
+
+            StockLocation(
+                name = locName,
+                description = description.ifBlank { "موقع مولد آلياً ضمن دفعة متسلسلة" },
+                parentId = if (external) null else targetParentId,
+                structural = structural,
+                external = external,
+                locationType = if (external) "SITE" else locationType,
+                ownerId = if (external) null else ownerId,
+                icon = if (external) "warehouse" else icon,
+                customIcon = customIcon,
+                address = computedAddress,
+                customCapacity = customCapacity,
+                isBulkGenerated = true
+            )
+            .withCapacityUnit(capacityUnit)
+            .withContactInfo(contactPerson, contactPhone)
+            .withPrimary(if (index == 0) isPrimary else false)
+        }
+
+        // 3. Save via native batch save repository pipeline
+        val insertedList = stockRepository.addBatchLocations(locationsToInsert)
+
+        _uiState.update {
+            it.copy(
+                isAddLocationDialogOpen = false,
+                errorMessage = null,
+                successMessage = "تم توليد وإنشاء ${insertedList.size} موقع تخزيني بنجاح ⚡"
+            )
+        }
+        loadData()
+        return insertedList
+    }
+
+    /**
+     * إنشاء موقع أب/حاوي وسيط بسرعة (Quick Add Parent Location) مع تعيينه كـ structural وتحديث التدفق فوراً.
+     */
+    fun quickCreateParentLocation(
+        name: String,
+        locationType: String = "ZONE",
+        parentId: Long? = null,
+        description: String = ""
+    ): StockLocation {
+        val defaultIcon = when (locationType.uppercase().trim()) {
+            "WAREHOUSE" -> "warehouse"
+            "ZONE" -> "zone"
+            "RACK" -> "rack"
+            "AREA" -> "area"
+            else -> "warehouse"
+        }
+        val loc = StockLocation(
+            name = name.trim(),
+            description = description.trim(),
+            parentId = parentId,
+            structural = true,
+            locationType = locationType,
+            icon = defaultIcon
+        )
+        val inserted = stockRepository.addLocation(loc)
+        _uiState.update {
+            it.copy(
+                errorMessage = null,
+                successMessage = "تم إضافة الموقع الحاوي الوسيط (${inserted.name}) بنجاح"
+            )
+        }
+        loadData()
+        return inserted
+    }
+
 
     /**
      * تحديث بيانات وسعة موقع تخزيني قائم في النظام.
@@ -448,6 +616,50 @@ class StockViewModel(
         }
         loadData()
         return updated
+    }
+
+    /**
+     * إدراج وحدة قياس مخصصة جديدة وإصدار حفظ في قاعدة البيانات.
+     */
+    fun addCustomUnit(unitCode: String) {
+        if (unitCode.isBlank()) return
+        viewModelScope.launch {
+            try {
+                partRepository.addParameterTemplate(
+                    name = unitCode.trim(),
+                    units = unitCode.trim(),
+                    description = "وحدة قياس مخصصة"
+                )
+                _uiState.update {
+                    it.copy(
+                        errorMessage = null,
+                        successMessage = "تم إضافة وحدة القياس الجديدة '${unitCode.trim()}' بنجاح"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "فشل إضافة وحدة القياس: ${e.message}") }
+            }
+        }
+    }
+
+    /**
+     * حذف وحدة قياس مخصصة بحذف متتابع من قاعدة البيانات.
+     */
+    fun deleteUnit(unitCode: String) {
+        if (unitCode.isBlank()) return
+        viewModelScope.launch {
+            try {
+                partRepository.deleteParameterTemplateByNameOrUnit(unitCode.trim())
+                _uiState.update {
+                    it.copy(
+                        errorMessage = null,
+                        successMessage = "تم حذف وحدة القياس '${unitCode.trim()}' بنجاح"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "فشل حذف وحدة القياس: ${e.message}") }
+            }
+        }
     }
 
     /**
@@ -476,6 +688,39 @@ class StockViewModel(
             loadData()
         } catch (e: IllegalArgumentException) {
             _uiState.update { it.copy(errorMessage = e.message) }
+        }
+    }
+
+    /**
+     * تنفيذ النقل المخزني السريع (Quick Stock Transfer) للكميات كلياً أو جزئياً وتحديث الواجهة فورياً.
+     */
+    fun transferStockItem(
+        itemId: Long,
+        sourceLocationId: Long?,
+        targetLocationId: Long,
+        quantity: Double,
+        reason: String,
+        notes: String = ""
+    ) {
+        viewModelScope.launch {
+            try {
+                val success = stockRepository.transferStockItem(
+                    itemId = itemId,
+                    sourceLocationId = sourceLocationId,
+                    targetLocationId = targetLocationId,
+                    quantityToTransfer = quantity,
+                    reason = reason,
+                    notes = notes
+                )
+                if (success) {
+                    _uiState.update {
+                        it.copy(successMessage = "تم نقل الكمية بنجاح إلى الموقع الجديد ⇄")
+                    }
+                    loadData()
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = e.message ?: "فشل في عملية النقل المخزني") }
+            }
         }
     }
 
@@ -552,7 +797,9 @@ class StockViewModel(
         reviewNeeded: Boolean = false,
         deleteOnDeplete: Boolean = false,
         link: String = "",
-        notes: String = ""
+        notes: String = "",
+        unitWeight: Double? = null,
+        totalWeight: Double? = null
     ) {
         try {
             val item = StockItem(
@@ -572,7 +819,7 @@ class StockViewModel(
                 deleteOnDeplete = deleteOnDeplete,
                 link = link,
                 notes = notes
-            )
+            ).withWeightInfo(unitWeight, totalWeight)
             stockRepository.addStockItem(item)
 
             // 🎯 الأثر التشغيلي عند الحفظ: إن كان مفترناً بأمر شراء Mapped PurchaseOrder

@@ -1822,7 +1822,7 @@ private fun SelectSupplierBottomSheet(
             Spacer(modifier = Modifier.height(12.dp))
 
             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(filteredSuppliers, key = { "po-sup-${it.id}" }) { sup ->
+                itemsIndexed(filteredSuppliers, key = { index, sup -> "po-sup-${sup.id}-$index" }) { _, sup ->
                     val isSel = selectedSupplierId == sup.id
                     Surface(
                         onClick = { onSelect(sup) },
@@ -1888,7 +1888,7 @@ private fun SelectPartForPOBottomSheet(
             Spacer(modifier = Modifier.height(12.dp))
 
             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(filteredParts, key = { "po-pt-${it.id}" }) { pt ->
+                itemsIndexed(filteredParts, key = { index, pt -> "po-pt-${pt.id}-$index" }) { _, pt ->
                     val isSel = selectedPartId == pt.id
                     Surface(
                         onClick = { onSelect(pt) },
@@ -1954,7 +1954,7 @@ private fun SelectBuildOrderForPOBottomSheet(
             Spacer(modifier = Modifier.height(12.dp))
 
             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(filteredBuilds, key = { "po-bo-${it.id}" }) { bo ->
+                itemsIndexed(filteredBuilds, key = { index, bo -> "po-bo-${bo.id}-$index" }) { _, bo ->
                     val isSel = selectedBuildOrderId == bo.id
                     Surface(
                         onClick = { onSelect(bo) },
@@ -2020,7 +2020,7 @@ private fun SelectSalesOrderForPOBottomSheet(
             Spacer(modifier = Modifier.height(12.dp))
 
             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(filteredSales, key = { "po-so-${it.id}" }) { so ->
+                itemsIndexed(filteredSales, key = { index, so -> "po-so-${so.id}-$index" }) { _, so ->
                     val isSel = selectedSalesOrderId == so.id
                     Surface(
                         onClick = { onSelect(so) },
@@ -2136,7 +2136,7 @@ private fun AddPOLineItemBottomSheet(
                 Text("اختر القطعة/المكون المطلوب شراءه *:", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Color(0xFF0F172A))
 
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(parts, key = { "po-line-part-${it.id}" }) { part ->
+                    itemsIndexed(parts, key = { index, part -> "po-line-part-${part.id}-$index" }) { _, part ->
                         val isSelected = selectedPartId == part.id
                         Surface(
                             onClick = { selectedPartId = part.id },

@@ -1999,7 +1999,7 @@ private fun SelectSubPartBottomSheet(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(filteredComponents, key = { "select-subpart-${it.id}" }) { comp ->
+                        itemsIndexed(filteredComponents, key = { index, comp -> "select-subpart-${comp.id}-$index" }) { _, comp ->
                             val isSelected = selectedSubPartId == comp.id
                             Surface(
                                 onClick = { onSelect(comp) },
@@ -2180,7 +2180,7 @@ private fun SelectSubstituteForAddBottomSheet(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(filteredParts, key = { "sub-picker-${it.id}" }) { part ->
+                    itemsIndexed(filteredParts, key = { index, part -> "sub-picker-${part.id}-$index" }) { _, part ->
                         val isSelected = selectedPartId == part.id
                         Surface(
                             onClick = { selectedPartId = part.id },
@@ -2355,7 +2355,7 @@ private fun AddSubstituteBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    items(eligibleParts, key = { "sub-part-${it.id}" }) { part ->
+                    itemsIndexed(eligibleParts, key = { index, part -> "sub-part-${part.id}-$index" }) { _, part ->
                         val isSelected = selectedPartId == part.id
                         Surface(
                             onClick = { selectedPartId = part.id },
@@ -3159,7 +3159,7 @@ private fun SelectParentAssemblyBottomSheet(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(filteredAssemblies, key = { "parent-picker-${it.id}" }) { parent ->
+                    itemsIndexed(filteredAssemblies, key = { index, parent -> "parent-picker-${parent.id}-$index" }) { _, parent ->
                         val isSelected = selectedPartId == parent.id
                         Surface(
                             onClick = {
@@ -3422,7 +3422,7 @@ internal fun SelectUnitBottomSheet(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(filteredUnits, key = { "unit-${it.first}" }) { (code, label) ->
+                itemsIndexed(filteredUnits, key = { index, unit -> "unit-${unit.first}-$index" }) { _, (code, label) ->
                     val isSelected = selectedUnit.equals(code, ignoreCase = true)
                     Surface(
                         onClick = { onSelect(code) },
@@ -3886,7 +3886,7 @@ private fun SelectPhaseBottomSheet(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(filteredPhases, key = { "phase-${it.uuid}" }) { phase ->
+                itemsIndexed(filteredPhases, key = { index, phase -> "phase-${phase.uuid}-$index" }) { _, phase ->
                     val isSelected = selectedPhaseUuid == phase.uuid
                     Surface(
                         onClick = { onSelect(phase) },

@@ -896,7 +896,7 @@ private fun SelectCustomerBottomSheet(
             Spacer(modifier = Modifier.height(12.dp))
 
             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(filteredCustomers, key = { "so-cust-${it.id}" }) { cust ->
+                itemsIndexed(filteredCustomers, key = { index, cust -> "so-cust-${cust.id}-$index" }) { _, cust ->
                     val isSel = selectedCustomerId == cust.id
                     Surface(
                         onClick = { onSelect(cust) },
@@ -962,7 +962,7 @@ private fun SelectPartForSOBottomSheet(
             Spacer(modifier = Modifier.height(12.dp))
 
             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(filteredParts, key = { "so-pt-${it.id}" }) { pt ->
+                itemsIndexed(filteredParts, key = { index, pt -> "so-pt-${pt.id}-$index" }) { _, pt ->
                     val isSel = selectedPartId == pt.id
                     Surface(
                         onClick = { onSelect(pt) },

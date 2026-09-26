@@ -36,6 +36,7 @@ import com.nextstepai.inventory.data.effectiveCapacity
 import com.nextstepai.inventory.data.formatQuantity
 import com.nextstepai.inventory.data.isLabelStale
 import com.nextstepai.inventory.data.labelSnapshotData
+import com.nextstepai.inventory.data.getLabelDiffDetails
 import com.nextstepai.inventory.sharePdfPayload
 import com.nextstepai.inventory.util.BarcodePayloadHelper
 import com.nextstepai.inventory.util.DateTimeUtils
@@ -400,18 +401,18 @@ fun PrintableLabelBottomSheet(
                         }
 
                         val snapshotData = location.labelSnapshotData?.replace("|", " | ") ?: "غير مؤرخة"
-                        val currentData = "${location.name} | السعة: ${location.effectiveCapacity.toInt()} | النوع: ${location.locationType}"
+                        val diffDetails = location.getLabelDiffDetails()
 
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
-                                text = "• البيانات في الملصق المطبوع: $snapshotData",
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                color = Color(0xFFB45309)
-                            )
-                            Text(
-                                text = "• البيانات المحدثة في النظام: $currentData",
+                                text = "• أسباب التحذير والفروقات: ${diffDetails.joinToString(" • ")}",
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
                                 color = Color(0xFF92400E)
+                            )
+                            Text(
+                                text = "• البيانات المطبوعة سابقاً: $snapshotData",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                color = Color(0xFFB45309)
                             )
                         }
 

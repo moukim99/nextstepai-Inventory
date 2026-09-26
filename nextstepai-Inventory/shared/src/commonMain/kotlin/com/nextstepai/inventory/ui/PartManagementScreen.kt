@@ -2544,7 +2544,7 @@ private fun SelectCategoryBottomSheet(
                     }
                 }
 
-                items(filteredCategories, key = { it.id }) { cat ->
+                itemsIndexed(filteredCategories, key = { index, cat -> "cat-${cat.id}-$index" }) { _, cat ->
                     val isSelected = cat.id == selectedCatId
                     Surface(
                         onClick = {
@@ -2845,7 +2845,7 @@ private fun SelectTemplatePartBottomSheet(
                     }
                 }
 
-                items(filteredTemplates, key = { it.id }) { t ->
+                itemsIndexed(filteredTemplates, key = { index, t -> "tpl-${t.id}-$index" }) { _, t ->
                     val isSelected = t.id == selectedVariantOfId
                     Surface(
                         onClick = {
@@ -3683,7 +3683,7 @@ private fun SelectLocationBottomSheet(
                     }
                 }
 
-                items(filteredLocations, key = { it.id }) { loc ->
+                itemsIndexed(filteredLocations, key = { index, loc -> "loc-picker-${loc.id}-$index" }) { _, loc ->
                     val isSelected = loc.id == selectedLocationId
                     Surface(
                         onClick = {

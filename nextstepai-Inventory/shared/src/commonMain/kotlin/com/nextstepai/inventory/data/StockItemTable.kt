@@ -1,6 +1,7 @@
 package com.nextstepai.inventory.data
 
 import com.nextstepai.inventory.util.DateTimeUtils
+import kotlin.time.Clock
 
 /**
  * حالة الوحدة المخزنية (StockItem Status).
@@ -83,6 +84,58 @@ data class StockItem(
      */
     val availableQuantity: Double
         get() = (quantity - allocatedQuantity).coerceAtLeast(0.0)
+}
+
+/**
+ * استخراج وزن الوحدة الواحدة (unitWeight) المودع في الـ metadata JSON للوحدة المخزنية.
+ */
+val StockItem.unitWeight: Double?
+    get() {
+        val idx = metadata.indexOf("\"unitWeight\":")
+        if (idx == -1) return null
+        val sub = metadata.substring(idx + 13).trimStart()
+        val numStr = sub.takeWhile { it.isDigit() || it == '.' }
+        return numStr.toDoubleOrNull()
+    }
+
+/**
+ * استخراج الوزن الإجمالي المحمّل (totalWeight) المودع في الـ metadata JSON للوحدة المخزنية.
+ */
+val StockItem.totalWeight: Double?
+    get() {
+        val idx = metadata.indexOf("\"totalWeight\":")
+        if (idx == -1) return null
+        val sub = metadata.substring(idx + 14).trimStart()
+        val numStr = sub.takeWhile { it.isDigit() || it == '.' }
+        return numStr.toDoubleOrNull()
+    }
+
+/**
+ * دمج وتحديث بيانات أوزان الدفعة والمكونات بذكاء داخل الـ metadata JSON.
+ */
+fun StockItem.withWeightInfo(unitWeight: Double?, totalWeight: Double?): StockItem {
+    val map = mutableMapOf<String, String>()
+    val clean = metadata.trim().removePrefix("{").removeSuffix("}").trim()
+    if (clean.isNotBlank()) {
+        val regex = """"(.*?)"\s*:\s*("(.*?)"|[\d\.]+|true|false|null)""".toRegex()
+        regex.findAll(clean).forEach { match ->
+            val key = match.groupValues[1]
+            val value = match.groupValues[2]
+            map[key] = value
+        }
+    }
+    if (unitWeight != null && unitWeight > 0.0) {
+        map["unitWeight"] = unitWeight.toString()
+    } else {
+        map.remove("unitWeight")
+    }
+    if (totalWeight != null && totalWeight > 0.0) {
+        map["totalWeight"] = totalWeight.toString()
+    } else {
+        map.remove("totalWeight")
+    }
+    val updatedMetadata = map.entries.joinToString(prefix = "{", postfix = "}") { (k, v) -> "\"$k\":$v" }
+    return this.copy(metadata = updatedMetadata)
 }
 
 /**
@@ -216,16 +269,29 @@ class StockItemTable {
         val calculatedLevel = parentLoc?.let { it.level + 1 } ?: 0
         val calculatedTreeId = parentLoc?.treeId ?: (locations.maxOfOrNull { it.treeId } ?: 0) + 1
 
-        val newLoc = location.copy(
-            id = if (location.id == 0L) nextLocationId++ else location.id,
+        val assignedId = if (location.id == 0L) nextLocationId++ else location.id
+        val isNewLoc = location.id == 0L || location.labelGeneratedAt == null
+        val locWithBaseInfo = location.copy(
+            id = assignedId,
+            uuid = location.uuid.ifBlank { "location-$assignedId" },
             name = trimmedName,
             level = calculatedLevel,
             treeId = calculatedTreeId
         )
 
-        locations.removeAll { it.id == newLoc.id }
-        locations.add(newLoc)
-        return newLoc
+        // الأتمتة التلقائية: توليد وحفظ لقطة البيانات التأسيسية (Initial Label Snapshot) فور الإنشاء
+        val finalLoc = if (isNewLoc) {
+            val now = Clock.System.now().toEpochMilliseconds()
+            val initialSnapshot = "$trimmedName|${location.parentId}|${locWithBaseInfo.effectiveCapacity.toInt()}|${location.locationType}"
+            val imagePath = "files/labels/locations/loc_${locWithBaseInfo.effectiveUuid}.webp"
+            locWithBaseInfo.withLabelSnapshot(imagePath, now, initialSnapshot)
+        } else {
+            locWithBaseInfo
+        }
+
+        locations.removeAll { it.id == finalLoc.id }
+        locations.add(finalLoc)
+        return finalLoc
     }
 
     /**
@@ -477,6 +543,119 @@ class StockItemTable {
         )
 
         return childItem
+    }
+
+    /**
+     * تنفيذ النقل المخزني الذري (Quick Stock Transfer) ونقل الكمية كلياً أو جزئياً بين المواقع.
+     * @return Pair مكون من (العنصر المخزني المصدر المعدل، العنصر المخزني الهدف المعدل أو المنشأة حديثاً إن وجد)
+     */
+    fun transferStockItem(
+        itemId: Long,
+        sourceLocationId: Long?,
+        targetLocationId: Long,
+        quantityToTransfer: Double,
+        reason: String,
+        notes: String = ""
+    ): Pair<StockItem, StockItem?> {
+        val sourceIndex = stockItems.indexOfFirst { it.id == itemId }
+        require(sourceIndex != -1) { "العنصر المخزني المرتبط بطلب النقل غير موجود (#$itemId)" }
+
+        val sourceItem = stockItems[sourceIndex]
+        require(quantityToTransfer > 0.0) { "كمية النقل يجب أن تكون أكبر من الصفر" }
+        require(quantityToTransfer <= sourceItem.quantity) {
+            "الكمية المطلوب نقلها ($quantityToTransfer) أكبر من الكمية المتاحة في السجل الحالي (${sourceItem.quantity})"
+        }
+
+        val targetLoc = locations.find { it.id == targetLocationId }
+        if (targetLoc != null && targetLoc.structural) {
+            throw IllegalArgumentException("لا يمكن نقل مواد مباشرة إلى موقع هيكلي ('${targetLoc.name}')")
+        }
+
+        val reasonText = "نقل من موقع #${sourceLocationId ?: "بدون"} إلى #$targetLocationId | السبب: $reason${if (notes.isNotBlank()) " ($notes)" else ""}"
+
+        // الحالة (أ) - نقل الكمية بالكامل (Full Transfer)
+        if (quantityToTransfer == sourceItem.quantity) {
+            val updatedSource = sourceItem.copy(
+                locationId = targetLocationId,
+                updated = DateTimeUtils.getCurrentDate()
+            )
+            stockItems[sourceIndex] = updatedSource
+
+            recordTracking(
+                stockItemId = itemId,
+                trackingType = StockTrackingType.MOVE,
+                label = "نقل موقع التخزين بالكامل",
+                notes = reasonText,
+                deltas = "{\"locationId\":[${sourceLocationId ?: "null"},$targetLocationId],\"quantity\":$quantityToTransfer}"
+            )
+
+            return Pair(updatedSource, null)
+        } else {
+            // الحالة (ب) - نقل جزئي (Partial Transfer)
+            val remainingSourceQty = sourceItem.quantity - quantityToTransfer
+            val updatedSource = sourceItem.copy(
+                quantity = remainingSourceQty,
+                updated = DateTimeUtils.getCurrentDate()
+            )
+            stockItems[sourceIndex] = updatedSource
+
+            recordTracking(
+                stockItemId = itemId,
+                trackingType = StockTrackingType.MOVE,
+                label = "نقل جزئي للرصيد المخزني",
+                notes = reasonText,
+                deltas = "{\"locationId\":[${sourceLocationId ?: "null"},$targetLocationId],\"quantity\":[${sourceItem.quantity},$remainingSourceQty]}"
+            )
+
+            // فحص الموقع الجديد: هل يوجد سجل لنفس القطعة ونفس الدفعة في الموقع الهدف؟
+            val targetMatchIndex = stockItems.indexOfFirst {
+                it.id != itemId &&
+                        it.locationId == targetLocationId &&
+                        it.partId == sourceItem.partId &&
+                        it.batch == sourceItem.batch &&
+                        it.status == sourceItem.status
+            }
+
+            if (targetMatchIndex != -1) {
+                val existingTarget = stockItems[targetMatchIndex]
+                val updatedTarget = existingTarget.copy(
+                    quantity = existingTarget.quantity + quantityToTransfer,
+                    updated = DateTimeUtils.getCurrentDate()
+                )
+                stockItems[targetMatchIndex] = updatedTarget
+
+                recordTracking(
+                    stockItemId = existingTarget.id,
+                    trackingType = StockTrackingType.MOVE,
+                    label = "تزويد رصيد بنقل جزئي من موقع آخر",
+                    notes = reasonText,
+                    deltas = "{\"locationId\":[${sourceLocationId ?: "null"},$targetLocationId],\"quantity\":[${existingTarget.quantity},${updatedTarget.quantity}]}"
+                )
+
+                return Pair(updatedSource, updatedTarget)
+            } else {
+                // إنشاء سجل مخزني جديد في الموقع الهدف بالكمية المنقولة
+                val newTargetItem = sourceItem.copy(
+                    id = nextStockId++,
+                    locationId = targetLocationId,
+                    quantity = quantityToTransfer,
+                    allocatedQuantity = 0.0,
+                    parentId = sourceItem.id,
+                    updated = DateTimeUtils.getCurrentDate()
+                )
+                stockItems.add(newTargetItem)
+
+                recordTracking(
+                    stockItemId = newTargetItem.id,
+                    trackingType = StockTrackingType.MOVE,
+                    label = "وحدة مخزنية ناتجة عن نقل جزئي",
+                    notes = reasonText,
+                    deltas = "{\"locationId\":[${sourceLocationId ?: "null"},$targetLocationId],\"quantity\":[0.0,$quantityToTransfer],\"parent_id\":${sourceItem.id}}"
+                )
+
+                return Pair(updatedSource, newTargetItem)
+            }
+        }
     }
 
     /**

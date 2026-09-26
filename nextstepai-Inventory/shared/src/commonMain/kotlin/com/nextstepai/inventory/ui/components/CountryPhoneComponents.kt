@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -192,7 +193,7 @@ fun CountryPickerDialog(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(filteredCountries, key = { it.code + it.dialCode }) { country ->
+                    itemsIndexed(filteredCountries, key = { index, country -> "${country.code}-${country.dialCode}-$index" }) { _, country ->
                         Surface(
                             onClick = {
                                 onCountrySelected(country)

@@ -2,6 +2,7 @@ package com.nextstepai.inventory
 
 import android.content.ClipData
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import androidx.core.content.FileProvider
 import com.nextstepai.inventory.data.db.AppContextHolder
@@ -39,21 +40,37 @@ actual fun sharePdfPayload(
         val cacheDir = File(ctx.cacheDir, "labels")
         if (!cacheDir.exists()) cacheDir.mkdirs()
 
-        // تنظيف اسم الملف وحفظه بصيغة PDF عربية واضحة
+        // تنظيف اسم الملف وحفظه بصيغة PDF
         val cleanPdfName = if (fileName.endsWith(".pdf", ignoreCase = true)) fileName else "$fileName.pdf"
         val pdfFile = File(cacheDir, cleanPdfName)
         pdfFile.writeBytes(pdfBytes)
 
         val authority = "${ctx.packageName}.fileprovider"
-        val contentUri = FileProvider.getUriForFile(ctx, authority, pdfFile)
+        val pdfContentUri = FileProvider.getUriForFile(ctx, authority, pdfFile)
 
-        // إطلاق Intent مشاركة PDF المباشر للطباعة ومنع أيقونة القلم لتعديل الصور
+        // حفظ صورة بطاقة المعاينة PNG لعرضها مباشرة كصورة بطاقة مرئية داخل نافذة المشاركة (Sharing 1 image)
+        var pngContentUri: Uri? = null
+        if (previewImageBytes != null && previewImageBytes.isNotEmpty()) {
+            val cleanPngName = cleanPdfName.replace(".pdf", ".png", ignoreCase = true)
+            val pngFile = File(cacheDir, cleanPngName)
+            pngFile.writeBytes(previewImageBytes)
+            pngContentUri = FileProvider.getUriForFile(ctx, authority, pngFile)
+        }
+
+        // اختيار Uri الرئيسي للأنشطة: عند وجود صورة البطاقة نرسلها كـ image/png ليعرضها الأندرويد مباشرة
+        val mainUri = pngContentUri ?: pdfContentUri
+        val mimeType = if (pngContentUri != null) "image/png" else "application/pdf"
+
         val sendIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "application/pdf"
-            putExtra(Intent.EXTRA_STREAM, contentUri)
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, mainUri)
             putExtra(Intent.EXTRA_TITLE, title)
-            putExtra(Intent.EXTRA_TEXT, "ملصق موقع تخزيني جاهز للطباعة والمشاركة $title")
-            clipData = ClipData.newRawUri(title, contentUri)
+            putExtra(Intent.EXTRA_TEXT, "ملصق موقع تخزيني جاهز للطباعة والمشاركة: $title")
+
+            val clip = ClipData.newRawUri(title, mainUri)
+            clip.addItem(ClipData.Item(pdfContentUri))
+            clipData = clip
+
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }

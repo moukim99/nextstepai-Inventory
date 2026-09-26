@@ -3,6 +3,7 @@ package com.nextstepai.inventory.data.db
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.SQLiteStatement
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import java.io.File
 import java.sql.DriverManager
 import java.sql.PreparedStatement
 import java.sql.ResultSet
@@ -20,14 +21,42 @@ object SqliteDatabaseManager {
 
     private fun openDatabase(): SQLiteConnection {
         val dbPath = getDatabasePath()
+        val dbFile = File(dbPath)
+
+        fun createFreshConnection(): SQLiteConnection {
+            try {
+                if (dbFile.exists()) dbFile.delete()
+            } catch (_: Throwable) {}
+            val driver = BundledSQLiteDriver()
+            val conn = driver.open(dbPath)
+            runCatching {
+                conn.prepare("PRAGMA journal_mode = DELETE;").use { it.step() }
+                conn.prepare("PRAGMA busy_timeout = 5000;").use { it.step() }
+            }
+            createTables(conn)
+            return conn
+        }
+
         val conn = try {
             val driver = BundledSQLiteDriver()
             driver.open(dbPath)
         } catch (e: Throwable) {
-            createJdbcConnection(dbPath)
+            return createFreshConnection()
         }
-        createTables(conn)
-        return conn
+
+        return try {
+            conn.prepare("SELECT count(*) FROM sqlite_master;").use { it.step() }
+            conn.prepare("SELECT locationType FROM stock_locations LIMIT 1;").use { it.step() }
+            runCatching {
+                conn.prepare("PRAGMA journal_mode = DELETE;").use { it.step() }
+                conn.prepare("PRAGMA busy_timeout = 5000;").use { it.step() }
+            }
+            createTables(conn)
+            conn
+        } catch (e: Throwable) {
+            try { conn.close() } catch (_: Throwable) {}
+            createFreshConnection()
+        }
     }
 
     private fun createJdbcConnection(dbPath: String): SQLiteConnection {

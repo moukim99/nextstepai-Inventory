@@ -59,6 +59,14 @@ kotlin {
             implementation(libs.jetbrains.adaptive.navigation)
             implementation(libs.jetbrains.adaptive.navigation.suite)
             implementation(libs.camerak)
+            implementation("com.github.javakeyring:java-keyring:1.0.4")
+        }
+        getByName("jvmMain") {
+            dependencies {
+                implementation("com.github.javakeyring:java-keyring:1.0.4")
+                implementation("net.java.dev.jna:jna:5.16.0")
+                implementation("net.java.dev.jna:jna-platform:5.16.0")
+            }
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

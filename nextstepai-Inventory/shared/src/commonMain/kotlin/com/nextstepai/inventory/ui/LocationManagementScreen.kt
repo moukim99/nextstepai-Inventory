@@ -4,24 +4,51 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AddLocation
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SwapHoriz
+import com.nextstepai.inventory.ui.components.LocationBarcodeScannerBottomSheet
+import com.nextstepai.inventory.ui.components.QuickTransferBottomSheet
+import com.nextstepai.inventory.util.BarcodePayloadHelper
+import com.nextstepai.inventory.util.BarcodeEntityType
+import androidx.compose.material.icons.filled.Warehouse
+import androidx.compose.material.icons.filled.TableRows
+import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.ViewWeek
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,7 +56,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -42,9 +73,18 @@ import com.nextstepai.inventory.data.StockItem
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.calculateOccupancyPercentage
 import com.nextstepai.inventory.data.capacityUnit
+import com.nextstepai.inventory.data.contactPerson
+import com.nextstepai.inventory.data.contactPhone
 import com.nextstepai.inventory.data.effectiveCapacity
 import com.nextstepai.inventory.data.formatQuantity
+import com.nextstepai.inventory.data.isLabelStale
+import com.nextstepai.inventory.data.labelGeneratedAt
 import com.nextstepai.inventory.data.withCapacityUnit
+import com.nextstepai.inventory.data.withContactInfo
+import com.nextstepai.inventory.data.isPrimary
+import com.nextstepai.inventory.data.withPrimary
+import com.nextstepai.inventory.data.CompletenessTone
+import com.nextstepai.inventory.data.calculateCompleteness
 import com.nextstepai.inventory.ui.components.PrintableLabelBottomSheet
 
 enum class OccupancyFilter {
@@ -55,21 +95,80 @@ enum class StructureFilter {
     ALL, STRUCTURAL_ONLY, EXTERNAL_ONLY
 }
 
+enum class LabelStatusFilter {
+    ALL, NEEDS_UPDATE, UPDATED
+}
+
+/**
+ * الأنواع المعيارية الستة المعتمدة رسمياً في هيكلية قواعد بيانات تطبيق إدارة المخزون والمستودعات.
+ */
+private val CANONICAL_LOCATION_TYPES = listOf(
+    "SITE",
+    "WAREHOUSE",
+    "ZONE",
+    "AISLE",
+    "SHELF",
+    "BIN"
+)
+
+/**
+ * توحيد ومعايرة رمز نوع الموقع التخزيني لدمج المسميات القديمة والمكافئة (مثل AREA و LINE تحت ZONE، و RACK تحت SHELF).
+ */
+private fun normalizeLocationType(typeCode: String): String {
+    return when (typeCode.uppercase()) {
+        "AREA", "LINE" -> "ZONE"
+        "RACK" -> "SHELF"
+        else -> typeCode.uppercase()
+    }
+}
+
 /**
  * دالة مساعدة لتعريب رموز أنواع المواقع التخزينية وتفادي انكسار النص في الواجهة.
  */
 private fun getArabicLocationType(typeCode: String): String {
-    return when (typeCode.uppercase()) {
+    return when (normalizeLocationType(typeCode)) {
+        "SITE" -> "منشأة / موقع"
         "WAREHOUSE" -> "مستودع"
-        "SHELF" -> "رف"
-        "LINE" -> "خط إنتاج"
-        "BIN" -> "صندوق / حاوية"
-        "AISLE" -> "ممر"
         "ZONE" -> "منطقة"
-        "SITE" -> "منشأة"
-        "PALLET" -> "منصة (Pallet)"
-        "RACK" -> "رف رئيسي"
+        "AISLE" -> "ممر"
+        "SHELF" -> "رف"
+        "BIN" -> "صندوق / حاوية"
         else -> typeCode.uppercase()
+    }
+}
+
+private fun getLocationTypeIcon(typeCode: String): String {
+    return when (normalizeLocationType(typeCode)) {
+        "SITE" -> "📍"
+        "WAREHOUSE" -> "🏢"
+        "ZONE" -> "🧩"
+        "AISLE" -> "🚪"
+        "SHELF" -> "📐"
+        "BIN" -> "📥"
+        else -> "📍"
+    }
+}
+
+private fun getLocationTypeIconVector(typeCode: String, customIconKey: String = ""): ImageVector {
+    val normalizedType = normalizeLocationType(typeCode)
+    val normalizedIcon = customIconKey.lowercase().trim()
+
+    return when {
+        normalizedType == "SITE" -> Icons.Default.Place
+        normalizedType == "WAREHOUSE" -> Icons.Default.Warehouse
+        normalizedType == "ZONE" -> Icons.Default.GridView
+        normalizedType == "AISLE" -> Icons.Default.ViewWeek
+        normalizedType == "SHELF" -> Icons.Default.TableRows
+        normalizedType == "BIN" -> Icons.Default.Inbox
+
+        normalizedIcon.contains("warehouse") || normalizedIcon.contains("building") || normalizedIcon.contains("store") -> Icons.Default.Warehouse
+        normalizedIcon.contains("shelf") || normalizedIcon.contains("table") || normalizedIcon.contains("rows") || normalizedIcon.contains("shelves") -> Icons.Default.TableRows
+        normalizedIcon.contains("bin") || normalizedIcon.contains("box") || normalizedIcon.contains("inbox") || normalizedIcon.contains("archive") -> Icons.Default.Inbox
+        normalizedIcon.contains("aisle") || normalizedIcon.contains("door") || normalizedIcon.contains("week") -> Icons.Default.ViewWeek
+        normalizedIcon.contains("zone") || normalizedIcon.contains("grid") || normalizedIcon.contains("area") -> Icons.Default.GridView
+        normalizedIcon.contains("site") || normalizedIcon.contains("place") || normalizedIcon.contains("location") -> Icons.Default.Place
+
+        else -> Icons.Default.Warehouse
     }
 }
 
@@ -88,11 +187,14 @@ fun LocationManagementScreen(
     val uiState by viewModel.uiState.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
-    var selectedTypeFilter by remember { mutableStateOf<String?>(null) }
-    var selectedStructureFilter by remember { mutableStateOf(StructureFilter.ALL) }
-    var selectedOccupancyFilter by remember { mutableStateOf(OccupancyFilter.ALL) }
+    var selectedTypesFilter by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedParentIdsFilter by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var selectedStructuresFilter by remember { mutableStateOf<Set<StructureFilter>>(emptySet()) }
+    var selectedOccupanciesFilter by remember { mutableStateOf<Set<OccupancyFilter>>(emptySet()) }
+    var selectedLabelStatusesFilter by remember { mutableStateOf<Set<LabelStatusFilter>>(emptySet()) }
 
     var isFilterBottomSheetOpen by remember { mutableStateOf(false) }
+    var isBarcodeScannerOpen by remember { mutableStateOf(false) }
 
     var selectedLocationForItems by remember { mutableStateOf<StockLocation?>(null) }
     var selectedLocationForPrint by remember { mutableStateOf<StockLocation?>(null) }
@@ -100,6 +202,17 @@ fun LocationManagementScreen(
     var selectedLocationForDelete by remember { mutableStateOf<StockLocation?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    var pendingEnableLocationId by remember { mutableStateOf<Long?>(null) }
+    var highlightedLocationId by remember { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(highlightedLocationId) {
+        if (highlightedLocationId != null) {
+            delay(2500)
+            highlightedLocationId = null
+        }
+    }
 
     LaunchedEffect(uiState.errorMessage, uiState.successMessage) {
         uiState.errorMessage?.let { msg ->
@@ -117,24 +230,43 @@ fun LocationManagementScreen(
         uiState.locations,
         uiState.allStockItems,
         searchQuery,
-        selectedTypeFilter,
-        selectedStructureFilter,
-        selectedOccupancyFilter
+        selectedTypesFilter,
+        selectedParentIdsFilter,
+        selectedStructuresFilter,
+        selectedOccupanciesFilter,
+        selectedLabelStatusesFilter
     ) {
+        val parsedPayload = BarcodePayloadHelper.parsePayload(searchQuery)
         uiState.locations.filter { loc ->
             val matchesSearch = searchQuery.isBlank() ||
                     loc.name.contains(searchQuery, ignoreCase = true) ||
                     loc.description.contains(searchQuery, ignoreCase = true) ||
-                    loc.locationType.contains(searchQuery, ignoreCase = true)
+                    loc.locationType.contains(searchQuery, ignoreCase = true) ||
+                    loc.uuid.contains(searchQuery, ignoreCase = true) ||
+                    loc.effectiveUuid.contains(searchQuery, ignoreCase = true) ||
+                    "location-${loc.id}".contains(searchQuery, ignoreCase = true) ||
+                    (parsedPayload.entityType == BarcodeEntityType.LOCATION && (
+                        loc.uuid.equals(parsedPayload.uuid, ignoreCase = true) ||
+                        loc.effectiveUuid.equals(parsedPayload.uuid, ignoreCase = true) ||
+                        loc.id.toString() == parsedPayload.uuid.removePrefix("location-").removePrefix("loc-")
+                    ))
 
-            val matchesType = selectedTypeFilter == null ||
-                    loc.locationType.equals(selectedTypeFilter, ignoreCase = true)
+            val matchesType = selectedTypesFilter.isEmpty() ||
+                    selectedTypesFilter.any { filterType ->
+                        filterType.equals(normalizeLocationType(loc.locationType), ignoreCase = true)
+                    }
 
-            val matchesStructure = when (selectedStructureFilter) {
-                StructureFilter.ALL -> true
-                StructureFilter.STRUCTURAL_ONLY -> loc.structural
-                StructureFilter.EXTERNAL_ONLY -> loc.external
-            }
+            val matchesParent = selectedParentIdsFilter.isEmpty() ||
+                    (loc.parentId != null && selectedParentIdsFilter.contains(loc.parentId))
+
+            val matchesStructure = selectedStructuresFilter.isEmpty() ||
+                    selectedStructuresFilter.any { filter ->
+                        when (filter) {
+                            StructureFilter.ALL -> true
+                            StructureFilter.STRUCTURAL_ONLY -> loc.structural
+                            StructureFilter.EXTERNAL_ONLY -> loc.external
+                        }
+                    }
 
             val locItems = uiState.allStockItems.filter {
                 it.locationId != null && (it.locationId == loc.id || (loc.uuid.startsWith("location-") && it.locationId == loc.uuid.removePrefix("location-").toLongOrNull()))
@@ -142,24 +274,93 @@ fun LocationManagementScreen(
             val currentQty = locItems.sumOf { it.quantity }
             val occPct = loc.calculateOccupancyPercentage(currentQty)
 
-            val matchesOccupancy = when (selectedOccupancyFilter) {
-                OccupancyFilter.ALL -> true
-                OccupancyFilter.HIGH -> occPct >= 90.0
-                OccupancyFilter.OCCUPIED -> currentQty > 0.0
-                OccupancyFilter.EMPTY -> currentQty == 0.0
+            val matchesOccupancy = selectedOccupanciesFilter.isEmpty() ||
+                    selectedOccupanciesFilter.any { filter ->
+                        when (filter) {
+                            OccupancyFilter.ALL -> true
+                            OccupancyFilter.HIGH -> occPct >= 90.0
+                            OccupancyFilter.OCCUPIED -> currentQty > 0.0
+                            OccupancyFilter.EMPTY -> currentQty == 0.0
+                        }
+                    }
+
+            val matchesLabelStatus = selectedLabelStatusesFilter.isEmpty() ||
+                    selectedLabelStatusesFilter.any { filter ->
+                        when (filter) {
+                            LabelStatusFilter.ALL -> true
+                            LabelStatusFilter.NEEDS_UPDATE -> loc.labelGeneratedAt == null || loc.isLabelStale
+                            LabelStatusFilter.UPDATED -> loc.labelGeneratedAt != null && !loc.isLabelStale
+                        }
+                    }
+
+            matchesSearch && matchesType && matchesParent && matchesStructure && matchesOccupancy && matchesLabelStatus
+        }
+    }
+
+    val onTogglePrimary: (StockLocation, Boolean) -> Unit = { loc, newChecked ->
+        val isSite = loc.locationType.equals("SITE", ignoreCase = true) || loc.external
+        val isWarehouse = loc.locationType.equals("WAREHOUSE", ignoreCase = true)
+
+        if (newChecked) {
+            val existingPrimary = uiState.locations.find { existing ->
+                existing.id != loc.id && existing.isPrimary &&
+                        if (isSite) (existing.locationType.equals("SITE", ignoreCase = true) || existing.external)
+                        else if (isWarehouse) existing.locationType.equals("WAREHOUSE", ignoreCase = true)
+                        else false
             }
 
-            matchesSearch && matchesType && matchesStructure && matchesOccupancy
+            if (existingPrimary != null) {
+                val indexA = filteredLocations.indexOfFirst { it.id == existingPrimary.id }
+                if (indexA != -1) {
+                    coroutineScope.launch {
+                        listState.animateScrollToItem(indexA)
+                    }
+                }
+                highlightedLocationId = existingPrimary.id
+                pendingEnableLocationId = loc.id
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar(
+                        message = "يجب إلغاء تعيين الموقع الأساسي الحالي أولاً",
+                        duration = SnackbarDuration.Short
+                    )
+                }
+            } else {
+                viewModel.updateLocation(loc.withPrimary(true))
+            }
+        } else {
+            viewModel.updateLocation(loc.withPrimary(false))
+
+            if (pendingEnableLocationId != null) {
+                val pendingTarget = uiState.locations.find { it.id == pendingEnableLocationId }
+                if (pendingTarget != null) {
+                    val indexB = filteredLocations.indexOfFirst { it.id == pendingTarget.id }
+                    if (indexB != -1) {
+                        coroutineScope.launch {
+                            listState.animateScrollToItem(indexB)
+                        }
+                    }
+                    highlightedLocationId = pendingTarget.id
+                    viewModel.updateLocation(pendingTarget.withPrimary(true))
+                    pendingEnableLocationId = null
+                }
+            }
         }
     }
 
     val availableTypes = remember(uiState.locations) {
-        uiState.locations.map { it.locationType.uppercase() }.distinct().sorted()
+        val presentNormalizedTypes = uiState.locations.map { loc ->
+            normalizeLocationType(loc.locationType)
+        }.distinct()
+
+        val customTypes = presentNormalizedTypes.filter { !CANONICAL_LOCATION_TYPES.contains(it) }.sorted()
+        (CANONICAL_LOCATION_TYPES + customTypes).distinct()
     }
 
-    val isFilterActive = selectedTypeFilter != null ||
-            selectedStructureFilter != StructureFilter.ALL ||
-            selectedOccupancyFilter != OccupancyFilter.ALL
+    val isFilterActive = selectedTypesFilter.isNotEmpty() ||
+            selectedParentIdsFilter.isNotEmpty() ||
+            selectedStructuresFilter.isNotEmpty() ||
+            selectedOccupanciesFilter.isNotEmpty() ||
+            selectedLabelStatusesFilter.isNotEmpty()
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -218,7 +419,7 @@ fun LocationManagementScreen(
                     onValueChange = { searchQuery = it },
                     placeholder = {
                         Text(
-                            text = "البحث باسم الموقع، الوصف، أو النوع...",
+                            text = "البحث باسم الموقع، الوصف، أو الرمز...",
                             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.5.sp),
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -256,6 +457,50 @@ fun LocationManagementScreen(
                         unfocusedContainerColor = Color.White
                     )
                 )
+
+                // 2. زر مسح الباركود المنفصل الموازي لزر الفلتر
+                var isBarcodePressed by remember { mutableStateOf(false) }
+                val barcodeScale by animateFloatAsState(
+                    targetValue = if (isBarcodePressed) 0.92f else 1f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+                )
+
+                OutlinedButton(
+                    onClick = {
+                        isBarcodePressed = true
+                        isBarcodeScannerOpen = true
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.5.dp, Color(0xFF4F46E5)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color(0xFFEEF2FF),
+                        contentColor = Color(0xFF4F46E5)
+                    ),
+                    contentPadding = PaddingValues(horizontal = 10.dp),
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .scale(barcodeScale)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QrCodeScanner,
+                            contentDescription = "مسح الباركود",
+                            tint = Color(0xFF4F46E5),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "باركود",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            ),
+                            color = Color(0xFF4338CA)
+                        )
+                    }
+                }
 
                 // 2. زر الفلتر (يظهر ثانياً على اليسار في نمط RTL)
                 var isFilterPressed by remember { mutableStateOf(false) }
@@ -327,6 +572,9 @@ fun LocationManagementScreen(
                     locations = filteredLocations,
                     allLocations = uiState.locations,
                     allStockItems = uiState.allStockItems,
+                    listState = listState,
+                    highlightedLocationId = highlightedLocationId,
+                    onTogglePrimary = onTogglePrimary,
                     onShowItems = { selectedLocationForItems = it },
                     onPrintLabel = { selectedLocationForPrint = it },
                     onEditLocation = { selectedLocationForEdit = it },
@@ -339,20 +587,29 @@ fun LocationManagementScreen(
     // Modal BottomSheet الفلترة المتقدمة للمواقع
     if (isFilterBottomSheetOpen) {
         LocationFilterBottomSheet(
+            allLocations = uiState.locations,
+            allStockItems = uiState.allStockItems,
+            searchQuery = searchQuery,
             availableTypes = availableTypes,
-            selectedType = selectedTypeFilter,
-            selectedStructure = selectedStructureFilter,
-            selectedOccupancy = selectedOccupancyFilter,
-            onApplyFilter = { type, struct, occ ->
-                selectedTypeFilter = type
-                selectedStructureFilter = struct
-                selectedOccupancyFilter = occ
+            selectedTypes = selectedTypesFilter,
+            selectedParentIds = selectedParentIdsFilter,
+            selectedStructures = selectedStructuresFilter,
+            selectedOccupancies = selectedOccupanciesFilter,
+            selectedLabelStatuses = selectedLabelStatusesFilter,
+            onApplyFilter = { types, parentIds, structs, occs, labelStatuses ->
+                selectedTypesFilter = types
+                selectedParentIdsFilter = parentIds
+                selectedStructuresFilter = structs
+                selectedOccupanciesFilter = occs
+                selectedLabelStatusesFilter = labelStatuses
                 isFilterBottomSheetOpen = false
             },
             onResetFilter = {
-                selectedTypeFilter = null
-                selectedStructureFilter = StructureFilter.ALL
-                selectedOccupancyFilter = OccupancyFilter.ALL
+                selectedTypesFilter = emptySet()
+                selectedParentIdsFilter = emptySet()
+                selectedStructuresFilter = emptySet()
+                selectedOccupanciesFilter = emptySet()
+                selectedLabelStatusesFilter = emptySet()
                 isFilterBottomSheetOpen = false
             },
             onDismiss = { isFilterBottomSheetOpen = false }
@@ -366,7 +623,9 @@ fun LocationManagementScreen(
             users = uiState.users,
             locationTypes = uiState.locationTypes,
             onDismiss = { viewModel.setAddLocationDialogOpen(false) },
-            onConfirm = { name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address, customCapacity, capacityUnit ->
+            onAddCapacityUnit = { unitCode -> viewModel.addCustomUnit(unitCode) },
+            onDeleteCapacityUnit = { unitCode -> viewModel.deleteUnit(unitCode) },
+            onConfirm = { name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address, customCapacity, capacityUnit, contactPerson, contactPhone, isPrimary, intermediates, generatedNames ->
                 viewModel.addLocation(
                     name = name,
                     description = desc,
@@ -379,19 +638,12 @@ fun LocationManagementScreen(
                     customIcon = customIcon,
                     address = address,
                     customCapacity = customCapacity,
-                    capacityUnit = capacityUnit
-                )
-            },
-            onConfirmBulk = { parentId, locationType, prefix, startNumber, endNumber, padZeros, desc, customCapacity ->
-                viewModel.generateBulkLocations(
-                    parentId = parentId,
-                    locationType = locationType,
-                    prefix = prefix,
-                    startNumber = startNumber,
-                    endNumber = endNumber,
-                    padZeros = padZeros,
-                    customCapacity = customCapacity,
-                    description = desc
+                    capacityUnit = capacityUnit,
+                    contactPerson = contactPerson,
+                    contactPhone = contactPhone,
+                    isPrimary = isPrimary,
+                    intermediates = intermediates,
+                    generatedNames = generatedNames
                 )
             }
         )
@@ -405,7 +657,9 @@ fun LocationManagementScreen(
             locationTypes = uiState.locationTypes,
             initialLocation = loc,
             onDismiss = { selectedLocationForEdit = null },
-            onConfirm = { name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address, customCapacity, capacityUnit ->
+            onAddCapacityUnit = { unitCode -> viewModel.addCustomUnit(unitCode) },
+            onDeleteCapacityUnit = { unitCode -> viewModel.deleteUnit(unitCode) },
+            onConfirm = { name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address, customCapacity, capacityUnit, contactPerson, contactPhone, isPrimary, _, _ ->
                 val updatedLoc = loc.copy(
                     name = name,
                     description = desc,
@@ -418,11 +672,38 @@ fun LocationManagementScreen(
                     customIcon = customIcon,
                     address = address,
                     customCapacity = customCapacity
-                ).withCapacityUnit(capacityUnit)
+                )
+                    .withCapacityUnit(capacityUnit)
+                    .withContactInfo(contactPerson, contactPhone)
+                    .withPrimary(isPrimary)
                 viewModel.updateLocation(updatedLoc)
                 selectedLocationForEdit = null
             },
             onConfirmBulk = { _, _, _, _, _, _, _, _ -> }
+        )
+    }
+
+    if (isBarcodeScannerOpen) {
+        LocationBarcodeScannerBottomSheet(
+            locations = uiState.locations,
+            onDismiss = { isBarcodeScannerOpen = false },
+            onBarcodeScanned = { scannedResult ->
+                isBarcodeScannerOpen = false
+                val parsed = BarcodePayloadHelper.parsePayload(scannedResult)
+                val matchedLoc = uiState.locations.find { loc ->
+                    loc.uuid.equals(parsed.uuid, ignoreCase = true) ||
+                    loc.effectiveUuid.equals(parsed.uuid, ignoreCase = true) ||
+                    "location-${loc.id}".equals(parsed.uuid, ignoreCase = true) ||
+                    loc.id.toString() == parsed.uuid.removePrefix("location-").removePrefix("loc-") ||
+                    loc.name.equals(scannedResult.trim(), ignoreCase = true)
+                }
+                if (matchedLoc != null) {
+                    selectedLocationForItems = matchedLoc
+                    searchQuery = matchedLoc.name
+                } else {
+                    searchQuery = scannedResult
+                }
+            }
         )
     }
 
@@ -449,6 +730,10 @@ fun LocationManagementScreen(
             location = loc,
             allStockItems = uiState.allStockItems,
             parts = uiState.parts,
+            allLocations = uiState.locations,
+            onConfirmTransfer = { itemId, sourceLocationId, targetLocationId, quantity, reason, notes ->
+                viewModel.transferStockItem(itemId, sourceLocationId, targetLocationId, quantity, reason, notes)
+            },
             onDismiss = { selectedLocationForItems = null }
         )
     }
@@ -557,21 +842,27 @@ private fun LazyLocationsList(
     locations: List<StockLocation>,
     allLocations: List<StockLocation>,
     allStockItems: List<StockItem>,
+    listState: LazyListState,
+    highlightedLocationId: Long?,
+    onTogglePrimary: (StockLocation, Boolean) -> Unit,
     onShowItems: (StockLocation) -> Unit,
     onPrintLabel: (StockLocation) -> Unit,
     onEditLocation: (StockLocation) -> Unit,
     onDeleteLocation: (StockLocation) -> Unit
 ) {
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(locations, key = { it.id }) { loc ->
+        itemsIndexed(locations, key = { index, loc -> "loc-${loc.id}-$index" }) { _, loc ->
             LocationCardItem(
                 location = loc,
                 allLocations = allLocations,
                 allStockItems = allStockItems,
+                highlightedLocationId = highlightedLocationId,
+                onTogglePrimary = { newChecked -> onTogglePrimary(loc, newChecked) },
                 onShowItems = { onShowItems(loc) },
                 onPrintLabel = { onPrintLabel(loc) },
                 onEditLocation = { onEditLocation(loc) },
@@ -586,11 +877,31 @@ private fun LocationCardItem(
     location: StockLocation,
     allLocations: List<StockLocation>,
     allStockItems: List<StockItem>,
+    highlightedLocationId: Long?,
+    onTogglePrimary: (Boolean) -> Unit,
     onShowItems: () -> Unit,
     onPrintLabel: () -> Unit,
     onEditLocation: () -> Unit,
     onDeleteLocation: () -> Unit
 ) {
+    val isExternalLocation = location.external
+    val isSite = location.locationType.equals("SITE", ignoreCase = true) && !location.external
+    val isWarehouse = location.locationType.equals("WAREHOUSE", ignoreCase = true) && !location.external
+    val isPrimaryApplicable = isSite || isWarehouse || isExternalLocation
+
+    val totalCategoryCount = remember(allLocations, isSite, isWarehouse, isExternalLocation) {
+        allLocations.count { loc ->
+            when {
+                isExternalLocation -> loc.external
+                isSite -> loc.locationType.equals("SITE", ignoreCase = true) && !loc.external
+                isWarehouse -> loc.locationType.equals("WAREHOUSE", ignoreCase = true) && !loc.external
+                else -> false
+            }
+        }
+    }
+    val isSwitchEnabled = totalCategoryCount > 1
+    val isHighlighted = highlightedLocationId == location.id
+
     // التجميـع الهجين للـ ID و UUID لمنع فقدان البيانات
     val locStockItems = remember(allStockItems, location.id, location.uuid) {
         allStockItems.filter {
@@ -606,6 +917,7 @@ private fun LocationCardItem(
     val currentQty = remember(locStockItems) { locStockItems.sumOf { it.quantity } }
     val occupancyPct = location.calculateOccupancyPercentage(currentQty)
     val effectiveCap = location.effectiveCapacity
+    val completeness = location.calculateCompleteness()
     val parentPath = remember(allLocations, location.parentId) {
         getBreadcrumbPath(location.parentId, allLocations)
     }
@@ -621,10 +933,17 @@ private fun LocationCardItem(
     }
 
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (isHighlighted) Modifier.border(2.5.dp, Color(0xFFD97706), RoundedCornerShape(18.dp))
+                else Modifier
+            ),
         shape = RoundedCornerShape(18.dp),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (isHighlighted) 8.dp else 2.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = if (isHighlighted) Color(0xFFFEF3C7) else MaterialTheme.colorScheme.surface
+        )
     ) {
         Column(
             modifier = Modifier
@@ -632,7 +951,9 @@ private fun LocationCardItem(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Header: Icon, Name, Code Badge, Translated Type Tag
+            val typeIconEmoji = getLocationTypeIcon(location.locationType)
+
+            // Header: Icon, Name, Code Badge, Translated Type Tag, Primary Badge & Switch
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -645,11 +966,9 @@ private fun LocationCardItem(
                         .background(Color(0xFFEEF2FF)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Inventory2,
-                        contentDescription = null,
-                        tint = Color(0xFF4F46E5),
-                        modifier = Modifier.size(24.dp)
+                    Text(
+                        text = typeIconEmoji,
+                        fontSize = 22.sp
                     )
                 }
 
@@ -723,6 +1042,13 @@ private fun LocationCardItem(
                         )
                     }
                 }
+
+                // Circular Completion Progress Badge (مؤشر اكتمال البيانات الدائري المزين بشريط التقدم)
+                val completeness = location.calculateCompleteness()
+                CircularCompletionBadge(
+                    percentage = completeness.percentage,
+                    colorTone = completeness.colorTone
+                )
             }
 
             if (location.description.isNotBlank()) {
@@ -734,102 +1060,558 @@ private fun LocationCardItem(
                 )
             }
 
-            // Occupancy Indicator Progress Bar مع وحدة القياس وتنسيق الكميات
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            if (location.external) {
+                val uriHandler = LocalUriHandler.current
+                val clipboardManager = LocalClipboardManager.current
+
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFEFF6FF),
+                    border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "نسبة الإشغال والسعة:",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "${occupancyPct.toInt()}% (${currentQty.formatQuantity()} / ${effectiveCap.formatQuantity()} ${location.capacityUnit})",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = if (occupancyPct >= 90.0) Color(0xFFDC2626) else Color(0xFF4F46E5)
+                    Column(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text("🚚", fontSize = 12.sp)
+                            Text(
+                                text = "موقع تخزيني خارجي",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp),
+                                color = Color(0xFF1E40AF)
+                            )
+                        }
+
+                        if (location.address.isNotBlank()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        clipboardManager.setText(AnnotatedString(location.address.trim()))
+                                        try {
+                                            val encoded = location.address.trim().replace(" ", "+")
+                                            uriHandler.openUri("https://maps.google.com/?q=$encoded")
+                                        } catch (_: Exception) {}
+                                    }
+                                    .padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "📍 العنوان: ${location.address}",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = Color(0xFF1E3A8A),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.Directions,
+                                    contentDescription = "فتح في الخريطة",
+                                    tint = Color(0xFF2563EB),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        val person = location.contactPerson
+                        val phone = location.contactPhone
+                        if (!person.isNullOrBlank() || !phone.isNullOrBlank()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                val contactStr = listOfNotNull(
+                                    person?.let { "👤 المسؤول: $it" },
+                                    phone?.let { "📞 $it" }
+                                ).joinToString("  |  ")
+                                Text(
+                                    text = contactStr,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = Color(0xFF1E3A8A),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (!phone.isNullOrBlank()) {
+                                    IconButton(
+                                        onClick = {
+                                            val cleanPhone = phone.trim().filter { it.isDigit() || it == '+' }
+                                            clipboardManager.setText(AnnotatedString(cleanPhone))
+                                            try {
+                                                uriHandler.openUri("tel:$cleanPhone")
+                                            } catch (_: Exception) {}
+                                        },
+                                        modifier = Modifier.size(22.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Call,
+                                            contentDescription = "اتصال مباشر",
+                                            tint = Color(0xFF16A34A),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Occupancy Indicator Progress Bar (يُعرض حصراً عند اكتمال بيانات الموقع 100%)
+            if (completeness.percentage == 100) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "نسبة الإشغال والسعة:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "${occupancyPct.toInt()}% (${currentQty.formatQuantity()} / ${effectiveCap.formatQuantity()} ${location.capacityUnit})",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = if (occupancyPct >= 90.0) Color(0xFFDC2626) else Color(0xFF4F46E5)
+                        )
+                    }
+
+                    LinearProgressIndicator(
+                        progress = { (occupancyPct / 100.0).toFloat().coerceIn(0f, 1f) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        color = if (occupancyPct >= 90.0) Color(0xFFDC2626) else Color(0xFF4F46E5),
+                        trackColor = Color(0xFFE2E8F0),
+                        gapSize = 0.dp,
+                        drawStopIndicator = {}
                     )
                 }
-
-                LinearProgressIndicator(
-                    progress = { (occupancyPct / 100.0).toFloat().coerceIn(0f, 1f) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = if (occupancyPct >= 90.0) Color(0xFFDC2626) else Color(0xFF4F46E5),
-                    trackColor = Color(0xFFE2E8F0)
-                )
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
-            // Footer Actions مع إبراز الأصناف الفرعية المختلفة
+            // Footer Actions (متناسقة وبارتفاع موحد 40.dp بكافة العناصر)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AssistChip(
+                Surface(
                     onClick = onShowItems,
-                    label = { Text("📦 $distinctPartsCount أصناف مخزنة") },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = Color(0xFFEEF2FF),
-                        labelColor = Color(0xFF3730A3)
-                    ),
-                    border = null
-                )
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFEEF2FF),
+                    modifier = Modifier.height(40.dp)
                 ) {
-                    IconButton(
-                        onClick = onPrintLabel,
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                        )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.QrCode2,
-                            contentDescription = "طباعة ملصق",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onEditLocation,
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "تعديل",
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onDeleteLocation,
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = "حذف",
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(20.dp)
+                        Text(
+                            text = "📦 $distinctPartsCount أصناف مخزنة",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.5.sp
+                            ),
+                            color = Color(0xFF3730A3)
                         )
                     }
                 }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isPrimaryApplicable) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (location.isPrimary) Color(0xFFFEF3C7) else Color(0xFFF1F5F9),
+                            border = BorderStroke(1.dp, if (location.isPrimary) Color(0xFFFDE68A) else Color(0xFFE2E8F0)),
+                            modifier = Modifier.height(40.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            ) {
+                                if (location.isPrimary) {
+                                    Text(
+                                        text = "أساسي ⭐️",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 10.sp
+                                        ),
+                                        color = Color(0xFFD97706)
+                                    )
+                                }
+                                Switch(
+                                    checked = location.isPrimary,
+                                    enabled = isSwitchEnabled,
+                                    onCheckedChange = { newChecked ->
+                                        onTogglePrimary(newChecked)
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = Color(0xFFD97706)
+                                    ),
+                                    modifier = Modifier.scale(0.75f)
+                                )
+                            }
+                        }
+                    }
+
+                    Surface(
+                        onClick = onPrintLabel,
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.QrCode2,
+                                contentDescription = "طباعة ملصق",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        onClick = onEditLocation,
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "تعديل",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        onClick = onDeleteLocation,
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteOutline,
+                                contentDescription = "حذف",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private enum class FilterSubSheetType {
+    TYPES, PARENT_LOCATION, STRUCTURE, OCCUPANCY, LABEL_STATUS
+}
+
+@Composable
+private fun FilterFieldCard(
+    title: String,
+    selectedValueText: String,
+    icon: ImageVector,
+    activeCount: Int,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFFF8FAFC),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (activeCount > 0) Color(0xFF818CF8) else Color(0xFFE2E8F0)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (activeCount > 0) Color(0xFFEEF2FF) else Color(0xFFF1F5F9),
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = if (activeCount > 0) Color(0xFF4F46E5) else Color(0xFF64748B),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFF0F172A)
+                    )
+                    Text(
+                        text = selectedValueText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (activeCount > 0) Color(0xFF4338CA) else Color(0xFF64748B),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (activeCount > 0) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF4F46E5)
+                    ) {
+                        Text(
+                            text = "$activeCount محدد",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = Color(0xFF94A3B8),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun <T> MultiSelectFilterSheet(
+    title: String,
+    items: List<T>,
+    selectedItems: Set<T>,
+    getItemTitle: (T) -> String,
+    getItemIcon: (T) -> String = { "" },
+    getItemCount: (T) -> Int,
+    totalCount: Int,
+    onConfirm: (Set<T>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var localSelected by remember { mutableStateOf(selectedItems) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp)
+                .padding(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color(0xFF0F172A)
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "إغلاق",
+                        tint = Color(0xFF64748B)
+                    )
+                }
+            }
+
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // خيار "الكل"
+                val isAllSelected = localSelected.isEmpty()
+                Surface(
+                    onClick = { localSelected = emptySet() },
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isAllSelected) Color(0xFFEEF2FF) else Color(0xFFF8FAFC),
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = if (isAllSelected) Color(0xFF818CF8) else Color(0xFFE2E8F0)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = isAllSelected,
+                                onCheckedChange = { localSelected = emptySet() },
+                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4F46E5))
+                            )
+                            Text(
+                                text = "الكل",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Normal
+                                ),
+                                color = if (isAllSelected) Color(0xFF312E81) else Color(0xFF334155)
+                            )
+                        }
+
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isAllSelected) Color(0xFFC7D2FE) else Color(0xFFE2E8F0)
+                        ) {
+                            Text(
+                                text = "$totalCount",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = if (isAllSelected) Color(0xFF312E81) else Color(0xFF475569),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+
+                // بقية الخيارات المقترنة بالعناصر
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    itemsIndexed(items, key = { index, _ -> "filter-item-$index" }) { _, item ->
+                        val isSelected = localSelected.contains(item)
+                        val count = getItemCount(item)
+                        val icon = getItemIcon(item)
+                        val itemTitle = getItemTitle(item)
+
+                        Surface(
+                            onClick = {
+                                localSelected = if (isSelected) {
+                                    localSelected - item
+                                } else {
+                                    localSelected + item
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) Color(0xFFEEF2FF) else Color(0xFFF8FAFC),
+                            border = BorderStroke(
+                                width = 1.dp,
+                                color = if (isSelected) Color(0xFF818CF8) else Color(0xFFE2E8F0)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = isSelected,
+                                        onCheckedChange = { checked ->
+                                            localSelected = if (checked) {
+                                                localSelected + item
+                                            } else {
+                                                localSelected - item
+                                            }
+                                        },
+                                        colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4F46E5))
+                                    )
+                                    val labelText = if (icon.isNotBlank()) "$icon $itemTitle" else itemTitle
+                                    Text(
+                                        text = labelText,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        ),
+                                        color = if (isSelected) Color(0xFF312E81) else Color(0xFF334155)
+                                    )
+                                }
+
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (isSelected) Color(0xFFC7D2FE) else Color(0xFFE2E8F0)
+                                ) {
+                                    Text(
+                                        text = "$count",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = if (isSelected) Color(0xFF312E81) else Color(0xFF475569),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = { onConfirm(localSelected) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
+            ) {
+                Text(
+                    text = "تأكيد الاختيار",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                )
             }
         }
     }
@@ -838,207 +1620,140 @@ private fun LocationCardItem(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LocationFilterBottomSheet(
+    allLocations: List<StockLocation>,
+    allStockItems: List<StockItem>,
+    searchQuery: String = "",
     availableTypes: List<String>,
-    selectedType: String?,
-    selectedStructure: StructureFilter,
-    selectedOccupancy: OccupancyFilter,
-    onApplyFilter: (String?, StructureFilter, OccupancyFilter) -> Unit,
+    selectedTypes: Set<String>,
+    selectedParentIds: Set<Long>,
+    selectedStructures: Set<StructureFilter>,
+    selectedOccupancies: Set<OccupancyFilter>,
+    selectedLabelStatuses: Set<LabelStatusFilter>,
+    onApplyFilter: (Set<String>, Set<Long>, Set<StructureFilter>, Set<OccupancyFilter>, Set<LabelStatusFilter>) -> Unit,
     onResetFilter: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    var tempType by remember { mutableStateOf(selectedType) }
-    var tempStructure by remember { mutableStateOf(selectedStructure) }
-    var tempOccupancy by remember { mutableStateOf(selectedOccupancy) }
+    var tempTypes by remember { mutableStateOf(selectedTypes) }
+    var tempParentIds by remember { mutableStateOf(selectedParentIds) }
+    var tempStructures by remember { mutableStateOf(selectedStructures) }
+    var tempOccupancies by remember { mutableStateOf(selectedOccupancies) }
+    var tempLabelStatuses by remember { mutableStateOf(selectedLabelStatuses) }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp)
-                .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "فلترة أماكن التخزين",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-                IconButton(onClick = onDismiss) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = null)
-                }
-            }
+    var activeSubSheet by remember { mutableStateOf<FilterSubSheetType?>(null) }
 
-            // 1. نوع الموقع المعرب
-            if (availableTypes.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "نوع الموقع:",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        item {
-                            FilterChip(
-                                selected = tempType == null,
-                                onClick = { tempType = null },
-                                label = { Text("الكل") },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = Color(0xFF4F46E5),
-                                    selectedLabelColor = Color.White
-                                )
-                            )
-                        }
-                        items(availableTypes) { type ->
-                            FilterChip(
-                                selected = tempType.equals(type, ignoreCase = true),
-                                onClick = {
-                                    tempType = if (tempType.equals(type, ignoreCase = true)) null else type
-                                },
-                                label = { Text(getArabicLocationType(type)) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = Color(0xFF4F46E5),
-                                    selectedLabelColor = Color.White
-                                )
-                            )
-                        }
-                    }
-                }
-            }
+    val totalCount = allLocations.size
 
-            // 2. نوع الهيكل (هيكلي / خارجي)
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "نوع الهيكلية والملكية:",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = tempStructure == StructureFilter.ALL,
-                        onClick = { tempStructure = StructureFilter.ALL },
-                        label = { Text("الكل") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFF4F46E5),
-                            selectedLabelColor = Color.White
-                        )
-                    )
-                    FilterChip(
-                        selected = tempStructure == StructureFilter.STRUCTURAL_ONLY,
-                        onClick = { tempStructure = StructureFilter.STRUCTURAL_ONLY },
-                        label = { Text("مواقع هيكلية فقط") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFF4F46E5),
-                            selectedLabelColor = Color.White
-                        )
-                    )
-                    FilterChip(
-                        selected = tempStructure == StructureFilter.EXTERNAL_ONLY,
-                        onClick = { tempStructure = StructureFilter.EXTERNAL_ONLY },
-                        label = { Text("مواقع خارجية فقط") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFF4F46E5),
-                            selectedLabelColor = Color.White
-                        )
-                    )
-                }
-            }
-
-            // 3. حالة الإشغال والسعة
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "حالة الإشغال والسعة:",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = tempOccupancy == OccupancyFilter.ALL,
-                        onClick = { tempOccupancy = OccupancyFilter.ALL },
-                        label = { Text("الكل") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFF4F46E5),
-                            selectedLabelColor = Color.White
-                        )
-                    )
-                    FilterChip(
-                        selected = tempOccupancy == OccupancyFilter.HIGH,
-                        onClick = { tempOccupancy = OccupancyFilter.HIGH },
-                        label = { Text("ممتلئ (>90%)") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFF4F46E5),
-                            selectedLabelColor = Color.White
-                        )
-                    )
-                    FilterChip(
-                        selected = tempOccupancy == OccupancyFilter.OCCUPIED,
-                        onClick = { tempOccupancy = OccupancyFilter.OCCUPIED },
-                        label = { Text("فيه مواد مخزنة") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFF4F46E5),
-                            selectedLabelColor = Color.White
-                        )
-                    )
-                    FilterChip(
-                        selected = tempOccupancy == OccupancyFilter.EMPTY,
-                        onClick = { tempOccupancy = OccupancyFilter.EMPTY },
-                        label = { Text("فارغ") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFF4F46E5),
-                            selectedLabelColor = Color.White
-                        )
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedButton(
-                    onClick = onResetFilter,
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("إعادة ضبط")
-                }
-
-                Button(
-                    onClick = {
-                        onApplyFilter(tempType, tempStructure, tempOccupancy)
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
-                ) {
-                    Text("تطبيق الفلتر")
-                }
+    val typeCounts = remember(allLocations, availableTypes) {
+        availableTypes.associateWith { type ->
+            allLocations.count { loc ->
+                normalizeLocationType(loc.locationType).equals(type, ignoreCase = true)
             }
         }
     }
-}
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun LocationItemsBottomSheet(
-    location: StockLocation,
-    allStockItems: List<StockItem>,
-    parts: List<Part>,
-    onDismiss: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val availableParentLocations = remember(allLocations) {
+        val parentIdsWithChildren = allLocations.mapNotNull { it.parentId }.toSet()
+        allLocations.filter { loc ->
+            loc.parentId == null || loc.structural || parentIdsWithChildren.contains(loc.id)
+        }.sortedBy { it.name }
+    }
 
-    // الفلترة الهجينة للـ ID و UUID بالنافذة السفلية
-    val locItems = remember(allStockItems, location.id, location.uuid) {
-        allStockItems.filter {
-            it.locationId != null && (it.locationId == location.id || (location.uuid.startsWith("location-") && it.locationId == location.uuid.removePrefix("location-").toLongOrNull()))
+    val structuralCount = remember(allLocations) { allLocations.count { it.structural } }
+    val externalCount = remember(allLocations) { allLocations.count { it.external } }
+
+    val occupancyData = remember(allLocations, allStockItems) {
+        var high = 0
+        var occ = 0
+        var empty = 0
+        allLocations.forEach { loc ->
+            val items = allStockItems.filter {
+                it.locationId != null && (it.locationId == loc.id || (loc.uuid.startsWith("location-") && it.locationId == loc.uuid.removePrefix("location-").toLongOrNull()))
+            }
+            val currentQty = items.sumOf { it.quantity }
+            val pct = loc.calculateOccupancyPercentage(currentQty)
+            if (pct >= 90.0) high++
+            if (currentQty > 0.0) occ++
+            if (currentQty == 0.0) empty++
+        }
+        Triple(high, occ, empty)
+    }
+    val (highOccupancyCount, occupiedCount, emptyCount) = occupancyData
+
+    val labelStatusData = remember(allLocations) {
+        var needsUpdate = 0
+        var updated = 0
+        allLocations.forEach { loc ->
+            if (loc.labelGeneratedAt == null || loc.isLabelStale) {
+                needsUpdate++
+            } else {
+                updated++
+            }
+        }
+        Pair(needsUpdate, updated)
+    }
+    val (needsUpdateLabelCount, updatedLabelCount) = labelStatusData
+
+    val tempFilteredLocationsCount = remember(
+        allLocations,
+        allStockItems,
+        searchQuery,
+        tempTypes,
+        tempParentIds,
+        tempStructures,
+        tempOccupancies,
+        tempLabelStatuses
+    ) {
+        allLocations.count { loc ->
+            val matchesSearch = searchQuery.isBlank() ||
+                    loc.name.contains(searchQuery, ignoreCase = true) ||
+                    loc.description.contains(searchQuery, ignoreCase = true) ||
+                    loc.locationType.contains(searchQuery, ignoreCase = true)
+
+            val matchesType = tempTypes.isEmpty() ||
+                    tempTypes.any { filterType ->
+                        filterType.equals(normalizeLocationType(loc.locationType), ignoreCase = true)
+                    }
+
+            val matchesParent = tempParentIds.isEmpty() ||
+                    (loc.parentId != null && tempParentIds.contains(loc.parentId))
+
+            val matchesStructure = tempStructures.isEmpty() ||
+                    tempStructures.any { filter ->
+                        when (filter) {
+                            StructureFilter.ALL -> true
+                            StructureFilter.STRUCTURAL_ONLY -> loc.structural
+                            StructureFilter.EXTERNAL_ONLY -> loc.external
+                        }
+                    }
+
+            val locItems = allStockItems.filter {
+                it.locationId != null && (it.locationId == loc.id || (loc.uuid.startsWith("location-") && it.locationId == loc.uuid.removePrefix("location-").toLongOrNull()))
+            }
+            val currentQty = locItems.sumOf { it.quantity }
+            val occPct = loc.calculateOccupancyPercentage(currentQty)
+
+            val matchesOccupancy = tempOccupancies.isEmpty() ||
+                    tempOccupancies.any { filter ->
+                        when (filter) {
+                            OccupancyFilter.ALL -> true
+                            OccupancyFilter.HIGH -> occPct >= 90.0
+                            OccupancyFilter.OCCUPIED -> currentQty > 0.0
+                            OccupancyFilter.EMPTY -> currentQty == 0.0
+                        }
+                    }
+
+            val matchesLabelStatus = tempLabelStatuses.isEmpty() ||
+                    tempLabelStatuses.any { filter ->
+                        when (filter) {
+                            LabelStatusFilter.ALL -> true
+                            LabelStatusFilter.NEEDS_UPDATE -> loc.labelGeneratedAt == null || loc.isLabelStale
+                            LabelStatusFilter.UPDATED -> loc.labelGeneratedAt != null && !loc.isLabelStale
+                        }
+                    }
+
+            matchesSearch && matchesType && matchesParent && matchesStructure && matchesOccupancy && matchesLabelStatus
         }
     }
 
@@ -1058,19 +1773,494 @@ private fun LocationItemsBottomSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Text(
+                    text = "فلترة أماكن التخزين",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = null)
+                }
+            }
+
+            // 1. حقل "الموقع الأب / المستودع التابع له" العمودي (في الأعلى)
+            val parentSummary = remember(tempParentIds, availableParentLocations) {
+                if (tempParentIds.isEmpty()) "الكل ($totalCount موقعاً)"
+                else {
+                    val selectedNames = availableParentLocations
+                        .filter { tempParentIds.contains(it.id) }
+                        .map { it.name }
+                    if (selectedNames.isNotEmpty()) selectedNames.joinToString("، ")
+                    else "الكل ($totalCount موقعاً)"
+                }
+            }
+            FilterFieldCard(
+                title = "الموقع الأب / المستودع التابع له",
+                selectedValueText = parentSummary,
+                icon = Icons.Default.AccountTree,
+                activeCount = tempParentIds.size,
+                onClick = { activeSubSheet = FilterSubSheetType.PARENT_LOCATION }
+            )
+
+            // 2. حقل "نوع الموقع" العمودي
+            val typesSummary = remember(tempTypes) {
+                if (tempTypes.isEmpty()) "الكل ($totalCount موقعاً)"
+                else tempTypes.joinToString("، ") { getArabicLocationType(it) }
+            }
+            FilterFieldCard(
+                title = "نوع الموقع",
+                selectedValueText = typesSummary,
+                icon = Icons.Default.Inventory2,
+                activeCount = tempTypes.size,
+                onClick = { activeSubSheet = FilterSubSheetType.TYPES }
+            )
+
+            // 3. حقل "نوع الهيكلية والملكية" العمودي
+            val structureSummary = remember(tempStructures) {
+                if (tempStructures.isEmpty()) "الكل ($totalCount موقعاً)"
+                else tempStructures.joinToString("، ") { struct ->
+                    when (struct) {
+                        StructureFilter.ALL -> "الكل"
+                        StructureFilter.STRUCTURAL_ONLY -> "مواقع هيكلية فقط"
+                        StructureFilter.EXTERNAL_ONLY -> "مواقع خارجية فقط"
+                    }
+                }
+            }
+            FilterFieldCard(
+                title = "نوع الهيكلية والملكية",
+                selectedValueText = structureSummary,
+                icon = Icons.Default.FilterList,
+                activeCount = tempStructures.size,
+                onClick = { activeSubSheet = FilterSubSheetType.STRUCTURE }
+            )
+
+            // 4. حقل "حالة الإشغال والسعة" العمودي
+            val occupancySummary = remember(tempOccupancies) {
+                if (tempOccupancies.isEmpty()) "الكل ($totalCount موقعاً)"
+                else tempOccupancies.joinToString("، ") { occ ->
+                    when (occ) {
+                        OccupancyFilter.ALL -> "الكل"
+                        OccupancyFilter.HIGH -> "🔴 ممتلئ (>90%)"
+                        OccupancyFilter.OCCUPIED -> "🟢 فيه مواد مخزنة"
+                        OccupancyFilter.EMPTY -> "⚪ فارغ"
+                    }
+                }
+            }
+            FilterFieldCard(
+                title = "حالة الإشغال والسعة",
+                selectedValueText = occupancySummary,
+                icon = Icons.Default.FilterList,
+                activeCount = tempOccupancies.size,
+                onClick = { activeSubSheet = FilterSubSheetType.OCCUPANCY }
+            )
+
+            // 5. حقل "حالة طباعة الملصق" العمودي
+            val labelStatusSummary = remember(tempLabelStatuses) {
+                if (tempLabelStatuses.isEmpty()) "الكل ($totalCount موقعاً)"
+                else tempLabelStatuses.joinToString("، ") { status ->
+                    when (status) {
+                        LabelStatusFilter.ALL -> "الكل"
+                        LabelStatusFilter.NEEDS_UPDATE -> "⚠️ بحاجة لتحديث الملصق"
+                        LabelStatusFilter.UPDATED -> "✅ ملصق محدث ومطبوع"
+                    }
+                }
+            }
+            FilterFieldCard(
+                title = "حالة طباعة الملصق",
+                selectedValueText = labelStatusSummary,
+                icon = Icons.Default.QrCode2,
+                activeCount = tempLabelStatuses.size,
+                onClick = { activeSubSheet = FilterSubSheetType.LABEL_STATUS }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 6. أزرار التحكم السفلية المحسوبة اللحظية
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        tempTypes = emptySet()
+                        tempParentIds = emptySet()
+                        tempStructures = emptySet()
+                        tempOccupancies = emptySet()
+                        tempLabelStatuses = emptySet()
+                        onResetFilter()
+                    },
+                    modifier = Modifier
+                        .weight(0.9f)
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Text(
+                        text = "إعادة ضبط",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        onApplyFilter(tempTypes, tempParentIds, tempStructures, tempOccupancies, tempLabelStatuses)
+                    },
+                    modifier = Modifier
+                        .weight(1.3f)
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
+                ) {
+                    Text(
+                        text = "تطبيق الفلتر (إظهار $tempFilteredLocationsCount مواقع)",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+
+    // المنبثقات العائمة لتحديد خيارات الفلترة المتقدمة (Sub-sheets for Multi-Selection)
+    when (activeSubSheet) {
+        FilterSubSheetType.TYPES -> {
+            MultiSelectFilterSheet(
+                title = "اختر أنواع المواقع التخزينية",
+                items = availableTypes,
+                selectedItems = tempTypes,
+                getItemTitle = { getArabicLocationType(it) },
+                getItemIcon = { getLocationTypeIcon(it) },
+                getItemCount = { typeCounts[it] ?: 0 },
+                totalCount = totalCount,
+                onConfirm = {
+                    tempTypes = it
+                    activeSubSheet = null
+                },
+                onDismiss = { activeSubSheet = null }
+            )
+        }
+
+        FilterSubSheetType.PARENT_LOCATION -> {
+            val selectedParentLocations = remember(tempParentIds, availableParentLocations) {
+                availableParentLocations.filter { tempParentIds.contains(it.id) }.toSet()
+            }
+            MultiSelectFilterSheet(
+                title = "اختر الموقع الأب / المستودع التابع له",
+                items = availableParentLocations,
+                selectedItems = selectedParentLocations,
+                getItemTitle = { parentLoc -> parentLoc.name },
+                getItemIcon = { parentLoc -> getLocationTypeIcon(parentLoc.locationType) },
+                getItemCount = { parentLoc -> allLocations.count { it.parentId == parentLoc.id } },
+                totalCount = totalCount,
+                onConfirm = { selectedLocs ->
+                    tempParentIds = selectedLocs.map { it.id }.toSet()
+                    activeSubSheet = null
+                },
+                onDismiss = { activeSubSheet = null }
+            )
+        }
+
+        FilterSubSheetType.STRUCTURE -> {
+            MultiSelectFilterSheet(
+                title = "اختر نوع الهيكلية والملكية",
+                items = listOf(StructureFilter.STRUCTURAL_ONLY, StructureFilter.EXTERNAL_ONLY),
+                selectedItems = tempStructures,
+                getItemTitle = { struct ->
+                    when (struct) {
+                        StructureFilter.ALL -> "الكل"
+                        StructureFilter.STRUCTURAL_ONLY -> "مواقع هيكلية فقط"
+                        StructureFilter.EXTERNAL_ONLY -> "مواقع خارجية فقط"
+                    }
+                },
+                getItemIcon = { struct ->
+                    when (struct) {
+                        StructureFilter.ALL -> "🏢"
+                        StructureFilter.STRUCTURAL_ONLY -> "🏛️"
+                        StructureFilter.EXTERNAL_ONLY -> "🚛"
+                    }
+                },
+                getItemCount = { struct ->
+                    when (struct) {
+                        StructureFilter.ALL -> totalCount
+                        StructureFilter.STRUCTURAL_ONLY -> structuralCount
+                        StructureFilter.EXTERNAL_ONLY -> externalCount
+                    }
+                },
+                totalCount = totalCount,
+                onConfirm = {
+                    tempStructures = it
+                    activeSubSheet = null
+                },
+                onDismiss = { activeSubSheet = null }
+            )
+        }
+
+        FilterSubSheetType.OCCUPANCY -> {
+            MultiSelectFilterSheet(
+                title = "اختر حالة الإشغال والسعة",
+                items = listOf(OccupancyFilter.HIGH, OccupancyFilter.OCCUPIED, OccupancyFilter.EMPTY),
+                selectedItems = tempOccupancies,
+                getItemTitle = { occ ->
+                    when (occ) {
+                        OccupancyFilter.ALL -> "الكل"
+                        OccupancyFilter.HIGH -> "ممتلئ (>90%)"
+                        OccupancyFilter.OCCUPIED -> "فيه مواد مخزنة"
+                        OccupancyFilter.EMPTY -> "فارغ"
+                    }
+                },
+                getItemIcon = { occ ->
+                    when (occ) {
+                        OccupancyFilter.ALL -> "📊"
+                        OccupancyFilter.HIGH -> "🔴"
+                        OccupancyFilter.OCCUPIED -> "🟢"
+                        OccupancyFilter.EMPTY -> "⚪"
+                    }
+                },
+                getItemCount = { occ ->
+                    when (occ) {
+                        OccupancyFilter.ALL -> totalCount
+                        OccupancyFilter.HIGH -> highOccupancyCount
+                        OccupancyFilter.OCCUPIED -> occupiedCount
+                        OccupancyFilter.EMPTY -> emptyCount
+                    }
+                },
+                totalCount = totalCount,
+                onConfirm = {
+                    tempOccupancies = it
+                    activeSubSheet = null
+                },
+                onDismiss = { activeSubSheet = null }
+            )
+        }
+
+        FilterSubSheetType.LABEL_STATUS -> {
+            MultiSelectFilterSheet(
+                title = "اختر حالة طباعة الملصق",
+                items = listOf(LabelStatusFilter.NEEDS_UPDATE, LabelStatusFilter.UPDATED),
+                selectedItems = tempLabelStatuses,
+                getItemTitle = { status ->
+                    when (status) {
+                        LabelStatusFilter.ALL -> "الكل"
+                        LabelStatusFilter.NEEDS_UPDATE -> "بحاجة لتحديث الملصق"
+                        LabelStatusFilter.UPDATED -> "ملصق محدث ومطبوع"
+                    }
+                },
+                getItemIcon = { status ->
+                    when (status) {
+                        LabelStatusFilter.ALL -> "🏷️"
+                        LabelStatusFilter.NEEDS_UPDATE -> "⚠️"
+                        LabelStatusFilter.UPDATED -> "✅"
+                    }
+                },
+                getItemCount = { status ->
+                    when (status) {
+                        LabelStatusFilter.ALL -> totalCount
+                        LabelStatusFilter.NEEDS_UPDATE -> needsUpdateLabelCount
+                        LabelStatusFilter.UPDATED -> updatedLabelCount
+                    }
+                },
+                totalCount = totalCount,
+                onConfirm = {
+                    tempLabelStatuses = it
+                    activeSubSheet = null
+                },
+                onDismiss = { activeSubSheet = null }
+            )
+        }
+
+        null -> {}
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LocationItemsBottomSheet(
+    location: StockLocation,
+    allStockItems: List<StockItem>,
+    parts: List<Part>,
+    allLocations: List<StockLocation>,
+    onConfirmTransfer: (itemId: Long, sourceLocationId: Long?, targetLocationId: Long, quantity: Double, reason: String, notes: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    var itemSearchQuery by remember { mutableStateOf("") }
+    var isItemBarcodeScannerOpen by remember { mutableStateOf(false) }
+    var selectedItemForTransfer by remember { mutableStateOf<StockItem?>(null) }
+
+    // الفلترة الهجينة للـ ID و UUID بالنافذة السفلية
+    val locItems = remember(allStockItems, location.id, location.uuid) {
+        allStockItems.filter {
+            it.locationId != null && (it.locationId == location.id || (location.uuid.startsWith("location-") && it.locationId == location.uuid.removePrefix("location-").toLongOrNull()))
+        }
+    }
+
+    val filteredLocItems = remember(locItems, parts, itemSearchQuery) {
+        val query = itemSearchQuery.trim()
+        if (query.isBlank()) {
+            locItems
+        } else {
+            val parsedPayload = BarcodePayloadHelper.parsePayload(query)
+            locItems.filter { item ->
+                val part = parts.find { it.id == item.partId }
+                val partName = part?.name ?: ""
+                val partIpn = part?.ipn ?: ""
+
+                partName.contains(query, ignoreCase = true) ||
+                partIpn.contains(query, ignoreCase = true) ||
+                item.serial.contains(query, ignoreCase = true) ||
+                item.batch.contains(query, ignoreCase = true) ||
+                item.notes.contains(query, ignoreCase = true) ||
+                (parsedPayload.entityType == BarcodeEntityType.STOCK_ITEM && (
+                    item.id.toString() == parsedPayload.uuid.removePrefix("stock-") ||
+                    item.serial.equals(parsedPayload.uuid, ignoreCase = true)
+                )) ||
+                (parsedPayload.entityType == BarcodeEntityType.PART && (
+                    item.partId.toString() == parsedPayload.uuid.removePrefix("part-") ||
+                    partIpn.equals(parsedPayload.uuid, ignoreCase = true)
+                ))
+            }
+        }
+    }
+
+    if (isItemBarcodeScannerOpen) {
+        LocationBarcodeScannerBottomSheet(
+            locations = emptyList(),
+            onDismiss = { isItemBarcodeScannerOpen = false },
+            onBarcodeScanned = { scannedResult ->
+                itemSearchQuery = scannedResult
+                isItemBarcodeScannerOpen = false
+            }
+        )
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Column {
                     Text(
                         text = "السلع والمواد المخزنة",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                     Text(
-                        text = "الموقع: ${location.name} (${locItems.size} سجلات مخزنية)",
+                        text = "الموقع: ${location.name} (${filteredLocItems.size}/${locItems.size} سجلات مخزنية)",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 IconButton(onClick = onDismiss) {
                     Icon(imageVector = Icons.Default.Close, contentDescription = null)
+                }
+            }
+
+            if (locItems.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = itemSearchQuery,
+                        onValueChange = { itemSearchQuery = it },
+                        placeholder = {
+                            Text(
+                                text = "البحث باسم القطعة، الرقم التسلسلي، الدفعة...",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        },
+                        trailingIcon = {
+                            if (itemSearchQuery.isNotEmpty()) {
+                                IconButton(onClick = { itemSearchQuery = "" }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "مسح البحث",
+                                        tint = Color(0xFF64748B),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Search),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF4F46E5),
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        )
+                    )
+
+                    var isBarcodePressed by remember { mutableStateOf(false) }
+                    val barcodeScale by animateFloatAsState(
+                        targetValue = if (isBarcodePressed) 0.92f else 1f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+                    )
+
+                    OutlinedButton(
+                        onClick = {
+                            isBarcodePressed = true
+                            isItemBarcodeScannerOpen = true
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.5.dp, Color(0xFF4F46E5)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Color(0xFFEEF2FF),
+                            contentColor = Color(0xFF4F46E5)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 10.dp),
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .scale(barcodeScale)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "مسح الباركود",
+                                tint = Color(0xFF4F46E5),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "باركود",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                ),
+                                color = Color(0xFF4338CA)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -1087,6 +2277,19 @@ private fun LocationItemsBottomSheet(
                         color = MaterialTheme.colorScheme.outline
                     )
                 }
+            } else if (filteredLocItems.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "لا توجد مواد مخزنة مطابقة لبحثك ('$itemSearchQuery').",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier
@@ -1094,7 +2297,7 @@ private fun LocationItemsBottomSheet(
                         .heightIn(max = 400.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(locItems) { item ->
+                    itemsIndexed(filteredLocItems, key = { index, item -> "loc-item-${item.id}-$index" }) { _, item ->
                         val partName = parts.find { it.id == item.partId }?.name ?: "قطعة #${item.partId}"
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
@@ -1129,24 +2332,63 @@ private fun LocationItemsBottomSheet(
                                     }
                                 }
 
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFFEEF2FF)
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "الكمية: ${item.quantity.formatQuantity()} ${item.packaging}",
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF3730A3)
-                                        ),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFFEEF2FF)
+                                    ) {
+                                        Text(
+                                            text = "الكمية: ${item.quantity.formatQuantity()} ${item.packaging}",
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF3730A3)
+                                            ),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+
+                                    FilledTonalButton(
+                                        onClick = { selectedItemForTransfer = item },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        colors = ButtonDefaults.filledTonalButtonColors(
+                                            containerColor = Color(0xFF4F46E5).copy(alpha = 0.12f),
+                                            contentColor = Color(0xFF4F46E5)
+                                        )
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.SwapHoriz,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("نقل", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+
+        selectedItemForTransfer?.let { stockItem ->
+            val partName = parts.find { it.id == stockItem.partId }?.name ?: "قطعة #${stockItem.partId}"
+            QuickTransferBottomSheet(
+                stockItem = stockItem,
+                partName = partName,
+                currentLocation = location,
+                allLocations = allLocations,
+                allStockItems = allStockItems,
+                onDismiss = { selectedItemForTransfer = null },
+                onConfirmTransfer = { targetLocId, qty, reason, notes ->
+                    onConfirmTransfer(stockItem.id, location.id, targetLocId, qty, reason, notes)
+                    selectedItemForTransfer = null
+                }
+            )
         }
     }
 }
@@ -1165,4 +2407,72 @@ private fun getBreadcrumbPath(parentId: Long?, locations: List<StockLocation>): 
     }
 
     return pathNames.joinToString(" / ")
+}
+
+@Composable
+private fun CircularCompletionBadge(
+    percentage: Int,
+    colorTone: CompletenessTone,
+    modifier: Modifier = Modifier
+) {
+    val progress = (percentage / 100f).coerceIn(0f, 1f)
+    val strokeWidth = 3.dp
+
+    val strokeColor = when (colorTone) {
+        CompletenessTone.RED -> Color(0xFFDC2626)
+        CompletenessTone.ORANGE -> Color(0xFFD97706)
+        CompletenessTone.GREEN -> Color(0xFF059669)
+    }
+    val trackColor = when (colorTone) {
+        CompletenessTone.RED -> Color(0xFFFEE2E2)
+        CompletenessTone.ORANGE -> Color(0xFFFEF3C7)
+        CompletenessTone.GREEN -> Color(0xFFD1FAE5)
+    }
+    val textColor = when (colorTone) {
+        CompletenessTone.RED -> Color(0xFF991B1B)
+        CompletenessTone.ORANGE -> Color(0xFF92400E)
+        CompletenessTone.GREEN -> Color(0xFF065F46)
+    }
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier.size(38.dp)
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokePx = strokeWidth.toPx()
+            val arcSize = Size(size.width - strokePx, size.height - strokePx)
+            val topLeft = Offset(strokePx / 2f, strokePx / 2f)
+
+            // 1. Background Track Arc
+            drawArc(
+                color = trackColor,
+                startAngle = 0f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = Stroke(width = strokePx, cap = StrokeCap.Round)
+            )
+
+            // 2. Clockwise Progress Arc (Starts at -90 degrees / top)
+            drawArc(
+                color = strokeColor,
+                startAngle = -90f,
+                sweepAngle = progress * 360f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = Stroke(width = strokePx, cap = StrokeCap.Round)
+            )
+        }
+
+        Text(
+            text = "%$percentage",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp
+            ),
+            color = textColor
+        )
+    }
 }

@@ -758,7 +758,9 @@ private fun BuildOrderRichCard(
                         .height(8.dp)
                         .clip(RoundedCornerShape(50)),
                     color = Color(0xFF4F46E5),
-                    trackColor = Color(0xFFEEF2FF)
+                    trackColor = Color(0xFFEEF2FF),
+                    gapSize = 0.dp,
+                    drawStopIndicator = {}
                 )
             }
 
@@ -1261,7 +1263,9 @@ private fun BuildDetailsBottomSheet(
                                                 progress = { (line.allocationPercentage / 100f).coerceIn(0f, 1f) },
                                                 modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)),
                                                 color = if (line.isFullyAllocated) Color(0xFF059669) else Color(0xFF4F46E5),
-                                                trackColor = Color(0xFFEEF2FF)
+                                                trackColor = Color(0xFFEEF2FF),
+                                                gapSize = 0.dp,
+                                                drawStopIndicator = {}
                                             )
                                         }
 
@@ -2817,7 +2821,7 @@ private fun SelectSalesOrderBottomSheet(
                 }
 
                 // 2. قائمة أوامر البيع المتاحة
-                items(filteredOrders, key = { "so-picker-${it.id}" }) { so ->
+                itemsIndexed(filteredOrders, key = { index, so -> "so-picker-${so.id}-$index" }) { _, so ->
                     val isSelected = selectedSalesOrderId == so.id
                     Surface(
                         onClick = { onSelect(so) },
@@ -3040,7 +3044,7 @@ private fun SelectLocationForBuildBottomSheet(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(filteredLocations, key = { "loc-picker-${it.id}" }) { loc ->
+                    itemsIndexed(filteredLocations, key = { index, loc -> "loc-picker-${loc.id}-$index" }) { _, loc ->
                         val isSelected = selectedLocationId == loc.id
                         Surface(
                             onClick = { onSelect(loc) },
@@ -3275,7 +3279,7 @@ private fun SelectAssemblyForBuildBottomSheet(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(filteredAssemblies, key = { "assembly-picker-${it.id}" }) { parent ->
+                    itemsIndexed(filteredAssemblies, key = { index, parent -> "assembly-picker-${parent.id}-$index" }) { _, parent ->
                         val isSelected = selectedPartId == parent.id
                         Surface(
                             onClick = {
@@ -3990,7 +3994,7 @@ private fun SelectUserBottomSheet(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(filteredUsers, key = { "user-${it.uuid}" }) { user ->
+                    itemsIndexed(filteredUsers, key = { index, user -> "user-${user.uuid}-$index" }) { _, user ->
                         val isSelected = user.name.trim() == selectedUserName.trim()
                         Card(
                             onClick = { onSelectUser(user) },

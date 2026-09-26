@@ -1,5 +1,6 @@
 package com.nextstepai.inventory.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
@@ -19,6 +20,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
+import com.nextstepai.inventory.ui.components.LocationBarcodeScannerBottomSheet
+import com.nextstepai.inventory.ui.components.DynamicBreadcrumbAddressField
+import com.nextstepai.inventory.ui.components.ShakeController
+import com.nextstepai.inventory.util.BarcodePayloadHelper
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,10 +31,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,8 +74,17 @@ import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockLocationType
 import com.nextstepai.inventory.data.capacityUnit
+import com.nextstepai.inventory.data.contactPerson
+import com.nextstepai.inventory.data.contactPhone
+import com.nextstepai.inventory.data.withContactInfo
+import com.nextstepai.inventory.data.isPrimary
+import com.nextstepai.inventory.data.withPrimary
+import com.nextstepai.inventory.data.IntermediateNodeSpec
 import com.nextstepai.inventory.data.effectiveCapacity
 import com.nextstepai.inventory.data.calculateOccupancyPercentage
+import com.nextstepai.inventory.data.calculatePhysicalOccupancy
+import com.nextstepai.inventory.data.getOccupancySummary
+import com.nextstepai.inventory.data.getFullHierarchyPath
 import com.nextstepai.inventory.data.StockStatus
 import nextstepai_inventory.shared.generated.resources.Res
 import nextstepai_inventory.shared.generated.resources.add_new_stock
@@ -86,6 +105,7 @@ fun StockScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
+    var isBarcodeScannerOpen by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -96,10 +116,40 @@ fun StockScreen(
             )
         },
         floatingActionButton = {
-            Box(
-                modifier = Modifier.padding(bottom = 20.dp, start = 12.dp, end = 12.dp)
+            Row(
+                modifier = Modifier.padding(bottom = 20.dp, start = 12.dp, end = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // زر إضافة وحدة
+                // زر إضافة موقع جديد
+                FloatingActionButton(
+                    onClick = { viewModel.setAddLocationDialogOpen(true) },
+                    containerColor = Color(0xFF059669),
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(18.dp),
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddLocation,
+                            contentDescription = "إضافة موقع تخزين جديد",
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "موقع جديد",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        )
+                    }
+                }
+
+                // زر إضافة وحدة مخزنية
                 ExtendedFloatingActionButton(
                     onClick = { viewModel.setAddDialogOpen(true) },
                     containerColor = Color(0xFF4F46E5),
@@ -150,7 +200,7 @@ fun StockScreen(
                         onValueChange = { searchQuery = it },
                         placeholder = {
                             Text(
-                                text = "البحث باسم القطعة، الرقم التسلسلي، أو موقع التخزين...",
+                                text = "البحث باسم القطعة، الرقم التسلسلي، أو الموقع...",
                                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.5.sp),
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -186,6 +236,50 @@ fun StockScreen(
                             unfocusedContainerColor = Color.White
                         )
                     )
+
+                    // زر مسح الباركود المنفصل الموازي لزر الفلتر
+                    var isBarcodePressed by remember { mutableStateOf(false) }
+                    val barcodeScale by animateFloatAsState(
+                        targetValue = if (isBarcodePressed) 0.92f else 1f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+                    )
+
+                    OutlinedButton(
+                        onClick = {
+                            isBarcodePressed = true
+                            isBarcodeScannerOpen = true
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.5.dp, Color(0xFF4F46E5)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Color(0xFFEEF2FF),
+                            contentColor = Color(0xFF4F46E5)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 10.dp),
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .scale(barcodeScale)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "مسح الباركود",
+                                tint = Color(0xFF4F46E5),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "باركود",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                ),
+                                color = Color(0xFF4338CA)
+                            )
+                        }
+                    }
 
                     val isFilterActive = uiState.selectedLocationId != null || uiState.selectedLocationIds.isNotEmpty() || searchQuery.isNotBlank()
                     var isFilterPressed by remember { mutableStateOf(false) }
@@ -330,6 +424,30 @@ fun StockScreen(
         }
     }
 
+    if (isBarcodeScannerOpen) {
+        LocationBarcodeScannerBottomSheet(
+            locations = uiState.locations,
+            onDismiss = { isBarcodeScannerOpen = false },
+            onBarcodeScanned = { scannedResult ->
+                isBarcodeScannerOpen = false
+                val parsed = BarcodePayloadHelper.parsePayload(scannedResult)
+                val matchedLoc = uiState.locations.find { loc ->
+                    loc.uuid.equals(parsed.uuid, ignoreCase = true) ||
+                    loc.effectiveUuid.equals(parsed.uuid, ignoreCase = true) ||
+                    "location-${loc.id}".equals(parsed.uuid, ignoreCase = true) ||
+                    loc.id.toString() == parsed.uuid.removePrefix("location-").removePrefix("loc-") ||
+                    loc.name.equals(scannedResult.trim(), ignoreCase = true)
+                }
+                if (matchedLoc != null) {
+                    viewModel.filterByLocation(matchedLoc.id)
+                    searchQuery = matchedLoc.name
+                } else {
+                    searchQuery = scannedResult
+                }
+            }
+        )
+    }
+
     if (uiState.isFilterBottomSheetOpen) {
         StockFilterBottomSheet(
             uiState = uiState,
@@ -404,7 +522,7 @@ fun StockScreen(
                     description = desc
                 )
             },
-            onConfirm = { partId, locId, qty, serial, batch, pack, status, price, currency, supplierPartId, purchaseOrderId, expiry, review, deleteOnDeplete, link, notes ->
+            onConfirm = { partId, locId, qty, serial, batch, pack, status, price, currency, supplierPartId, purchaseOrderId, expiry, review, deleteOnDeplete, link, notes, unitWeight, totalWeight ->
                 viewModel.addStockItem(
                     partId = partId,
                     locationId = locId,
@@ -421,7 +539,9 @@ fun StockScreen(
                     reviewNeeded = review,
                     deleteOnDeplete = deleteOnDeplete,
                     link = link,
-                    notes = notes
+                    notes = notes,
+                    unitWeight = unitWeight,
+                    totalWeight = totalWeight
                 )
             }
         )
@@ -433,7 +553,16 @@ fun StockScreen(
             users = uiState.users,
             locationTypes = uiState.locationTypes,
             onDismiss = { viewModel.setAddLocationDialogOpen(false) },
-            onConfirm = { name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address, customCapacity, capacityUnit ->
+            onQuickAddParent = { parentName, parentType, grandparentId ->
+                viewModel.quickCreateParentLocation(
+                    name = parentName,
+                    locationType = parentType,
+                    parentId = grandparentId
+                )
+            },
+            onAddCapacityUnit = { unitCode -> viewModel.addCustomUnit(unitCode) },
+            onDeleteCapacityUnit = { unitCode -> viewModel.deleteUnit(unitCode) },
+            onConfirm = { name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address, customCapacity, capacityUnit, contactPerson, contactPhone, isPrimary, intermediates, generatedNames ->
                 viewModel.addLocation(
                     name = name,
                     description = desc,
@@ -446,19 +575,12 @@ fun StockScreen(
                     customIcon = customIcon,
                     address = address,
                     customCapacity = customCapacity,
-                    capacityUnit = capacityUnit
-                )
-            },
-            onConfirmBulk = { parentId, locationType, prefix, startNum, endNum, padZeros, desc, customCapacity ->
-                viewModel.generateBulkLocations(
-                    parentId = parentId,
-                    locationType = locationType,
-                    prefix = prefix,
-                    startNumber = startNum,
-                    endNumber = endNum,
-                    padZeros = padZeros,
-                    customCapacity = customCapacity,
-                    description = desc
+                    capacityUnit = capacityUnit,
+                    contactPerson = contactPerson,
+                    contactPhone = contactPhone,
+                    isPrimary = isPrimary,
+                    intermediates = intermediates,
+                    generatedNames = generatedNames
                 )
             }
         )
@@ -590,7 +712,28 @@ private fun StockTopBar(
                 )
             }
 
-            Spacer(modifier = Modifier.width(48.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                IconButton(onClick = onAddLocationClick) {
+                    Icon(
+                        imageVector = Icons.Default.AddLocation,
+                        contentDescription = "إضافة موقع تخزين جديد",
+                        tint = Color(0xFF059669),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                IconButton(onClick = onAddStockClick) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "إضافة وحدة مخزنية جديدة",
+                        tint = Color(0xFF4F46E5),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -1590,18 +1733,28 @@ private fun getDefaultIconForLocationType(type: String): String {
     }
 }
 
-private fun getStockLocationIconVector(iconKey: String): ImageVector {
-    return when (iconKey.lowercase()) {
-        "warehouse", "building", "store" -> Icons.Default.Warehouse
-        "grid_view", "zone", "category" -> Icons.Default.GridView
-        "door", "aisle", "door_sliding", "view_week" -> Icons.Default.ViewWeek
-        "shelves", "straighten", "shelf", "table_rows" -> Icons.Default.TableRows
-        "inventory_2", "bin", "box", "archive" -> Icons.Default.Inventory2
-        "local_shipping", "transit" -> Icons.Default.LocalShipping
-        "home_work" -> Icons.Default.HomeWork
-        "place", "location_on" -> Icons.Default.Place
-        "widgets" -> Icons.Default.Widgets
-        "corporate_fare" -> Icons.Default.CorporateFare
+private fun getStockLocationIconVector(iconKey: String, locationType: String = ""): ImageVector {
+    val normType = locationType.uppercase().trim()
+    val normIcon = iconKey.lowercase().trim()
+
+    return when {
+        normType == "SITE" -> Icons.Default.Place
+        normType == "WAREHOUSE" -> Icons.Default.Warehouse
+        normType == "ZONE" || normType == "AREA" || normType == "LINE" -> Icons.Default.GridView
+        normType == "AISLE" -> Icons.Default.ViewWeek
+        normType == "SHELF" || normType == "RACK" -> Icons.Default.TableRows
+        normType == "BIN" || normType == "DRAWER" -> Icons.Default.Inbox
+
+        normIcon.contains("warehouse") || normIcon.contains("building") || normIcon.contains("store") -> Icons.Default.Warehouse
+        normIcon.contains("grid_view") || normIcon.contains("zone") || normIcon.contains("category") -> Icons.Default.GridView
+        normIcon.contains("door") || normIcon.contains("aisle") || normIcon.contains("view_week") -> Icons.Default.ViewWeek
+        normIcon.contains("shelves") || normIcon.contains("straighten") || normIcon.contains("shelf") || normIcon.contains("table_rows") -> Icons.Default.TableRows
+        normIcon.contains("inventory_2") || normIcon.contains("bin") || normIcon.contains("box") || normIcon.contains("archive") || normIcon.contains("inbox") -> Icons.Default.Inbox
+        normIcon.contains("place") || normIcon.contains("location_on") || normIcon.contains("site") -> Icons.Default.Place
+        normIcon.contains("local_shipping") || normIcon.contains("transit") -> Icons.Default.LocalShipping
+        normIcon.contains("home_work") -> Icons.Default.HomeWork
+        normIcon.contains("widgets") -> Icons.Default.Widgets
+        normIcon.contains("corporate_fare") -> Icons.Default.CorporateFare
         else -> Icons.Default.Warehouse
     }
 }
@@ -1984,11 +2137,15 @@ private fun SelectOwnerBottomSheet(
                     }
                 }
 
-                items(filteredUsers, key = { "user-${it.uuid}" }) { user ->
-                    val isSelected = selectedOwner?.uuid == user.uuid
+                itemsIndexed(filteredUsers, key = { index, user -> "user-${user.uuid}-$index" }) { _, user ->
+                    val isSelected = selectedOwner != null && (selectedOwner.uuid == user.uuid || selectedOwner.name.equals(user.name, ignoreCase = true))
                     Surface(
                         onClick = {
-                            onSelectOwner(user)
+                            if (isSelected) {
+                                onSelectOwner(null)
+                            } else {
+                                onSelectOwner(user)
+                            }
                             onDismiss()
                         },
                         shape = RoundedCornerShape(12.dp),
@@ -2066,13 +2223,20 @@ private fun SelectOwnerBottomSheet(
 private fun SelectCapacityUnitBottomSheet(
     selectedUnit: String,
     onDismiss: () -> Unit,
-    onUnitSelected: (String) -> Unit
+    onUnitSelected: (String) -> Unit,
+    onAddUnit: (String) -> Unit = {},
+    onDeleteUnit: (String) -> Unit = {}
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var tempSelectedUnit by remember { mutableStateOf(selectedUnit) }
+    var searchQuery by remember { mutableStateOf("") }
+    var customUnitInput by remember { mutableStateOf("") }
+
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var unitToDelete by remember { mutableStateOf<Triple<String, String, String>?>(null) }
 
     val unitOptions = remember {
-        listOf(
+        mutableStateListOf(
             Triple("قطعة", "📦 قطعة / وحدة مادية (PCS)", "المعيار الافتراضي لعد القطع والمنتجات الفردية"),
             Triple("كغ", "⚖️ كيلوغرام (Kg)", "معيار الوزن التراكمي للمواد الخام والصب والفلزات"),
             Triple("طن", "🏗️ طن (Ton)", "معيار الوزن الثقيل للشحنات والحمولات الضخمة"),
@@ -2082,6 +2246,27 @@ private fun SelectCapacityUnitBottomSheet(
             Triple("طبلية", "🪵 طبلية (Pallet)", "معيار الحمولات المرصوفة على المنصات الخشبية"),
             Triple("بكرة", "🧵 بكرة (Reel)", "معيار بكرات الكوابل والأسلاك والأشرطة")
         )
+    }
+
+    LaunchedEffect(selectedUnit) {
+        if (selectedUnit.isNotBlank() && unitOptions.none { 
+            it.first.equals(selectedUnit, ignoreCase = true) || 
+            it.second.contains(selectedUnit, ignoreCase = true) 
+        }) {
+            unitOptions.add(0, Triple(selectedUnit, "📦 $selectedUnit", "وحدة قياس مخصصة ($selectedUnit)"))
+        }
+    }
+
+    val filteredUnits = remember(searchQuery, unitOptions.size) {
+        if (searchQuery.isBlank()) {
+            unitOptions.toList()
+        } else {
+            unitOptions.filter { (code, title, desc) ->
+                code.contains(searchQuery, ignoreCase = true) ||
+                title.contains(searchQuery, ignoreCase = true) ||
+                desc.contains(searchQuery, ignoreCase = true)
+            }
+        }
     }
 
     ModalBottomSheet(
@@ -2094,7 +2279,7 @@ private fun SelectCapacityUnitBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -2147,18 +2332,152 @@ private fun SelectCapacityUnitBottomSheet(
 
             HorizontalDivider(color = Color(0xFFF1F5F9))
 
+            // حقل البحث
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("بحث عن وحدة قياس (مثل: كغ, متر, قطعة)...", fontSize = 12.sp) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        tint = Color(0xFF64748B)
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "مسح",
+                                tint = Color(0xFF64748B)
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF4F46E5),
+                    unfocusedBorderColor = Color(0xFFE2E8F0)
+                )
+            )
+
+            // إنشاء وحدة قياس جديدة
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = customUnitInput,
+                    onValueChange = { customUnitInput = it },
+                    placeholder = { Text("أو أدخل وحدة قياس جديدة (مثال: لتر, كرتونة)...", fontSize = 12.sp) },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF4F46E5),
+                        unfocusedBorderColor = Color(0xFFE2E8F0)
+                    )
+                )
+
+                Button(
+                    onClick = {
+                        val newUnit = customUnitInput.trim()
+                        if (newUnit.isNotBlank()) {
+                            val existing = unitOptions.find { 
+                                it.first.equals(newUnit, ignoreCase = true) || 
+                                it.second.contains(newUnit, ignoreCase = true) 
+                            }
+                            if (existing == null) {
+                                val newItem = Triple(newUnit, "📦 $newUnit", "وحدة قياس مخصصة ($newUnit)")
+                                unitOptions.add(0, newItem)
+                            }
+                            tempSelectedUnit = newUnit
+                            onUnitSelected(newUnit)
+                            onAddUnit(newUnit)
+                            customUnitInput = ""
+                        }
+                    },
+                    enabled = customUnitInput.isNotBlank(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF4F46E5),
+                        disabledContainerColor = Color(0xFFE2E8F0),
+                        contentColor = Color.White,
+                        disabledContentColor = Color(0xFF94A3B8)
+                    )
+                ) {
+                    Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("إضافة", fontWeight = FontWeight.Bold)
+                }
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                unitOptions.forEach { (code, title, desc) ->
-                    val isSelected = tempSelectedUnit == code
+                // الخيار الأول: بدون تحديد وحدة قياس (إمكانية الإلغاء والتراجع)
+                val isNoneSelected = tempSelectedUnit.isBlank()
+                Surface(
+                    onClick = {
+                        tempSelectedUnit = ""
+                        onUnitSelected("")
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (isNoneSelected) Color(0xFFEEF2FF) else Color(0xFFF8FAFC),
+                    border = BorderStroke(1.dp, if (isNoneSelected) Color(0xFF4F46E5) else Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "🚫 بدون وحدة قياس (غير محدد)",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.5.sp
+                                ),
+                                color = if (isNoneSelected) Color(0xFF3730A3) else Color(0xFF0F172A)
+                            )
+                            Text(
+                                text = "تجاهل تخصيص وحدة القياس وإبقاؤها فارغة",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = Color(0xFF64748B)
+                            )
+                        }
+                        if (isNoneSelected) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = Color(0xFF4F46E5),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+
+                filteredUnits.forEach { item ->
+                    val (code, title, desc) = item
+                    val isSelected = tempSelectedUnit.equals(code, ignoreCase = true) ||
+                                     (tempSelectedUnit.isNotBlank() && title.contains(tempSelectedUnit, ignoreCase = true))
                     Surface(
                         onClick = {
-                            tempSelectedUnit = code
-                            onUnitSelected(code)
+                            if (isSelected) {
+                                tempSelectedUnit = ""
+                                onUnitSelected("")
+                            } else {
+                                tempSelectedUnit = code
+                                onUnitSelected(code)
+                            }
                         },
                         shape = RoundedCornerShape(14.dp),
                         color = if (isSelected) Color(0xFFEEF2FF) else Color(0xFFF8FAFC),
@@ -2170,27 +2489,49 @@ private fun SelectCapacityUnitBottomSheet(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = title,
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.5.sp
-                                    ),
-                                    color = if (isSelected) Color(0xFF3730A3) else Color(0xFF0F172A)
-                                )
-                                Text(
-                                    text = desc,
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = Color(0xFF64748B)
-                                )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = Color(0xFF4F46E5),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                Column {
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.5.sp
+                                        ),
+                                        color = if (isSelected) Color(0xFF3730A3) else Color(0xFF0F172A)
+                                    )
+                                    Text(
+                                        text = desc,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = Color(0xFF64748B)
+                                    )
+                                }
                             }
-                            if (isSelected) {
+
+                            IconButton(
+                                onClick = {
+                                    unitToDelete = item
+                                    showDeleteConfirmDialog = true
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
                                 Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = Color(0xFF4F46E5),
-                                    modifier = Modifier.size(20.dp)
+                                    imageVector = Icons.Default.DeleteOutline,
+                                    contentDescription = "حذف وحدة القياس",
+                                    tint = Color(0xFFEF4444),
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
@@ -2200,6 +2541,63 @@ private fun SelectCapacityUnitBottomSheet(
 
             Spacer(modifier = Modifier.height(12.dp))
         }
+    }
+
+    if (showDeleteConfirmDialog && unitToDelete != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteConfirmDialog = false
+                unitToDelete = null
+            },
+            title = {
+                Text(
+                    text = "تأكيد حذف وحدة القياس",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color(0xFF0F172A)
+                )
+            },
+            text = {
+                val nameToDisplay = unitToDelete!!.second
+                Text(
+                    text = "هل أنت متأكد من رغبتك في حذف وحدة القياس '$nameToDisplay'؟ سيتم إزالتها نهائياً من قائمة الخيارات المتاحة.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF475569)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val target = unitToDelete!!
+                        onDeleteUnit(target.first)
+                        unitOptions.removeIf { 
+                            it.first.equals(target.first, ignoreCase = true) && 
+                            it.second.equals(target.second, ignoreCase = true) 
+                        }
+                        if (tempSelectedUnit.equals(target.first, ignoreCase = true)) {
+                            tempSelectedUnit = ""
+                            onUnitSelected("")
+                        }
+                        showDeleteConfirmDialog = false
+                        unitToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text("حذف", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        unitToDelete = null
+                    }
+                ) {
+                    Text("إلغاء", color = Color(0xFF64748B))
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(20.dp)
+        )
     }
 }
 
@@ -2291,7 +2689,7 @@ private fun LocationTypeSelectionBottomSheet(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(typeOptions, key = { "type-opt-${it.first}" }) { (code, title, desc) ->
+                itemsIndexed(typeOptions, key = { index, opt -> "type-opt-${opt.first}-$index" }) { _, (code, title, desc) ->
                     val isSelected = tempSelectedType.equals(code, ignoreCase = true)
                     Surface(
                         onClick = { tempSelectedType = code },
@@ -2379,28 +2777,309 @@ private fun LocationTypeSelectionBottomSheet(
     }
 }
 
+private fun sortLocationsHierarchically(locations: List<StockLocation>): List<StockLocation> {
+    val result = mutableListOf<StockLocation>()
+    val childrenMap = locations.groupBy { it.parentId }
+
+    fun addWithChildren(parentId: Long?) {
+        val directChildren = childrenMap[parentId]?.sortedBy { it.name } ?: return
+        for (child in directChildren) {
+            result.add(child)
+            addWithChildren(child.id)
+        }
+    }
+
+    addWithChildren(null)
+    val addedIds = result.map { it.id }.toSet()
+    val orphans = locations.filter { it.id !in addedIds }
+    result.addAll(orphans)
+    return result
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickAddParentBottomSheet(
+    locations: List<StockLocation>,
+    currentParentId: Long?,
+    onDismiss: () -> Unit,
+    onConfirm: (name: String, type: String, parentId: Long?) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var parentName by remember { mutableStateOf("") }
+    var selectedType by remember { mutableStateOf("ZONE") }
+    var selectedGrandparentId by remember { mutableStateOf<Long?>(currentParentId) }
+    var isGrandparentPickerOpen by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 6.dp)
+                    .width(48.dp)
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFCBD5E1))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Header Section
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFECFDF5))
+                            .border(1.dp, Color(0xFFA7F3D0), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            tint = Color(0xFF059669),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "إضافة موقع أب وسيط (+ Quick Add Parent)",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.5.sp
+                            ),
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            text = "أنشئ موقعاً حاوياً (منطقة/ممر/مستودع) فوراً ليصبح الأب الحالي",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = Color(0xFF64748B)
+                        )
+                    }
+                }
+
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "إغلاق",
+                        tint = Color(0xFF64748B)
+                    )
+                }
+            }
+
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+
+            // Body Fields
+            OutlinedTextField(
+                value = parentName,
+                onValueChange = { parentName = it },
+                label = { Text("اسم الموقع الحاوي (الأب)") },
+                placeholder = { Text("مثال: المنطقة الشرقية، ممر 04...") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF059669),
+                    unfocusedBorderColor = Color(0xFFE2E8F0)
+                )
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "التصنيف الهيكلي للموقع الأب",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color(0xFF334155)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("WAREHOUSE" to "🏬 مستودع", "ZONE" to "📍 منطقة", "RACK" to "🧱 ممر", "AREA" to "📐 قطاع").forEach { (typeCode, typeLabel) ->
+                        val isSelected = selectedType == typeCode
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { selectedType = typeCode },
+                            label = { Text(typeLabel, fontSize = 11.5.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Color(0xFF059669),
+                                selectedLabelColor = Color.White
+                            )
+                        )
+                    }
+                }
+            }
+
+            val grandparentObj = locations.find { it.id == selectedGrandparentId }
+            val grandparentTitle = if (selectedGrandparentId == null) "موقع رئيسي (Root)" else grandparentObj?.name ?: "موقع #${selectedGrandparentId}"
+
+            Surface(
+                color = Color(0xFFF8FAFC),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isGrandparentPickerOpen = true }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "الموقع الأب له (تحديد المستوى الأعلى):",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                            color = Color(0xFF64748B)
+                        )
+                        Text(
+                            text = "📍 $grandparentTitle",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.5.sp),
+                            color = Color(0xFF059669)
+                        )
+                    }
+                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Color(0xFF64748B))
+                }
+            }
+
+            if (isGrandparentPickerOpen) {
+                ParentLocationSelectionBottomSheet(
+                    locations = locations,
+                    selectedParentId = selectedGrandparentId,
+                    onDismiss = { isGrandparentPickerOpen = false },
+                    onParentSelected = { newGrandparentId ->
+                        selectedGrandparentId = newGrandparentId
+                        isGrandparentPickerOpen = false
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Action Buttons
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("إلغاء", fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = {
+                        if (parentName.isNotBlank()) {
+                            onConfirm(parentName, selectedType, selectedGrandparentId)
+                        }
+                    },
+                    enabled = parentName.isNotBlank(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF059669),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.weight(1.5f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("حفظ واختيار كأب", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ParentLocationSelectionBottomSheet(
     locations: List<StockLocation>,
     selectedParentId: Long?,
     onDismiss: () -> Unit,
+    onQuickAddParent: ((name: String, type: String, parentId: Long?) -> StockLocation)? = null,
     onParentSelected: (Long?) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var searchQuery by remember { mutableStateOf("") }
     var tempSelectedParentId by remember { mutableStateOf(selectedParentId) }
+    var isQuickAddParentDialogOpen by remember { mutableStateOf(false) }
 
-    val filteredLocations = remember(locations, searchQuery) {
-        if (searchQuery.isBlank()) {
-            locations
-        } else {
-            val q = searchQuery.trim().lowercase()
-            locations.filter {
-                it.name.lowercase().contains(q) ||
-                        it.description.lowercase().contains(q)
+    if (isQuickAddParentDialogOpen) {
+        QuickAddParentBottomSheet(
+            locations = locations,
+            currentParentId = tempSelectedParentId,
+            onDismiss = { isQuickAddParentDialogOpen = false },
+            onConfirm = { parentName, parentType, grandparentId ->
+                val created = onQuickAddParent?.invoke(parentName, parentType, grandparentId)
+                if (created != null) {
+                    tempSelectedParentId = created.id
+                }
+                isQuickAddParentDialogOpen = false
+            }
+        )
+    }
+
+    // Filter tree to Sites (المواقع) ONLY as parent container assets
+    val availableParentLocations = remember(locations) {
+        locations.filter { loc ->
+            loc.locationType.equals("SITE", ignoreCase = true) ||
+            loc.locationType.equals("ROOT", ignoreCase = true)
+        }
+    }
+
+    val rootSites = remember(availableParentLocations, searchQuery) {
+        val topSites = availableParentLocations.filter { site ->
+            site.parentId == null || locations.none { parent ->
+                parent.id == site.parentId && (parent.locationType.equals("SITE", ignoreCase = true) || parent.locationType.equals("ROOT", ignoreCase = true))
             }
         }
+        if (searchQuery.isBlank()) topSites
+        else topSites.filter { site ->
+            site.name.contains(searchQuery, ignoreCase = true) ||
+            site.description.contains(searchQuery, ignoreCase = true) ||
+            availableParentLocations.any { child ->
+                child.parentId == site.id && (child.name.contains(searchQuery, ignoreCase = true) || child.description.contains(searchQuery, ignoreCase = true))
+            }
+        }
+    }
+
+    var expandedSiteIds by remember(selectedParentId) {
+        val initialExpanded = mutableSetOf<Long>()
+        if (selectedParentId != null) {
+            val selectedLoc = locations.find { it.id == selectedParentId }
+            if (selectedLoc != null && selectedLoc.parentId != null) {
+                initialExpanded.add(selectedLoc.parentId!!)
+            } else if (selectedLoc != null && (selectedLoc.locationType.equals("SITE", ignoreCase = true) || selectedLoc.locationType.equals("ROOT", ignoreCase = true))) {
+                initialExpanded.add(selectedLoc.id)
+            }
+        }
+        mutableStateOf<Set<Long>>(initialExpanded)
     }
 
     ModalBottomSheet(
@@ -2448,26 +3127,61 @@ private fun ParentLocationSelectionBottomSheet(
                             color = Color(0xFF0F172A)
                         )
                         Text(
-                            text = "حدد موقع التخزين الأب ضمن الشجرة الهرمية MPTT",
+                            text = "تصفح المواقع المتاحة كـ أصول حاوية",
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                             color = Color(0xFF64748B)
                         )
                     }
                 }
 
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "إغلاق",
-                        tint = Color(0xFF64748B)
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (onQuickAddParent != null) {
+                        Surface(
+                            onClick = { isQuickAddParentDialogOpen = true },
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFECFDF5),
+                            border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = null,
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "أب جديد",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    ),
+                                    color = Color(0xFF059669)
+                                )
+                            }
+                        }
+                    }
+
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "إغلاق",
+                            tint = Color(0xFF64748B)
+                        )
+                    }
                 }
             }
 
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("ابحث عن اسم الموقع، الوصف، أو الرمز...") },
+                placeholder = { Text("ابحث عن اسم الموقع...") },
                 leadingIcon = {
                     Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF94A3B8))
                 },
@@ -2497,7 +3211,7 @@ private fun ParentLocationSelectionBottomSheet(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = "المواقف والمستودعات المتاحة",
+                        text = "المواقع المتاحة",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                         color = Color(0xFF0F172A)
                     )
@@ -2506,7 +3220,7 @@ private fun ParentLocationSelectionBottomSheet(
                         color = Color(0xFFEEF2FF)
                     ) {
                         Text(
-                            text = "${filteredLocations.size + 1} موقع",
+                            text = "${availableParentLocations.size + 1} عنصر",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
                             color = Color(0xFF4F46E5),
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -2515,7 +3229,7 @@ private fun ParentLocationSelectionBottomSheet(
                 }
 
                 Text(
-                    text = "اختر موقعاً واحداً للتخزين",
+                    text = "اختر موقعاً واحداً",
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                     color = Color(0xFF94A3B8)
                 )
@@ -2524,7 +3238,7 @@ private fun ParentLocationSelectionBottomSheet(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 340.dp),
+                    .heightIn(max = 360.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 item(key = "parent-root-opt") {
@@ -2592,75 +3306,191 @@ private fun ParentLocationSelectionBottomSheet(
                     }
                 }
 
-                itemsIndexed(filteredLocations, key = { index, loc -> "parent-loc-${loc.id}-$index" }) { _, loc ->
-                    val isSelected = tempSelectedParentId == loc.id
-                    val fullParentPath = getFullPathForLocation(locations, loc.parentId, separator = " > ")
-                    Surface(
-                        onClick = { tempSelectedParentId = loc.id },
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (isSelected) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
-                        border = BorderStroke(
-                            1.5.dp,
-                            if (isSelected) Color(0xFF3B82F6) else Color(0xFFE2E8F0)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
+                items(rootSites, key = { "site-${it.id}" }) { site ->
+                    val childSites = availableParentLocations.filter {
+                        it.parentId == site.id
+                    }
+                    val isExpanded = expandedSiteIds.contains(site.id)
+                    val isSiteSelected = tempSelectedParentId == site.id
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                        Surface(
+                            onClick = { tempSelectedParentId = site.id },
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isSiteSelected) Color(0xFFEEF2FF) else Color(0xFFF8FAFC),
+                            border = BorderStroke(
+                                1.5.dp,
+                                if (isSiteSelected) Color(0xFF4F46E5) else Color(0xFFE2E8F0)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.weight(1f)
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                RadioButton(
-                                    selected = isSelected,
-                                    onClick = { tempSelectedParentId = loc.id },
-                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF3B82F6))
-                                )
-                                Column {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    RadioButton(
+                                        selected = isSiteSelected,
+                                        onClick = { tempSelectedParentId = site.id },
+                                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF4F46E5))
+                                    )
+                                    Column {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = site.name,
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp
+                                                ),
+                                                color = Color(0xFF0F172A)
+                                            )
+                                            if (site.isPrimary) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = Color(0xFFFEF3C7)
+                                                ) {
+                                                    Text(
+                                                        text = "رئيسي ⭐️",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp, fontWeight = FontWeight.Bold),
+                                                        color = Color(0xFFD97706),
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        if (childSites.isNotEmpty()) {
+                                            Text(
+                                                text = "${childSites.size} مواقع تابعة",
+                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                                color = Color(0xFF64748B)
+                                            )
+                                        } else if (site.description.isNotBlank()) {
+                                            Text(
+                                                text = site.description,
+                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                                color = Color(0xFF64748B),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        } else {
+                                            Text(
+                                                text = "موقع رئيسي / منشأة تخزينية",
+                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                                color = Color(0xFF64748B)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (childSites.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = {
+                                            expandedSiteIds = if (isExpanded) {
+                                                expandedSiteIds - site.id
+                                            } else {
+                                                expandedSiteIds + site.id
+                                            }
+                                        }
                                     ) {
-                                        Text(
-                                            text = loc.name,
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 14.sp
-                                            ),
-                                            color = Color(0xFF0F172A)
+                                        Icon(
+                                            imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                            contentDescription = if (isExpanded) "طي" else "توسيع",
+                                            tint = Color(0xFF4F46E5)
                                         )
-                                        if (loc.structural) {
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = Color(0xFFFEF3C7)
+                                    }
+                                }
+                            }
+                        }
+
+                        if (isExpanded && childSites.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 24.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                childSites.forEach { childSite ->
+                                    val isChildSelected = tempSelectedParentId == childSite.id
+                                    Surface(
+                                        onClick = { tempSelectedParentId = childSite.id },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isChildSelected) Color(0xFFEEF2FF) else Color(0xFFFAFAFA),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isChildSelected) Color(0xFF4F46E5) else Color(0xFFE2E8F0)
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                modifier = Modifier.weight(1f)
                                             ) {
-                                                Text(
-                                                    text = "🏗️ هيكلي",
-                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp, fontWeight = FontWeight.Bold),
-                                                    color = Color(0xFFD97706),
-                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                RadioButton(
+                                                    selected = isChildSelected,
+                                                    onClick = { tempSelectedParentId = childSite.id },
+                                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF4F46E5))
                                                 )
+                                                Column {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "📍 ${childSite.name}",
+                                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 13.sp
+                                                            ),
+                                                            color = Color(0xFF0F172A)
+                                                        )
+                                                        if (childSite.isPrimary) {
+                                                            Surface(
+                                                                shape = RoundedCornerShape(4.dp),
+                                                                color = Color(0xFFFEF3C7)
+                                                            ) {
+                                                                Text(
+                                                                    text = "رئيسي ⭐️",
+                                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp, fontWeight = FontWeight.Bold),
+                                                                    color = Color(0xFFD97706),
+                                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                    if (childSite.description.isNotBlank()) {
+                                                        Text(
+                                                            text = childSite.description,
+                                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                                            color = Color(0xFF64748B),
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     }
-                                    if (fullParentPath.isNotBlank() && fullParentPath != "موقع رئيسي (Root)") {
-                                        Text(
-                                            text = "📍 $fullParentPath",
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
-                                            color = Color(0xFF4F46E5)
-                                        )
-                                    }
-                                    Text(
-                                        text = loc.description.ifBlank { if (loc.structural) "موقع هيكلي تقسيم غير مخصص للتخزين المباشر" else "موقع تخزين حاوي" },
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = if (loc.structural) Color(0xFFD97706) else Color(0xFF64748B)
-                                    )
                                 }
                             }
                         }
@@ -2708,12 +3538,1009 @@ private fun ParentLocationSelectionBottomSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun LayerSpecificLocationPickerSheet(
+    layerLabel: String,
+    layerType: String,
+    locations: List<StockLocation>,
+    computedPath: String = "",
+    onDismiss: () -> Unit,
+    onLocationSelected: (StockLocation) -> Unit,
+    onAddNewLocationName: ((String) -> Unit)? = null,
+    onScanBarcodeClick: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredLocations = remember(locations, layerType, searchQuery) {
+        val targetType = layerType.uppercase().trim()
+        val typeFiltered = locations.filter { loc ->
+            when (targetType) {
+                "WAREHOUSE" -> loc.locationType.equals("WAREHOUSE", ignoreCase = true)
+                "ZONE", "AREA" -> loc.locationType.equals("ZONE", ignoreCase = true) || loc.locationType.equals("AREA", ignoreCase = true)
+                "AISLE" -> loc.locationType.equals("AISLE", ignoreCase = true)
+                "RACK", "SHELF" -> loc.locationType.equals("SHELF", ignoreCase = true) || loc.locationType.equals("RACK", ignoreCase = true)
+                "BIN" -> loc.locationType.equals("BIN", ignoreCase = true)
+                else -> loc.locationType.equals(targetType, ignoreCase = true)
+            }
+        }
+        if (searchQuery.isBlank()) {
+            typeFiltered
+        } else {
+            typeFiltered.filter {
+                it.name.contains(searchQuery, ignoreCase = true) ||
+                it.description.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
+
+    var isCreateModeOpen by remember(filteredLocations) { mutableStateOf(filteredLocations.isEmpty()) }
+    var customAddressText by remember { mutableStateOf("") }
+    var isManuallyEdited by remember { mutableStateOf(false) }
+    var isConfirmed by remember { mutableStateOf(false) }
+    val shakeController = remember { ShakeController() }
+    var hasError by remember { mutableStateOf(false) }
+
+    fun submitNewName() {
+        val rawText = if (isManuallyEdited) customAddressText.trim() else computedPath.trim()
+        var extractedName = if (rawText.contains(" > ")) rawText.substringAfterLast(" > ").trim() else rawText.trim()
+        val isPlaceholder = extractedName.startsWith("[") && extractedName.endsWith("]")
+        if (isPlaceholder || extractedName.isBlank()) {
+            extractedName = "$layerLabel 01"
+        }
+        if (extractedName.isNotBlank()) {
+            onAddNewLocationName?.invoke(extractedName)
+            onDismiss()
+        } else {
+            hasError = true
+            shakeController.trigger()
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFEEF2FF)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Place,
+                            contentDescription = null,
+                            tint = Color(0xFF4F46E5),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = if (isCreateModeOpen) "إضافة $layerLabel جديد بالمسار الميداني" else "اختر موقعاً قائماً لـ $layerLabel",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.5.sp
+                            ),
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            text = if (isCreateModeOpen) "إدخال اسم جديد ذكي مدمج بمسار التخزين" else "عرض الكيانات المعرفة كـ ($layerType) حصراً",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = Color(0xFF64748B)
+                        )
+                    }
+                }
+
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "إغلاق",
+                        tint = Color(0xFF64748B)
+                    )
+                }
+            }
+
+            if (filteredLocations.isNotEmpty()) {
+                Surface(
+                    onClick = { isCreateModeOpen = !isCreateModeOpen },
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isCreateModeOpen) Color(0xFFEEF2FF) else Color(0xFFF1F5F9),
+                    border = BorderStroke(1.dp, if (isCreateModeOpen) Color(0xFF818CF8) else Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isCreateModeOpen) Icons.Default.Search else Icons.Default.Add,
+                            contentDescription = null,
+                            tint = Color(0xFF4F46E5),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isCreateModeOpen) "العودة لقائمة الـ $layerLabel القائمة 🔍" else "+ إضافة $layerLabel جديد بالمسار الميداني ✨",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color(0xFF4F46E5)
+                        )
+                    }
+                }
+            }
+
+            if (isCreateModeOpen || filteredLocations.isEmpty()) {
+                Surface(
+                    color = Color(0xFFF8FAFC),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        if (filteredLocations.isEmpty()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = Color(0xFF4F46E5),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "لا توجد مواقع مسجلة مسبقاً كـ $layerLabel، أدخل اسماً جديداً مباشرةً:",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.5.sp),
+                                    color = Color(0xFF334155)
+                                )
+                            }
+                        }
+
+                        DynamicBreadcrumbAddressField(
+                            computedPath = computedPath,
+                            customAddress = customAddressText,
+                            onAddressChange = { newText ->
+                                customAddressText = newText
+                                isManuallyEdited = true
+                                hasError = false
+                            },
+                            isConfirmed = isConfirmed,
+                            onConfirmToggle = {
+                                isConfirmed = !isConfirmed
+                                submitNewName()
+                            },
+                            isManuallyEdited = isManuallyEdited,
+                            onReset = {
+                                customAddressText = ""
+                                isManuallyEdited = false
+                                isConfirmed = false
+                            },
+                            isLocked = false,
+                            hasDuplicateError = hasError,
+                            shakeController = shakeController,
+                            label = "اسم $layerLabel الجديد والمسار الميداني",
+                            placeholder = "ادخل اسم $layerLabel الجديد..."
+                        )
+
+                        Button(
+                            onClick = { submitNewName() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF4F46E5),
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "تأكيد وإضافة $layerLabel",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("ابحث عن اسم $layerLabel...") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF94A3B8))
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Close, contentDescription = "مسح", tint = Color(0xFF64748B))
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF4F46E5),
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                        )
+                    )
+
+                    Surface(
+                        onClick = onScanBarcodeClick,
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFEEF2FF),
+                        border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                        modifier = Modifier.size(52.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "مسح باركود $layerLabel",
+                                tint = Color(0xFF4F46E5),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filteredLocations, key = { "picker-loc-${it.id}" }) { loc ->
+                        val path = loc.getFullHierarchyPath(locations)
+                        Surface(
+                            onClick = { onLocationSelected(loc) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        text = loc.name,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        ),
+                                        color = Color(0xFF0F172A)
+                                    )
+                                    Text(
+                                        text = "📍 $path",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = Color(0xFF4F46E5)
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "اختيار",
+                                    tint = Color(0xFF4F46E5),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SelectIntermediateLayersBottomSheet(
+    missingRanks: List<Int>,
+    locations: List<StockLocation>,
+    selectedParentId: Long?,
+    parentLocationName: String,
+    targetTypeLabel: String,
+    initialSelections: Map<Int, Pair<Long?, String>>,
+    onDismiss: () -> Unit,
+    onConfirm: (Map<Int, Pair<Long?, String>>) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var tempSelections by remember { mutableStateOf(initialSelections) }
+    var inlineInputsOpen by remember { mutableStateOf<Map<Int, Boolean>>(emptyMap()) }
+    var inlineTypedTexts by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
+    var activePickerRank by remember { mutableStateOf<Int?>(null) }
+    var activeScannerRank by remember { mutableStateOf<Int?>(null) }
+    var isScannerOpen by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    fun getRankLabel(rank: Int): String {
+        return when (rank) {
+            0 -> "موقع عام"
+            1 -> "مستودع"
+            2 -> "منطقة / قسم"
+            3 -> "ممر"
+            4 -> "رف"
+            5 -> "صندوق / درج"
+            else -> "طبقة وسيطة"
+        }
+    }
+
+    fun getRankDefaultType(rank: Int): String {
+        return when (rank) {
+            0 -> "SITE"
+            1 -> "WAREHOUSE"
+            2 -> "ZONE"
+            3 -> "AISLE"
+            4 -> "SHELF"
+            5 -> "BIN"
+            else -> "SHELF"
+        }
+    }
+
+    var customAddresses by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
+    var confirmedStates by remember { mutableStateOf<Map<Int, Boolean>>(emptyMap()) }
+    var manuallyEditedStates by remember { mutableStateOf<Map<Int, Boolean>>(emptyMap()) }
+    val shakeControllers = remember(missingRanks) { missingRanks.associateWith { ShakeController() } }
+    var duplicateErrorRank by remember { mutableStateOf<Int?>(null) }
+
+    fun computeBreadcrumbPathForRank(rankIndex: Int): String {
+        val segments = mutableListOf<String>()
+        val baseParent = if (selectedParentId != null) {
+            locations.find { it.id == selectedParentId }?.getFullHierarchyPath(locations) ?: parentLocationName.trim()
+        } else {
+            parentLocationName.trim()
+        }
+        segments.add(baseParent)
+
+        for (i in 0 until rankIndex) {
+            val prevRank = missingRanks[i]
+            val prevSelection = tempSelections[prevRank]?.second?.trim()
+            if (!prevSelection.isNullOrBlank()) {
+                segments.add(prevSelection)
+            }
+        }
+        val currentRank = missingRanks[rankIndex]
+        val currentSelection = tempSelections[currentRank]?.second?.trim()
+        if (!currentSelection.isNullOrBlank()) {
+            if (segments.lastOrNull() != currentSelection) {
+                segments.add(currentSelection)
+            }
+        } else {
+            segments.add("[${getRankLabel(currentRank)}]")
+        }
+        return segments.joinToString(" > ")
+    }
+
+    val isAllIntermediatesCompleted = missingRanks.isNotEmpty() && missingRanks.all { r ->
+        tempSelections[r]?.second?.isNotBlank() == true
+    }
+
+    if (activePickerRank != null) {
+        val rank = activePickerRank!!
+        val rankIdx = missingRanks.indexOf(rank)
+        val rankComputedPath = if (rankIdx != -1) computeBreadcrumbPathForRank(rankIdx) else ""
+
+        LayerSpecificLocationPickerSheet(
+            layerLabel = getRankLabel(rank),
+            layerType = getRankDefaultType(rank),
+            locations = locations,
+            computedPath = rankComputedPath,
+            onDismiss = { activePickerRank = null },
+            onLocationSelected = { loc ->
+                tempSelections = tempSelections + (rank to Pair(loc.id, loc.name))
+
+                var currParentId = loc.parentId
+                if (rankIdx > 0) {
+                    for (pIdx in rankIdx - 1 downTo 0) {
+                        if (currParentId == null) break
+                        val parentLoc = locations.find { it.id == currParentId } ?: break
+                        val pRank = missingRanks[pIdx]
+                        tempSelections = tempSelections + (pRank to Pair(parentLoc.id, parentLoc.name))
+                        currParentId = parentLoc.parentId
+                    }
+                }
+
+                if (rankIdx != -1) {
+                    missingRanks.drop(rankIdx + 1).forEach { subRank ->
+                        customAddresses = customAddresses - subRank
+                        manuallyEditedStates = manuallyEditedStates - subRank
+                        inlineTypedTexts = inlineTypedTexts - subRank
+                        tempSelections = tempSelections - subRank
+                    }
+                }
+                activePickerRank = null
+
+                if (rankIdx != -1 && rankIdx + 1 < missingRanks.size) {
+                    val nextRank = missingRanks[rankIdx + 1]
+                    if (tempSelections[nextRank]?.second.isNullOrBlank()) {
+                        activePickerRank = nextRank
+                    }
+                }
+            },
+            onAddNewLocationName = { newName ->
+                val rankIdx = missingRanks.indexOf(rank)
+                if (rankIdx > 0) {
+                    for (pIdx in 0 until rankIdx) {
+                        val pRank = missingRanks[pIdx]
+                        if (tempSelections[pRank]?.second.isNullOrBlank()) {
+                            tempSelections = tempSelections + (pRank to Pair(null, "${getRankLabel(pRank)} 01"))
+                        }
+                    }
+                }
+                tempSelections = tempSelections + (rank to Pair(null, newName))
+                inlineInputsOpen = inlineInputsOpen + (rank to true)
+                activePickerRank = null
+
+                if (rankIdx != -1 && rankIdx + 1 < missingRanks.size) {
+                    val nextRank = missingRanks[rankIdx + 1]
+                    if (tempSelections[nextRank]?.second.isNullOrBlank()) {
+                        activePickerRank = nextRank
+                    }
+                }
+            },
+            onScanBarcodeClick = {
+                activeScannerRank = rank
+                isScannerOpen = true
+            }
+        )
+    }
+
+    if (isScannerOpen) {
+        LocationBarcodeScannerBottomSheet(
+            locations = locations,
+            onDismiss = {
+                isScannerOpen = false
+                activeScannerRank = null
+            },
+            onBarcodeScanned = { scannedResult ->
+                isScannerOpen = false
+                val parsed = BarcodePayloadHelper.parsePayload(scannedResult)
+                val matchedLoc = locations.find { loc ->
+                    loc.uuid.equals(parsed.uuid, ignoreCase = true) ||
+                    loc.effectiveUuid.equals(parsed.uuid, ignoreCase = true) ||
+                    loc.id.toString() == parsed.uuid.removePrefix("location-").removePrefix("loc-") ||
+                    loc.name.equals(scannedResult.trim(), ignoreCase = true)
+                }
+                val rank = activeScannerRank
+                if (rank != null) {
+                    val rankIndex = missingRanks.indexOf(rank)
+                    if (rankIndex > 0) {
+                        for (pIdx in 0 until rankIndex) {
+                            val pRank = missingRanks[pIdx]
+                            if (tempSelections[pRank]?.second.isNullOrBlank()) {
+                                tempSelections = tempSelections + (pRank to Pair(null, "${getRankLabel(pRank)} 01"))
+                            }
+                        }
+                    }
+
+                    if (matchedLoc != null) {
+                        tempSelections = tempSelections + (rank to Pair(matchedLoc.id, matchedLoc.name))
+                        errorMessage = null
+
+                        var currParentId = matchedLoc.parentId
+                        if (rankIndex > 0) {
+                            for (pIdx in rankIndex - 1 downTo 0) {
+                                if (currParentId == null) break
+                                val parentLoc = locations.find { it.id == currParentId } ?: break
+                                val pRank = missingRanks[pIdx]
+                                tempSelections = tempSelections + (pRank to Pair(parentLoc.id, parentLoc.name))
+                                currParentId = parentLoc.parentId
+                            }
+                        }
+
+                        val currentIndex = missingRanks.indexOf(rank)
+                        if (currentIndex != -1 && currentIndex + 1 < missingRanks.size) {
+                            val nextRank = missingRanks[currentIndex + 1]
+                            if (tempSelections[nextRank]?.second.isNullOrBlank()) {
+                                activePickerRank = nextRank
+                            }
+                        }
+                    } else {
+                        val fallbackName = scannedResult.trim()
+                        if (fallbackName.isNotBlank()) {
+                            tempSelections = tempSelections + (rank to Pair(null, fallbackName))
+                            inlineInputsOpen = inlineInputsOpen + (rank to true)
+                            errorMessage = null
+                        }
+                    }
+                }
+                activeScannerRank = null
+            }
+        )
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFFEF3C7)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Layers,
+                            contentDescription = null,
+                            tint = Color(0xFFD97706),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "رصف وتحديد الطبقات الوسيطة المفقودة",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.5.sp
+                            ),
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            text = "حشو فجوة الهرمية بين ($parentLocationName) ➔ ($targetTypeLabel)",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = Color(0xFF64748B)
+                        )
+                    }
+                }
+
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "إغلاق",
+                        tint = Color(0xFF64748B)
+                    )
+                }
+            }
+
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+
+            if (errorMessage != null) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFFEF2F2),
+                    border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = errorMessage!!,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = Color(0xFF991B1B)
+                        )
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                missingRanks.forEachIndexed { index, rank ->
+                    val layerLabel = getRankLabel(rank)
+
+                    val currentPair = tempSelections[rank]
+                    val selectedId = currentPair?.first
+                    val selectedName = currentPair?.second ?: ""
+                    val isCompleted = selectedName.isNotBlank()
+                    val isInlineOpen = inlineInputsOpen[rank] == true
+                    var typedName by remember(rank, isInlineOpen) { mutableStateOf(inlineTypedTexts[rank] ?: "") }
+                    val isRankLocked = index > 0 && tempSelections[missingRanks[index - 1]]?.second.isNullOrBlank()
+
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isCompleted) Color(0xFFF0FDF4) else Color(0xFFF8FAFC),
+                        border = BorderStroke(1.dp, if (isCompleted) Color(0xFFBBF7D0) else Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = if (isCompleted) Color(0xFFD1FAE5) else Color(0xFFFEF3C7)
+                                    ) {
+                                        Text(
+                                            text = "مستوى ${index + 1}",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 10.sp
+                                            ),
+                                            color = if (isCompleted) Color(0xFF047857) else Color(0xFFD97706),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = layerLabel,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.5.sp
+                                        ),
+                                        color = Color(0xFF0F172A)
+                                    )
+                                }
+
+                                if (isCompleted) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color(0xFFD1FAE5)
+                                    ) {
+                                        Text(
+                                            text = if (selectedId != null) "موقع قائم 🏢" else "اسم جديد ✨",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 9.5.sp
+                                            ),
+                                            color = Color(0xFF047857),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Surface(
+                                    onClick = {
+                                        activePickerRank = rank
+                                        errorMessage = null
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color.White,
+                                    border = BorderStroke(1.dp, if (isCompleted) Color(0xFF86EFAC) else Color(0xFFCBD5E1)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(52.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isCompleted) Icons.Default.Place else Icons.Default.Search,
+                                                contentDescription = null,
+                                                tint = if (isCompleted) Color(0xFF059669) else Color(0xFF94A3B8),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = if (isCompleted) selectedName else "اختر $layerLabel قائماً...",
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontWeight = if (isCompleted) FontWeight.Bold else FontWeight.Medium,
+                                                    fontSize = 12.5.sp
+                                                ),
+                                                color = if (isCompleted) Color(0xFF0F172A) else Color(0xFF64748B),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+
+                                        if (isCompleted) {
+                                            IconButton(
+                                                onClick = {
+                                                    val rankIdx = missingRanks.indexOf(rank)
+                                                    if (rankIdx != -1) {
+                                                        missingRanks.drop(rankIdx).forEach { subRank ->
+                                                            tempSelections = tempSelections - subRank
+                                                            inlineTypedTexts = inlineTypedTexts - subRank
+                                                            customAddresses = customAddresses - subRank
+                                                            manuallyEditedStates = manuallyEditedStates - subRank
+                                                            confirmedStates = confirmedStates - subRank
+                                                        }
+                                                    } else {
+                                                        tempSelections = tempSelections - rank
+                                                    }
+                                                    inlineInputsOpen = inlineInputsOpen + (rank to false)
+                                                    errorMessage = null
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "مسح الاختيار والتراجع",
+                                                    tint = Color(0xFFDC2626),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Default.ArrowDropDown,
+                                                contentDescription = "فتح البحث",
+                                                tint = Color(0xFF64748B),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Surface(
+                                    onClick = {
+                                        if (index > 0) {
+                                            for (pIdx in 0 until index) {
+                                                val pRank = missingRanks[pIdx]
+                                                if (tempSelections[pRank]?.second.isNullOrBlank()) {
+                                                    tempSelections = tempSelections + (pRank to Pair(null, "${getRankLabel(pRank)} 01"))
+                                                }
+                                            }
+                                        }
+                                        inlineInputsOpen = inlineInputsOpen + (rank to !isInlineOpen)
+                                        errorMessage = null
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isInlineOpen) Color(0xFFEEF2FF) else Color(0xFFF1F5F9),
+                                    border = BorderStroke(1.dp, if (isInlineOpen) Color(0xFF818CF8) else Color(0xFFE2E8F0)),
+                                    modifier = Modifier.size(52.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = "إضافة اسم جديد",
+                                            tint = if (isInlineOpen) Color(0xFF4F46E5) else Color(0xFF475569),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    onClick = {
+                                        if (index > 0) {
+                                            for (pIdx in 0 until index) {
+                                                val pRank = missingRanks[pIdx]
+                                                if (tempSelections[pRank]?.second.isNullOrBlank()) {
+                                                    tempSelections = tempSelections + (pRank to Pair(null, "${getRankLabel(pRank)} 01"))
+                                                }
+                                            }
+                                        }
+                                        activeScannerRank = rank
+                                        isScannerOpen = true
+                                        errorMessage = null
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFEEF2FF),
+                                    border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                                    modifier = Modifier.size(52.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.QrCodeScanner,
+                                            contentDescription = "مسح باركود",
+                                            tint = Color(0xFF4F46E5),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (isInlineOpen || (selectedId == null && selectedName.isNotBlank())) {
+                                val rankComputedPath = computeBreadcrumbPathForRank(index)
+                                val currentCustomAddress = if (manuallyEditedStates[rank] == true) (customAddresses[rank] ?: "") else ""
+
+                                DynamicBreadcrumbAddressField(
+                                    computedPath = rankComputedPath,
+                                    customAddress = currentCustomAddress,
+                                    onAddressChange = { newText ->
+                                        customAddresses = customAddresses + (rank to newText)
+                                        inlineTypedTexts = inlineTypedTexts + (rank to newText)
+                                        manuallyEditedStates = manuallyEditedStates + (rank to true)
+                                        duplicateErrorRank = null
+                                        errorMessage = null
+
+                                        val lastSegment = if (newText.contains(" > ")) newText.substringAfterLast(" > ").trim() else newText.trim()
+                                        val isPlaceholder = lastSegment.startsWith("[") && lastSegment.endsWith("]")
+                                        if (lastSegment.isNotBlank() && !isPlaceholder) {
+                                            tempSelections = tempSelections + (rank to Pair(null, lastSegment))
+                                        } else {
+                                            tempSelections = tempSelections - rank
+                                        }
+                                    },
+                                    isConfirmed = confirmedStates[rank] == true,
+                                    onConfirmToggle = {
+                                        val isConf = !(confirmedStates[rank] ?: false)
+                                        confirmedStates = confirmedStates + (rank to isConf)
+                                        val rawText = if (manuallyEditedStates[rank] == true) (customAddresses[rank]?.ifBlank { null } ?: rankComputedPath) else rankComputedPath
+                                        var lastSegment = if (rawText.contains(" > ")) rawText.substringAfterLast(" > ").trim() else rawText.trim()
+                                        val isPlaceholder = lastSegment.startsWith("[") && lastSegment.endsWith("]")
+                                        if (isPlaceholder || lastSegment.isBlank()) {
+                                            lastSegment = "${getRankLabel(rank)} 01"
+                                        }
+                                        if (lastSegment.isNotBlank()) {
+                                            tempSelections = tempSelections + (rank to Pair(null, lastSegment))
+                                            errorMessage = null
+
+                                            val currentIndex = missingRanks.indexOf(rank)
+                                            if (currentIndex != -1 && currentIndex + 1 < missingRanks.size) {
+                                                val nextRank = missingRanks[currentIndex + 1]
+                                                if (tempSelections[nextRank]?.second.isNullOrBlank()) {
+                                                    activePickerRank = nextRank
+                                                }
+                                            }
+                                        }
+                                    },
+                                    isManuallyEdited = manuallyEditedStates[rank] == true,
+                                    onReset = {
+                                        customAddresses = customAddresses - rank
+                                        inlineTypedTexts = inlineTypedTexts - rank
+                                        manuallyEditedStates = manuallyEditedStates - rank
+                                        tempSelections = tempSelections - rank
+                                        duplicateErrorRank = null
+                                    },
+                                    isLocked = false,
+                                    hasDuplicateError = duplicateErrorRank == rank,
+                                    shakeController = shakeControllers[rank],
+                                    label = "اسم $layerLabel الجديد والمسار الميداني",
+                                    placeholder = "ادخل اسم $layerLabel الجديد...",
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Button(
+                onClick = {
+                    if (isAllIntermediatesCompleted) {
+                        var foundDuplicateRank: Int? = null
+                        for (i in missingRanks.indices) {
+                            val r = missingRanks[i]
+                            val layerName = tempSelections[r]?.second ?: ""
+                            val layerAddress = if (manuallyEditedStates[r] == true) customAddresses[r] else computeBreadcrumbPathForRank(i)
+
+                            val evalParentId = if (i == 0) selectedParentId else tempSelections[missingRanks[i - 1]]?.first
+                            if (evalParentId != null) {
+                                val isDup = locations.any { loc ->
+                                    loc.parentId == evalParentId && (
+                                        loc.name.trim().equals(layerName.trim(), ignoreCase = true) ||
+                                        (!layerAddress.isNullOrBlank() && loc.address.trim().isNotBlank() && loc.address.trim().equals(layerAddress.trim(), ignoreCase = true))
+                                    )
+                                }
+                                if (isDup) {
+                                    foundDuplicateRank = r
+                                    break
+                                }
+                            }
+                        }
+
+                        if (foundDuplicateRank != null) {
+                            duplicateErrorRank = foundDuplicateRank
+                            errorMessage = "هذا العنوان / الاسم مستخدم بالفعل ضمن هذا المسار"
+                            shakeControllers[foundDuplicateRank]?.trigger()
+                        } else {
+                            onConfirm(tempSelections)
+                        }
+                    }
+                },
+                enabled = isAllIntermediatesCompleted,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4F46E5),
+                    disabledContainerColor = Color(0xFFE2E8F0),
+                    contentColor = Color.White,
+                    disabledContentColor = Color(0xFF94A3B8)
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (isAllIntermediatesCompleted) "تأكيد ورصف كافة الطبقات الوسيطة" else "يرجى تعبئة كافة الطبقات المفقودة لتفعيل التأكيد",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 internal fun AddStockLocationBottomSheet(
     locations: List<StockLocation>,
     users: List<AppUser> = emptyList(),
     locationTypes: List<StockLocationType> = emptyList(),
     initialLocation: StockLocation? = null,
     onDismiss: () -> Unit,
+    onQuickAddParent: ((name: String, type: String, parentId: Long?) -> StockLocation)? = null,
+    onAddCapacityUnit: (String) -> Unit = {},
+    onDeleteCapacityUnit: (String) -> Unit = {},
     onConfirm: (
         name: String,
         description: String,
@@ -2726,9 +4553,14 @@ internal fun AddStockLocationBottomSheet(
         customIcon: String,
         address: String,
         customCapacity: Double?,
-        capacityUnit: String
+        capacityUnit: String,
+        contactPerson: String?,
+        contactPhone: String?,
+        isPrimary: Boolean,
+        intermediates: List<IntermediateNodeSpec>,
+        generatedNames: List<String>
     ) -> Unit,
-    onConfirmBulk: (
+    onConfirmBulk: ((
         parentId: Long?,
         locationType: String,
         prefix: String,
@@ -2737,20 +4569,23 @@ internal fun AddStockLocationBottomSheet(
         padZeros: Boolean,
         description: String,
         customCapacity: Double?
-    ) -> Unit
+    ) -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val isEditMode = initialLocation != null
-    var isBulkMode by remember { mutableStateOf(false) }
     var showEditConfirmationDialog by remember { mutableStateOf(false) }
 
-    // Single Mode States
+    // Single / Unified Mode States
     var name by remember { mutableStateOf(initialLocation?.name ?: "") }
     var description by remember { mutableStateOf(initialLocation?.description ?: "") }
     var address by remember { mutableStateOf(initialLocation?.address ?: "") }
+    var contactPerson by remember { mutableStateOf(initialLocation?.contactPerson ?: "") }
+    var contactPhone by remember { mutableStateOf(initialLocation?.contactPhone ?: "") }
     var customCapacityText by remember { mutableStateOf(initialLocation?.customCapacity?.toString() ?: "") }
-    var capacityUnit by remember { mutableStateOf(initialLocation?.capacityUnit ?: "قطعة") }
+    var capacityUnit by remember { mutableStateOf(initialLocation?.capacityUnit ?: "") }
+    var quantityText by remember { mutableStateOf("1") }
+    val count = (quantityText.toIntOrNull() ?: 1).coerceIn(1, 50)
     var selectedParentId by remember { mutableStateOf<Long?>(initialLocation?.parentId) }
     var locationType by remember { mutableStateOf(initialLocation?.locationType ?: "SHELF") }
     var structural by remember { mutableStateOf(initialLocation?.structural ?: false) }
@@ -2763,19 +4598,269 @@ internal fun AddStockLocationBottomSheet(
         })
     }
 
-    // Bulk Mode States
-    var prefix by remember { mutableStateOf("R-") }
-    var startNumberText by remember { mutableStateOf("1") }
-    var endNumberText by remember { mutableStateOf("20") }
-    var padZeros by remember { mutableStateOf(true) }
-    var bulkDescription by remember { mutableStateOf("") }
-    var bulkCapacityText by remember { mutableStateOf("") }
+    // Primary Location Logic with 3-way Isolation (Internal Sites vs Internal Warehouses vs External Locations)
+    val isExternalLocation = external
+    val isSite = locationType.equals("SITE", ignoreCase = true) && !external
+    val isWarehouse = locationType.equals("WAREHOUSE", ignoreCase = true) && !external
+    val isPrimaryApplicable = isSite || isWarehouse || isExternalLocation
+
+    val existingInternalSitesCount = remember(locations, initialLocation) {
+        locations.count { loc ->
+            loc.id != (initialLocation?.id ?: -1L) && !loc.external && loc.locationType.equals("SITE", ignoreCase = true)
+        }
+    }
+    val existingInternalWarehousesCount = remember(locations, initialLocation) {
+        locations.count { loc ->
+            loc.id != (initialLocation?.id ?: -1L) && !loc.external && loc.locationType.equals("WAREHOUSE", ignoreCase = true)
+        }
+    }
+    val existingExternalLocationsCount = remember(locations, initialLocation) {
+        locations.count { loc ->
+            loc.id != (initialLocation?.id ?: -1L) && loc.external
+        }
+    }
+
+    val relevantExistingCount = when {
+        isExternalLocation -> existingExternalLocationsCount
+        isSite -> existingInternalSitesCount
+        isWarehouse -> existingInternalWarehousesCount
+        else -> 0
+    }
+
+    val hasPrimaryInSystem = remember(locations, initialLocation, isSite, isWarehouse, isExternalLocation) {
+        locations.any { loc ->
+            loc.id != (initialLocation?.id ?: -1L) && loc.isPrimary &&
+                    when {
+                        isExternalLocation -> loc.external
+                        isSite -> loc.locationType.equals("SITE", ignoreCase = true) && !loc.external
+                        isWarehouse -> loc.locationType.equals("WAREHOUSE", ignoreCase = true) && !loc.external
+                        else -> false
+                    }
+        }
+    }
+
+    val isPrimaryFrozen = isPrimaryApplicable && (relevantExistingCount == 0)
+
+    var isPrimary by remember(initialLocation, relevantExistingCount, isPrimaryApplicable) {
+        mutableStateOf(
+            if (!isPrimaryApplicable) false
+            else if (initialLocation != null) initialLocation.isPrimary
+            else if (relevantExistingCount == 0) true
+            else false
+        )
+    }
+
+    var primaryValidationErrorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Hierarchy Distance Engine
+    fun getLocationTypeRank(type: String): Int {
+        return when (type.uppercase().trim()) {
+            "SITE", "ROOT" -> 0
+            "WAREHOUSE" -> 1
+            "ZONE", "AREA" -> 2
+            "AISLE" -> 3
+            "RACK", "SHELF" -> 4
+            "BIN" -> 5
+            else -> 4
+        }
+    }
+
+    fun getRankLabel(rank: Int): String {
+        return when (rank) {
+            0 -> "الموقع العام (Site)"
+            1 -> "المستودع (Warehouse)"
+            2 -> "المنطقة / القسم (Zone)"
+            3 -> "الممر (Aisle)"
+            4 -> "الرف (Shelf)"
+            5 -> "الصندوق / الدرج (Bin)"
+            else -> "الطبقة الوسيطة"
+        }
+    }
+
+    fun getRankShortLabel(rank: Int): String {
+        return when (rank) {
+            0 -> "موقع"
+            1 -> "مستودع"
+            2 -> "منطقة"
+            3 -> "ممر"
+            4 -> "رف"
+            5 -> "صندوق"
+            else -> "موقع"
+        }
+    }
+
+    fun getRankDefaultType(rank: Int): String {
+        return when (rank) {
+            0 -> "SITE"
+            1 -> "WAREHOUSE"
+            2 -> "ZONE"
+            3 -> "AISLE"
+            4 -> "SHELF"
+            5 -> "BIN"
+            else -> "SHELF"
+        }
+    }
+
+    val currentTypeLabel = when (locationType.uppercase().trim()) {
+        "SITE" -> "📍 موقع / منشأة جغرافية"
+        "WAREHOUSE" -> "🏢 مستودع"
+        "ZONE", "AREA" -> "🧩 منطقة / قسم"
+        "AISLE" -> "🚪 ممر"
+        "SHELF", "RACK" -> "📐 رف"
+        "BIN" -> "📥 صندوق / درج"
+        else -> "📐 رف"
+    }
+
+    val parentLocationObj = locations.find { it.id == selectedParentId }
+    val parentRank = if (selectedParentId == null || parentLocationObj == null) 0 else getLocationTypeRank(parentLocationObj.locationType)
+    val targetRank = getLocationTypeRank(locationType)
+
+    val gapCount = if (!external && targetRank > parentRank + 1) (targetRank - parentRank - 1) else 0
+    val missingRanks = if (gapCount > 0) (parentRank + 1 until targetRank).toList() else emptyList()
+
+    var isIntermediateLayersSheetOpen by remember { mutableStateOf(false) }
+
+    var customAddressText by remember { mutableStateOf(initialLocation?.address ?: "") }
+    var isManuallyEditedAddress by remember { mutableStateOf(initialLocation?.address?.isNotBlank() == true) }
+    var isAddressConfirmed by remember { mutableStateOf(false) }
+    var hasDuplicateAddressError by remember { mutableStateOf(false) }
+    val addressShakeController = remember { ShakeController() }
+
+    var isGapExpanded by remember(selectedParentId, locationType) { mutableStateOf(false) }
+    var intermediateSelections by remember(selectedParentId, locationType) {
+        mutableStateOf<Map<Int, Pair<Long?, String>>>(emptyMap())
+    }
+
+    val effectiveName = remember(name, locationType, gapCount, missingRanks, intermediateSelections) {
+        if (name.isNotBlank() && name != "[اسم الموقع]") {
+            name.trim()
+        } else if (gapCount == 0 || missingRanks.all { r -> intermediateSelections[r]?.second?.isNotBlank() == true }) {
+            "${getRankShortLabel(targetRank)} 01"
+        } else {
+            ""
+        }
+    }
+
+    val computedBreadcrumbAddress = remember(selectedParentId, locationType, effectiveName, intermediateSelections, gapCount, locations) {
+        val parts = mutableListOf<String>()
+        if (selectedParentId != null && parentLocationObj != null) {
+            parts.add(parentLocationObj.getFullHierarchyPath(locations))
+        } else {
+            parts.add("المستودع الرئيسي")
+        }
+        if (gapCount > 0) {
+            missingRanks.forEach { rank ->
+                val interName = intermediateSelections[rank]?.second
+                if (!interName.isNullOrBlank()) {
+                    parts.add(interName.trim())
+                }
+            }
+        }
+        if (effectiveName.isNotBlank()) {
+            parts.add(effectiveName.trim())
+        } else {
+            parts.add("[اسم الموقع]")
+        }
+        parts.joinToString(" > ")
+    }
+
+    val isAddressLocked = gapCount > 0 && !missingRanks.all { r -> intermediateSelections[r]?.second?.isNotBlank() == true }
+
+    val hasChanged = remember(
+        name, description, address, contactPerson, contactPhone, customCapacityText, capacityUnit,
+        selectedParentId, locationType, structural, external, icon, selectedOwner, quantityText,
+        initialLocation
+    ) {
+        if (initialLocation != null) {
+            val calculatedOwnerId = selectedOwner?.let { user ->
+                user.uuid.filter { it.isDigit() }.toLongOrNull()
+                    ?: user.uuid.hashCode().toLong().absoluteValue
+            }
+            name.trim() != initialLocation.name.trim() ||
+            description.trim() != initialLocation.description.trim() ||
+            address.trim() != initialLocation.address.trim() ||
+            contactPerson.trim() != (initialLocation.contactPerson ?: "").trim() ||
+            contactPhone.trim() != (initialLocation.contactPhone ?: "").trim() ||
+            customCapacityText.trim() != (initialLocation.customCapacity?.toString() ?: "").trim() ||
+            capacityUnit != initialLocation.capacityUnit ||
+            selectedParentId != initialLocation.parentId ||
+            locationType != initialLocation.locationType ||
+            structural != initialLocation.structural ||
+            external != initialLocation.external ||
+            icon != initialLocation.icon ||
+            calculatedOwnerId != initialLocation.ownerId
+        } else {
+            true
+        }
+    }
+
+    // Sequence Generator Parsing & Duplicate Check Engine
+    val parsedSeq = remember(name, effectiveName, count) {
+        val targetName = if (name.isNotBlank() && name != "[اسم الموقع]") name.trim() else effectiveName.trim()
+        val match = Regex("""^(.*?)(?:[\s\-_]*)(\d+)$""").find(targetName)
+        val basePrefix = if (match != null) match.groupValues[1].trim() else targetName
+        val rawStartNum = match?.groupValues?.get(2)?.toIntOrNull() ?: 1
+        val rawDigitsLength = match?.groupValues?.get(2)?.length ?: 2
+        val finalPadding = if (rawDigitsLength < 2 && (rawStartNum + count - 1) >= 10) 2 else rawDigitsLength
+        val separator = if (basePrefix.endsWith("-") || basePrefix.endsWith("_")) "" else " "
+        Triple(basePrefix, rawStartNum, Pair(finalPadding, separator))
+    }
+
+    val bulkCandidateData = remember(parsedSeq, count, selectedParentId, locations, external, intermediateSelections, missingRanks) {
+        if (count <= 1) Pair(emptyList<String>(), emptyList<Int>())
+        else {
+            val (basePrefix, rawStartNum, padAndSep) = parsedSeq
+            val (finalPadding, separator) = padAndSep
+            val generatedNames = mutableListOf<String>()
+            val skippedNums = mutableListOf<Int>()
+            var currentNum = rawStartNum
+
+            val evalTargetParentId = if (external) null else if (intermediateSelections.isNotEmpty()) {
+                missingRanks.mapNotNull { intermediateSelections[it]?.first }.lastOrNull() ?: selectedParentId
+            } else selectedParentId
+
+            while (generatedNames.size < count && currentNum < rawStartNum + count + 500) {
+                val formattedNum = currentNum.toString().padStart(finalPadding, '0')
+                val candidateName = if (basePrefix.isBlank()) formattedNum else "$basePrefix$separator$formattedNum"
+
+                val isDuplicate = locations.any { loc ->
+                    loc.parentId == evalTargetParentId && loc.name.trim().equals(candidateName, ignoreCase = true)
+                }
+
+                if (!isDuplicate) {
+                    generatedNames.add(candidateName)
+                } else {
+                    skippedNums.add(currentNum)
+                }
+                currentNum++
+            }
+            Pair(generatedNames, skippedNums)
+        }
+    }
+    val generatedNames = bulkCandidateData.first
+    val skippedNums = bulkCandidateData.second
 
     // BottomSheet Pickers State
     var isOwnerPickerOpen by remember { mutableStateOf(false) }
     var isLocationTypePickerOpen by remember { mutableStateOf(false) }
     var isParentLocationPickerOpen by remember { mutableStateOf(false) }
     var isCapacityUnitPickerOpen by remember { mutableStateOf(false) }
+    var isQuickAddParentDialogOpen by remember { mutableStateOf(false) }
+
+    if (isQuickAddParentDialogOpen) {
+        QuickAddParentBottomSheet(
+            locations = locations,
+            currentParentId = selectedParentId,
+            onDismiss = { isQuickAddParentDialogOpen = false },
+            onConfirm = { parentName: String, parentType: String, grandparentId: Long? ->
+                val created = onQuickAddParent?.invoke(parentName, parentType, grandparentId)
+                if (created != null) {
+                    selectedParentId = created.id
+                }
+                isQuickAddParentDialogOpen = false
+            }
+        )
+    }
 
     if (isCapacityUnitPickerOpen) {
         SelectCapacityUnitBottomSheet(
@@ -2814,9 +4899,30 @@ internal fun AddStockLocationBottomSheet(
             locations = locations,
             selectedParentId = selectedParentId,
             onDismiss = { isParentLocationPickerOpen = false },
+            onQuickAddParent = onQuickAddParent,
             onParentSelected = { parentId ->
                 selectedParentId = parentId
                 isParentLocationPickerOpen = false
+            }
+        )
+    }
+
+    if (isIntermediateLayersSheetOpen) {
+        SelectIntermediateLayersBottomSheet(
+            missingRanks = missingRanks,
+            locations = locations,
+            selectedParentId = selectedParentId,
+            parentLocationName = parentLocationObj?.name ?: "المستودع الرئيسي (Root)",
+            targetTypeLabel = currentTypeLabel,
+            initialSelections = intermediateSelections,
+            onDismiss = { isIntermediateLayersSheetOpen = false },
+            onConfirm = { updatedSelections ->
+                intermediateSelections = updatedSelections
+                isIntermediateLayersSheetOpen = false
+                primaryValidationErrorMessage = null
+                if (name.isBlank() || name == "[اسم الموقع]") {
+                    name = "${getRankShortLabel(targetRank)} 01"
+                }
             }
         )
     }
@@ -2862,7 +4968,7 @@ internal fun AddStockLocationBottomSheet(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = if (isBulkMode) Icons.Default.FlashOn else Icons.Default.AddLocation,
+                            imageVector = if (count > 1) Icons.Default.FlashOn else Icons.Default.AddLocation,
                             contentDescription = null,
                             tint = Color(0xFF4F46E5),
                             modifier = Modifier.size(22.dp)
@@ -2870,7 +4976,7 @@ internal fun AddStockLocationBottomSheet(
                     }
                     Column {
                         Text(
-                            text = if (isEditMode) "التعديل على موقع تخزين" else if (isBulkMode) "توليد مواقع تخزينية متسلسلة" else "إضافة موقع تخزيني جديد",
+                            text = if (isEditMode) "التعديل على موقع تخزين" else if (count > 1) "توليد مواقع تخزينية متسلسلة" else "إضافة موقع تخزيني جديد",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp
@@ -2878,7 +4984,7 @@ internal fun AddStockLocationBottomSheet(
                             color = Color(0xFF0F172A)
                         )
                         Text(
-                            text = if (isEditMode) "تحديث وتعديل كافة حقول بيانات وسعة هذا الموقع" else if (isBulkMode) "معالج التوليد الدفعي المتسلسل للأرفف والحاويات" else "إدخال موقع تخزين فريد في شجرة المستودع",
+                            text = if (isEditMode) "تحديث وتعديل كافة حقول بيانات وسعة هذا الموقع" else if (count > 1) "توليد $count مواقع متطابقة بنفس السعة والتصنيف" else "إدخال موقع تخزين فريد في شجرة المستودع",
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                             color = Color(0xFF64748B)
                         )
@@ -2905,88 +5011,97 @@ internal fun AddStockLocationBottomSheet(
                     .padding(horizontal = 20.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Creation Mode Toggle (فردي vs توليد متسلسل - يُخفى في حالة التعديل)
-                if (!isEditMode) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFF1F5F9))
-                            .padding(4.dp)
+                // Scope Selector Switch (موقع داخلي vs موقع خارجي)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFF1F5F9))
+                        .padding(4.dp)
+                ) {
+                    Surface(
+                        onClick = {
+                            external = false
+                            if (locationType == "SITE") locationType = "SHELF"
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (!external) Color.White else Color.Transparent,
+                        shadowElevation = if (!external) 2.dp else 0.dp,
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Surface(
-                            onClick = { isBulkMode = false },
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (!isBulkMode) Color.White else Color.Transparent,
-                            shadowElevation = if (!isBulkMode) 2.dp else 0.dp,
-                            modifier = Modifier.weight(1f)
+                        Row(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AddLocation,
-                                    contentDescription = null,
-                                    tint = if (!isBulkMode) Color(0xFF4F46E5) else Color(0xFF64748B),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "إضافة موقع فردي",
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.5.sp
-                                    ),
-                                    color = if (!isBulkMode) Color(0xFF0F172A) else Color(0xFF64748B)
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.HomeWork,
+                                contentDescription = null,
+                                tint = if (!external) Color(0xFF4F46E5) else Color(0xFF64748B),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "🏢 موقع داخلي (Internal)",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                ),
+                                color = if (!external) Color(0xFF0F172A) else Color(0xFF64748B)
+                            )
                         }
+                    }
 
-                        Surface(
-                            onClick = { isBulkMode = true },
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (isBulkMode) Color(0xFF4F46E5) else Color.Transparent,
-                            shadowElevation = if (isBulkMode) 2.dp else 0.dp,
-                            modifier = Modifier.weight(1f)
+                    Surface(
+                        onClick = {
+                            external = true
+                            locationType = "SITE"
+                            structural = false
+                            selectedParentId = null
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (external) Color(0xFF2563EB) else Color.Transparent,
+                        shadowElevation = if (external) 2.dp else 0.dp,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.FlashOn,
-                                    contentDescription = null,
-                                    tint = if (isBulkMode) Color.White else Color(0xFF64748B),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "توليد متسلسل / متعدد ⚡",
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.5.sp
-                                    ),
-                                    color = if (isBulkMode) Color.White else Color(0xFF64748B)
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.Public,
+                                contentDescription = null,
+                                tint = if (external) Color.White else Color(0xFF64748B),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "🚚 موقع خارجي (External)",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                ),
+                                color = if (external) Color.White else Color(0xFF64748B)
+                            )
                         }
                     }
                 }
 
-                if (!isBulkMode) {
-                    // Single Location Form Body
+                if (external) {
+                    val uriHandler = LocalUriHandler.current
+                    val clipboardManager = LocalClipboardManager.current
+
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
-                        label = { Text("اسم الموقع التخزيني (مثل: الرف B3، مستودع أ)") },
+                        label = { Text("اسم الموقع الخارجي") },
+                        placeholder = { Text("مثال: مستودع المقاول س، مصنع التجميع") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF4F46E5),
+                            focusedBorderColor = Color(0xFF2563EB),
                             unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
                             focusedContainerColor = Color.White,
                             unfocusedContainerColor = Color.White
@@ -2994,20 +5109,190 @@ internal fun AddStockLocationBottomSheet(
                     )
 
                     OutlinedTextField(
-                        value = description,
-                        onValueChange = { description = it },
-                        label = { Text("الوصف التفصيلي للموقع") },
+                        value = address,
+                        onValueChange = { address = it },
+                        label = { Text("عنوان الموقع الخارجي") },
+                        placeholder = { Text("مثال: المنطقة الصناعية - وهران، الجزائر") },
+                        leadingIcon = {
+                            Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF2563EB))
+                        },
+                        trailingIcon = {
+                            if (address.isNotBlank()) {
+                                IconButton(
+                                    onClick = {
+                                        clipboardManager.setText(AnnotatedString(address.trim()))
+                                        try {
+                                            val encoded = address.trim().replace(" ", "+")
+                                            uriHandler.openUri("https://maps.google.com/?q=$encoded")
+                                        } catch (_: Exception) {}
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Directions,
+                                        contentDescription = "الانتقال السريع للجيبياس",
+                                        tint = Color(0xFF2563EB)
+                                    )
+                                }
+                            }
+                        },
+                        singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF4F46E5),
+                            focusedBorderColor = Color(0xFF2563EB),
                             unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
                             focusedContainerColor = Color.White,
                             unfocusedContainerColor = Color.White
                         )
                     )
 
-                    // Field 1: Location Type Picker Card
+                    OutlinedTextField(
+                        value = contactPerson,
+                        onValueChange = { contactPerson = it },
+                        label = { Text("اسم الشخص المسؤول") },
+                        placeholder = { Text("مثال: محمد العربي") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Person, contentDescription = null, tint = Color(0xFF2563EB))
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF2563EB),
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = contactPhone,
+                        onValueChange = { contactPhone = it },
+                        label = { Text("رقم الهاتف") },
+                        placeholder = { Text("مثال: 0550123456") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Phone, contentDescription = null, tint = Color(0xFF2563EB))
+                        },
+                        trailingIcon = {
+                            if (contactPhone.isNotBlank()) {
+                                IconButton(
+                                    onClick = {
+                                        val cleanPhone = contactPhone.trim().filter { it.isDigit() || it == '+' }
+                                        clipboardManager.setText(AnnotatedString(cleanPhone))
+                                        try {
+                                            uriHandler.openUri("tel:$cleanPhone")
+                                        } catch (_: Exception) {}
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Call,
+                                        contentDescription = "الانتقال السريع واجراء الاتصال",
+                                        tint = Color(0xFF16A34A)
+                                    )
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF2563EB),
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        )
+                    )
+                } else {
+                    // Internal Mode Fields
+                    if (locationType.equals("SITE", ignoreCase = true)) {
+                        LaunchedEffect(Unit) {
+                            selectedParentId = null
+                        }
+                    } else {
+                        val parentLocationObj = locations.find { it.id == selectedParentId }
+                        val fullBreadcrumbPath = buildString {
+                            if (selectedParentId != null && parentLocationObj != null) {
+                                append(parentLocationObj.getFullHierarchyPath(locations))
+                                append(" > ")
+                            } else {
+                                append("المستودع الرئيسي (Root) > ")
+                            }
+                            append(if (name.isBlank()) "[الموقع الجديد]" else name)
+                        }
+
+                        Surface(
+                            color = Color(0xFFF8FAFC),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { isParentLocationPickerOpen = true }
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Color(0xFFEEF2FF)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (selectedParentId == null) Icons.Default.AccountTree else if (parentLocationObj?.structural == true) Icons.Default.HomeWork else Icons.Default.Place,
+                                            contentDescription = null,
+                                            tint = Color(0xFF4F46E5),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "الموقع الحاوي (الأب) في الهرمية الشجرية",
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp
+                                                ),
+                                                color = Color(0xFF0F172A)
+                                            )
+                                            Icon(
+                                                imageVector = Icons.Default.ArrowDropDown,
+                                                contentDescription = "اختر الموقع الأب",
+                                                tint = Color(0xFF64748B),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Text(
+                                            text = "📍 $fullBreadcrumbPath",
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = Color(0xFF059669),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Location Type Picker Card
                     val currentTypeLabel = when (locationType.uppercase()) {
                         "SITE" -> "📍 موقع / منشأة جغرافية"
                         "WAREHOUSE" -> "🏢 مستودع"
@@ -3055,7 +5340,7 @@ internal fun AddStockLocationBottomSheet(
 
                                 Column {
                                     Text(
-                                        text = "التصنيف المباشر لمحتوى الموقع (locationType)",
+                                        text = "التصنيف المباشر لمحتوى الموقع",
                                         style = MaterialTheme.typography.bodyMedium.copy(
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 13.sp
@@ -3076,6 +5361,99 @@ internal fun AddStockLocationBottomSheet(
                                 tint = Color(0xFF64748B),
                                 modifier = Modifier.size(24.dp)
                             )
+                        }
+                    }
+
+                    // Smart Hierarchy Gap Alert Banner
+                    if (gapCount > 0) {
+                        val missingRanksSummary = missingRanks.joinToString(" ➔ ") { getRankLabel(it) }
+                        val isFilled = missingRanks.all { r -> intermediateSelections[r]?.second?.isNotBlank() == true }
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isFilled) Color(0xFFECFDF5) else Color(0xFFFFFBEB),
+                            border = BorderStroke(1.dp, if (isFilled) Color(0xFFA7F3D0) else Color(0xFFFCD34D)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (isFilled) Color(0xFFD1FAE5) else Color(0xFFFEF3C7)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isFilled) Icons.Default.CheckCircle else Icons.Default.Layers,
+                                            contentDescription = null,
+                                            tint = if (isFilled) Color(0xFF059669) else Color(0xFFD97706),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = if (isFilled) "تم تحديد $gapCount طبقات وسيطة ✓" else "فراغ في تسلسل التخزين ($gapCount مستويات مفقودة)",
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.5.sp
+                                            ),
+                                            color = if (isFilled) Color(0xFF065F46) else Color(0xFF92400E)
+                                        )
+                                        Text(
+                                            text = if (isFilled)
+                                                missingRanks.joinToString(" ➔ ") { r -> intermediateSelections[r]?.second ?: "" }
+                                            else
+                                                "الطبقات الناقصة: $missingRanksSummary",
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                            color = if (isFilled) Color(0xFF047857) else Color(0xFFB45309),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                Button(
+                                    onClick = { isIntermediateLayersSheetOpen = true },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isFilled) Color(0xFF059669) else Color(0xFF4F46E5),
+                                        contentColor = Color.White
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                                    modifier = Modifier
+                                        .height(40.dp)
+                                        .padding(start = 6.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isFilled) Icons.Default.Edit else Icons.Default.Layers,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = if (isFilled) "تعديل ✏️" else "+ تحديد الطبقات",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 11.5.sp
+                                            )
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -3108,249 +5486,37 @@ internal fun AddStockLocationBottomSheet(
                         }
                     }
 
-                    // Field 2: Parent Location Picker Card (Only for non-SITE locations)
-                    if (locationType == "SITE") {
-                        LaunchedEffect(Unit) {
-                            selectedParentId = null
-                        }
-                    } else {
-                        val parentLocationObj = locations.find { it.id == selectedParentId }
-                        val parentTitle = if (selectedParentId == null) "موقع رئيسي (Root)" else parentLocationObj?.name ?: "موقع #${selectedParentId}"
-                        val parentBreadcrumb = if (selectedParentId != null) getFullPathForLocation(locations, selectedParentId, separator = " > ") else "عقدة جذرية بدون موقع أب حاوي"
+                    // Geographic Address Input (SITE mode)
+                    if (locationType.equals("SITE", ignoreCase = true)) {
+                        val uriHandler = LocalUriHandler.current
+                        val clipboardManager = LocalClipboardManager.current
 
-                        Surface(
-                            color = Color(0xFFF8FAFC),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { isParentLocationPickerOpen = true }
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(Color(0xFFEEF2FF)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = if (selectedParentId == null) Icons.Default.AccountTree else if (parentLocationObj?.structural == true) Icons.Default.HomeWork else Icons.Default.Place,
-                                            contentDescription = null,
-                                            tint = Color(0xFF4F46E5),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-
-                                    Column {
-                                        Text(
-                                            text = "الموقع الحاوي (الأب) في الهرمية الشجرية",
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp
-                                            ),
-                                            color = Color(0xFF0F172A)
-                                        )
-                                        Text(
-                                            text = "$parentTitle — $parentBreadcrumb",
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                            color = Color(0xFF4F46E5)
-                                        )
-                                    }
-                                }
-
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = "اختر الموقع الأب",
-                                    tint = Color(0xFF64748B),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // Requirement 3: Hierarchy Placement Preview Card
-                    val previewLocName = name.ifBlank { "موقع جديد" }
-                    val treeLines = buildHierarchyTreeLines(locations, selectedParentId, previewLocName)
-
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFFF0FDF4),
-                        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AccountTree,
-                                    contentDescription = null,
-                                    tint = Color(0xFF16A34A),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = "📍 التموضع الشجري للموقع الجديد (Hierarchy Placement):",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = Color(0xFF15803D)
-                                )
-                            }
-
-                            if (selectedParentId == null) {
-                                Text(
-                                    text = "سيتم إنشاء هذا الموقع كمركز رئيسي (Root) في أعلى الهرمية التخزينية.",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = Color(0xFF166534)
-                                )
-                            }
-
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(3.dp),
-                                modifier = Modifier.padding(start = 4.dp)
-                            ) {
-                                treeLines.forEach { (depth, text) ->
-                                    val indentPrefix = if (depth == 0) "" else "   ".repeat(depth) + "└── "
-                                    Text(
-                                        text = "$indentPrefix$text",
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontSize = 11.5.sp,
-                                            fontWeight = if (depth == treeLines.lastIndex) FontWeight.Bold else FontWeight.Medium
-                                        ),
-                                        color = if (depth == treeLines.lastIndex) Color(0xFF15803D) else Color(0xFF334155)
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Structural Location Checkbox / Toggle
-                    Surface(
-                        color = Color(0xFFF8FAFC),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { structural = !structural }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Checkbox(
-                                checked = structural,
-                                onCheckedChange = { structural = it },
-                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4F46E5))
-                            )
-                            Column {
-                                Text(
-                                    text = "موقع هيكلي لتجميع العقد",
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
-                                    ),
-                                    color = Color(0xFF0F172A)
-                                )
-                                Text(
-                                    text = "يُستخدم فقط لتقسيم الهيكلية الشجرية ويمنع التخزين المباشر به",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
-                                    color = Color(0xFF64748B)
-                                )
-                            }
-                        }
-                    }
-
-                    // External Location Toggle
-                    Surface(
-                        color = if (external) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, if (external) Color(0xFF3B82F6) else Color(0xFFE2E8F0)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { external = !external }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (external) Color(0xFFDBEAFE) else Color(0xFFEEF2FF)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = if (external) Icons.Default.Public else Icons.Default.HomeWork,
-                                        contentDescription = null,
-                                        tint = if (external) Color(0xFF2563EB) else Color(0xFF4F46E5),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-
-                                Column {
-                                    Text(
-                                        text = "موقع تخزيني خارجي (external)",
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
-                                        ),
-                                        color = Color(0xFF0F172A)
-                                    )
-                                    Text(
-                                        text = "مستودع خارجي، موقع شريك/مقاول تصنيع، أو شحنة ترانزيت",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
-                                        color = Color(0xFF64748B)
-                                    )
-                                }
-                            }
-
-                            Switch(
-                                checked = external,
-                                onCheckedChange = { external = it },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = Color(0xFF3B82F6),
-                                    uncheckedThumbColor = Color.White,
-                                    uncheckedTrackColor = Color(0xFFCBD5E1)
-                                )
-                            )
-                        }
-                    }
-
-                    if (locationType == "SITE") {
                         OutlinedTextField(
                             value = address,
                             onValueChange = { address = it },
-                            label = { Text("العنوان الجغرافي / موقع المنشأة (Address)") },
+                            label = { Text("العنوان الجغرافي / موقع المنشأة") },
                             placeholder = { Text("مثال: المنطقة الصناعية - رغاية، الجزائر العاصمة") },
                             leadingIcon = {
                                 Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF4F46E5))
+                            },
+                            trailingIcon = {
+                                if (address.isNotBlank()) {
+                                    IconButton(
+                                        onClick = {
+                                            clipboardManager.setText(AnnotatedString(address.trim()))
+                                            try {
+                                                val encoded = address.trim().replace(" ", "+")
+                                                uriHandler.openUri("https://maps.google.com/?q=$encoded")
+                                            } catch (_: Exception) {}
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Directions,
+                                            contentDescription = "الانتقال السريع للجيبياس",
+                                            tint = Color(0xFF4F46E5)
+                                        )
+                                    }
+                                }
                             },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
@@ -3364,89 +5530,308 @@ internal fun AddStockLocationBottomSheet(
                         )
                     }
 
-                    OutlinedTextField(
-                        value = customCapacityText,
-                        onValueChange = { customCapacityText = it },
-                        label = { Text("السعة التخزينية القصوى للموقع (customCapacity)") },
-                        placeholder = { Text("مثال: 500 أو 1000") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF4F46E5),
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White
-                        )
+                    // Dynamic Breadcrumb Address Field
+                    DynamicBreadcrumbAddressField(
+                        computedPath = computedBreadcrumbAddress,
+                        customAddress = customAddressText,
+                        onAddressChange = { newAddr ->
+                            customAddressText = newAddr
+                            isManuallyEditedAddress = true
+                            hasDuplicateAddressError = false
+                            primaryValidationErrorMessage = null
+
+                            val lastSegment = if (newAddr.contains(" > ")) newAddr.substringAfterLast(" > ").trim() else newAddr.trim()
+                            name = if (lastSegment != "[اسم الموقع]") lastSegment else ""
+                        },
+                        isConfirmed = isAddressConfirmed,
+                        onConfirmToggle = {
+                            isAddressConfirmed = !isAddressConfirmed
+                        },
+                        isManuallyEdited = isManuallyEditedAddress,
+                        onReset = {
+                            customAddressText = ""
+                            isManuallyEditedAddress = false
+                            isAddressConfirmed = false
+                            hasDuplicateAddressError = false
+                            name = initialLocation?.name ?: ""
+                        },
+                        isLocked = isAddressLocked,
+                        hasDuplicateError = hasDuplicateAddressError,
+                        shakeController = addressShakeController,
+                        label = "اسم الموقع التخزيني والمسار الميداني",
+                        placeholder = "ادخل اسم أو مسار الموقع التخزيني (مثل: الرف B3)..."
                     )
 
-                    // Capacity Unit Selection Card (Matching design with other pickers)
-                    Surface(
-                        color = Color(0xFFF8FAFC),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { isCapacityUnitPickerOpen = true }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                    // Live Preview Banner for Sequential Bulk Generation
+                    if (count > 1 && generatedNames.isNotEmpty()) {
+                        val firstName = generatedNames.first()
+                        val lastName = generatedNames.last()
+                        val skippedText = if (skippedNums.isNotEmpty()) " (تم تخطي ${skippedNums.joinToString(", ")} لوجوده مسبقاً)" else ""
+                        val previewMsg = "سيتم توليد $count مواقع: من $firstName إلى $lastName$skippedText بنفس السعة والتصنيف"
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFEEF2FF),
+                            border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.weight(1f)
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(Color(0xFFEEF2FF)),
-                                    contentAlignment = Alignment.Center
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Tune,
+                                        imageVector = Icons.Default.FlashOn,
                                         contentDescription = null,
                                         tint = Color(0xFF4F46E5),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-
-                                Column {
-                                    Text(
-                                        text = "وحدة قياس السعة التخزينية (Capacity Unit)",
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
-                                        ),
-                                        color = Color(0xFF0F172A)
+                                        modifier = Modifier.size(18.dp)
                                     )
                                     Text(
-                                        text = "المعيار المعتمد: $capacityUnit",
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        ),
-                                        color = Color(0xFF4F46E5)
+                                        text = "شريط المعاينة الحية للتوليد المتسلسل:",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = Color(0xFF3730A3)
                                     )
                                 }
+                                Text(
+                                    text = previewMsg,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                    color = Color(0xFF4338CA)
+                                )
                             }
-
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = "اختر وحدة القياس",
-                                tint = Color(0xFF64748B),
-                                modifier = Modifier.size(24.dp)
-                            )
                         }
                     }
 
-                    // Owner / Supervisor Selection Card
+                    // 5. Side-by-side Capacity & Capacity Unit Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = Color(0xFFF8FAFC),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { isCapacityUnitPickerOpen = true }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "وحدة القياس",
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.5.sp
+                                        ),
+                                        color = Color(0xFF0F172A),
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text = if (capacityUnit.isBlank()) "اضغط للاختيار..." else capacityUnit,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = if (capacityUnit.isBlank()) Color(0xFF64748B) else Color(0xFF4F46E5),
+                                        maxLines = 1
+                                    )
+                                }
+                                if (capacityUnit.isNotBlank()) {
+                                    IconButton(
+                                        onClick = { capacityUnit = "" },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "إلغاء وحدة القياس",
+                                            tint = Color(0xFFDC2626),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "اختر وحدة القياس",
+                                        tint = Color(0xFF64748B),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = customCapacityText,
+                            onValueChange = { customCapacityText = it },
+                            label = { Text("السعة التخزينية القصوى") },
+                            placeholder = { Text("مثال: 500 أو 1000") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1.6f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF4F46E5),
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            )
+                        )
+                    }
+
+                    // 5b. Unified Quantity Counter Row (حقل العدد الموحد تحت وحدة القياس)
+                    if (!isEditMode) {
+                        Surface(
+                            color = Color(0xFFF8FAFC),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, if ((quantityText.toIntOrNull() ?: 1) > 50) Color(0xFFF59E0B) else Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(if (count > 1) Color(0xFFEEF2FF) else Color(0xFFF1F5F9)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = if (count > 1) Icons.Default.FlashOn else Icons.Default.Filter1,
+                                                contentDescription = null,
+                                                tint = if (count > 1) Color(0xFF4F46E5) else Color(0xFF64748B),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Column {
+                                            Text(
+                                                text = "العدد (توليد مواقع متطابقة)",
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp
+                                                ),
+                                                color = Color(0xFF0F172A)
+                                            )
+                                            Text(
+                                                text = if (count == 1) "إدخال موقع واحد فريد" else "توليد $count مواقع متسلسلة بدفعة واحدة ⚡",
+                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                                color = if (count > 1) Color(0xFF4F46E5) else Color(0xFF64748B)
+                                            )
+                                        }
+                                    }
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        IconButton(
+                                            onClick = {
+                                                val current = quantityText.toIntOrNull() ?: 1
+                                                if (current > 1) {
+                                                    quantityText = (current - 1).toString()
+                                                }
+                                            },
+                                            enabled = count > 1,
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .background(if (count > 1) Color(0xFFE2E8F0) else Color(0xFFF1F5F9), CircleShape)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Remove,
+                                                contentDescription = "إنقاص العدد",
+                                                tint = if (count > 1) Color(0xFF0F172A) else Color(0xFF94A3B8),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+
+                                        OutlinedTextField(
+                                            value = quantityText,
+                                            onValueChange = { newValue ->
+                                                val clean = newValue.filter { it.isDigit() }
+                                                val numVal = clean.toIntOrNull()
+                                                if (numVal != null && numVal > 50) {
+                                                    quantityText = "50"
+                                                } else {
+                                                    quantityText = clean
+                                                }
+                                            },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            singleLine = true,
+                                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                                textAlign = TextAlign.Center,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp
+                                            ),
+                                            modifier = Modifier.width(60.dp).height(48.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Color(0xFF4F46E5),
+                                                unfocusedBorderColor = Color(0xFFCBD5E1),
+                                                focusedContainerColor = Color.White,
+                                                unfocusedContainerColor = Color.White
+                                            )
+                                        )
+
+                                        IconButton(
+                                            onClick = {
+                                                val current = quantityText.toIntOrNull() ?: 1
+                                                if (current < 50) {
+                                                    quantityText = (current + 1).toString()
+                                                } else {
+                                                    quantityText = "50"
+                                                }
+                                            },
+                                            enabled = count < 50,
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .background(if (count < 50) Color(0xFFEEF2FF) else Color(0xFFF1F5F9), CircleShape)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Add,
+                                                contentDescription = "زيادة العدد",
+                                                tint = if (count < 50) Color(0xFF4F46E5) else Color(0xFF94A3B8),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if ((quantityText.toIntOrNull() ?: 1) >= 50) {
+                                    Text(
+                                        text = "⚠️ تنبيه: تم الوصول للحد الأقصى للتوليد الدفعي (50 موقعاً للدفعة الواحدة)",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = Color(0xFFD97706)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 6. Owner / Supervisor Selection Card
                     Surface(
                         color = Color(0xFFF8FAFC),
                         shape = RoundedCornerShape(12.dp),
@@ -3486,7 +5871,7 @@ internal fun AddStockLocationBottomSheet(
 
                                 Column {
                                     Text(
-                                        text = "المسؤول / المشرف المباشر (ownerId)",
+                                        text = "المسؤول / المشرف المباشر",
                                         style = MaterialTheme.typography.bodyMedium.copy(
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 13.sp
@@ -3494,7 +5879,7 @@ internal fun AddStockLocationBottomSheet(
                                         color = Color(0xFF0F172A)
                                     )
                                     Text(
-                                        text = selectedOwner?.let { "${it.name}${if (it.role.isNotBlank()) " (${it.role})" else ""}" } ?: "بدون مشرف محدد (null)",
+                                        text = selectedOwner?.let { "${it.name}${if (it.role.isNotBlank()) " (${it.role})" else ""}" } ?: "بدون مشرف محدد",
                                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                         color = if (selectedOwner != null) Color(0xFF4F46E5) else Color(0xFF64748B)
                                     )
@@ -3509,264 +5894,16 @@ internal fun AddStockLocationBottomSheet(
                             )
                         }
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = onDismiss,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(stringResource(Res.string.cancel), fontWeight = FontWeight.Bold)
-                        }
-
-                        Button(
-                            onClick = {
-                                if (name.isNotBlank()) {
-                                    if (isEditMode) {
-                                        showEditConfirmationDialog = true
-                                    } else {
-                                        val calculatedOwnerId = selectedOwner?.let { user ->
-                                            user.uuid.filter { it.isDigit() }.toLongOrNull()
-                                                ?: user.uuid.hashCode().toLong().absoluteValue
-                                        }
-                                        onConfirm(
-                                            name.trim(),
-                                            description.trim(),
-                                            selectedParentId,
-                                            structural,
-                                            external,
-                                            locationType,
-                                            icon,
-                                            calculatedOwnerId,
-                                            "",
-                                            address.trim(),
-                                            customCapacityText.toDoubleOrNull(),
-                                            capacityUnit
-                                        )
-                                    }
-                                }
-                            },
-                            enabled = name.isNotBlank(),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF4F46E5),
-                                contentColor = Color.White
-                            ),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = if (isEditMode) "حفظ التحديثات" else stringResource(Res.string.save),
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    if (showEditConfirmationDialog) {
-                        AlertDialog(
-                            onDismissRequest = { showEditConfirmationDialog = false },
-                            icon = {
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = null,
-                                    tint = Color(0xFF4F46E5)
-                                )
-                            },
-                            title = {
-                                Text("تأكيد التعديل على الموقع")
-                            },
-                            text = {
-                                Text("هل أنت تأكد من رغبتك في حفظ وتأكيد التحديثات الجديدة على بيانات وسعة موقع التخزين؟")
-                            },
-                            confirmButton = {
-                                Button(
-                                    onClick = {
-                                        showEditConfirmationDialog = false
-                                        val calculatedOwnerId = selectedOwner?.let { user ->
-                                            user.uuid.filter { it.isDigit() }.toLongOrNull()
-                                                ?: user.uuid.hashCode().toLong().absoluteValue
-                                        }
-                                        onConfirm(
-                                            name.trim(),
-                                            description.trim(),
-                                            selectedParentId,
-                                            structural,
-                                            external,
-                                            locationType,
-                                            icon,
-                                            calculatedOwnerId,
-                                            "",
-                                            address.trim(),
-                                            customCapacityText.toDoubleOrNull(),
-                                            capacityUnit
-                                        )
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
-                                ) {
-                                    Text("تأكيد التحديث")
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { showEditConfirmationDialog = false }) {
-                                    Text("إلغاء")
-                                }
-                            }
-                        )
-                    }
-                } else {
-                    // Bulk Location Generator Form Body
-                    // Parent Location Selector (Only for non-SITE locations)
-                    if (locationType == "SITE") {
-                        LaunchedEffect(Unit) {
-                            selectedParentId = null
-                        }
-                    } else {
-                        val parentLocationObj = locations.find { it.id == selectedParentId }
-                        val parentTitle = if (selectedParentId == null) "موقع رئيسي (Root)" else parentLocationObj?.name ?: "موقع #${selectedParentId}"
-                        val parentBreadcrumb = if (selectedParentId != null) getFullPathForLocation(locations, selectedParentId, separator = " > ") else "عقدة جذرية بدون موقع أب حاوي"
-
-                        Surface(
-                            color = Color(0xFFF8FAFC),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { isParentLocationPickerOpen = true }
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(Color(0xFFEEF2FF)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = if (selectedParentId == null) Icons.Default.AccountTree else if (parentLocationObj?.structural == true) Icons.Default.HomeWork else Icons.Default.Place,
-                                            contentDescription = null,
-                                            tint = Color(0xFF4F46E5),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-
-                                    Column {
-                                        Text(
-                                            text = "الموقع الأب الحاوي لتوليد العُقد",
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp
-                                            ),
-                                            color = Color(0xFF0F172A)
-                                        )
-                                        Text(
-                                            text = "$parentTitle — $parentBreadcrumb",
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                            color = Color(0xFF4F46E5)
-                                        )
-                                    }
-                                }
-
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = "اختر الموقع الأب",
-                                    tint = Color(0xFF64748B),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // Hierarchy Placement Preview Card for Bulk Mode
-                    val previewBulkLocName = if (prefix.isNotBlank()) "${prefix.trim()}01" else "R-01"
-                    val treeLinesBulk = buildHierarchyTreeLines(locations, selectedParentId, previewBulkLocName)
-
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFFF0FDF4),
-                        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AccountTree,
-                                    contentDescription = null,
-                                    tint = Color(0xFF16A34A),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = "📍 التموضع الشجري للمواقع المولدة (Hierarchy Placement):",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = Color(0xFF15803D)
-                                )
-                            }
-
-                            if (selectedParentId == null) {
-                                Text(
-                                    text = "سيتم إنشاء هذه المواقع كعقد رئيسية (Root) في أعلى الهرمية التخزينية.",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = Color(0xFF166534)
-                                )
-                            }
-
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(3.dp),
-                                modifier = Modifier.padding(start = 4.dp)
-                            ) {
-                                treeLinesBulk.forEach { (depth, text) ->
-                                    val indentPrefix = if (depth == 0) "" else "   ".repeat(depth) + "└── "
-                                    Text(
-                                        text = "$indentPrefix$text",
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontSize = 11.5.sp,
-                                            fontWeight = if (depth == treeLinesBulk.lastIndex) FontWeight.Bold else FontWeight.Medium
-                                        ),
-                                        color = if (depth == treeLinesBulk.lastIndex) Color(0xFF15803D) else Color(0xFF334155)
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Location Type Selector
-                    val currentTypeLabel = when (locationType.uppercase()) {
-                        "SITE" -> "📍 موقع / منشأة جغرافية"
-                        "WAREHOUSE" -> "🏢 مستودع"
-                        "ZONE" -> "🧩 منطقة / قسم"
-                        "AISLE" -> "🚪 ممر"
-                        "SHELF" -> "📐 رف"
-                        "BIN" -> "📥 صندوق / درج"
-                        else -> "📐 رف"
-                    }
-
+                // 7. Primary Location / Warehouse Switch
+                if (isPrimaryApplicable) {
+                    val entityTypeName = if (isSite) "موقع" else "مستودع"
                     Surface(
                         color = Color(0xFFF8FAFC),
                         shape = RoundedCornerShape(12.dp),
                         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { isLocationTypePickerOpen = true }
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
                             modifier = Modifier
@@ -3784,20 +5921,19 @@ internal fun AddStockLocationBottomSheet(
                                     modifier = Modifier
                                         .size(40.dp)
                                         .clip(RoundedCornerShape(10.dp))
-                                        .background(Color(0xFFEEF2FF)),
+                                        .background(if (isPrimary || isPrimaryFrozen) Color(0xFFFEF3C7) else Color(0xFFF1F5F9)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
-                                        imageVector = getStockLocationIconVector(icon),
+                                        imageVector = if (isPrimary || isPrimaryFrozen) Icons.Default.Star else Icons.Default.StarOutline,
                                         contentDescription = null,
-                                        tint = Color(0xFF4F46E5),
+                                        tint = if (isPrimary || isPrimaryFrozen) Color(0xFFD97706) else Color(0xFF94A3B8),
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
-
                                 Column {
                                     Text(
-                                        text = "قالب / نوع المواقع المراد توليدها",
+                                        text = "تعيين كـ $entityTypeName أساسي",
                                         style = MaterialTheme.typography.bodyMedium.copy(
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 13.sp
@@ -3805,267 +5941,284 @@ internal fun AddStockLocationBottomSheet(
                                         color = Color(0xFF0F172A)
                                     )
                                     Text(
-                                        text = currentTypeLabel,
+                                        text = if (isPrimaryFrozen) "أول $entityTypeName محدد كـ أساسي تلقائياً"
+                                        else if (isPrimary) "هذا هو الـ $entityTypeName الأساسي المعتمد في النظام"
+                                        else "انقر لتحديد هذا الـ $entityTypeName كـ رئيسي أساسي",
                                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = Color(0xFF4F46E5)
+                                        color = if (isPrimary || isPrimaryFrozen) Color(0xFFD97706) else Color(0xFF64748B)
                                     )
                                 }
                             }
-
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = "اختر التصنيف",
-                                tint = Color(0xFF64748B),
-                                modifier = Modifier.size(24.dp)
+                            Switch(
+                                checked = if (isPrimaryFrozen) true else isPrimary,
+                                enabled = !isPrimaryFrozen,
+                                onCheckedChange = {
+                                    isPrimary = it
+                                    primaryValidationErrorMessage = null
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = Color(0xFFD97706)
+                                )
                             )
                         }
                     }
+                }
 
-                    // Template Physical Specs Chip/Banner
-                    val matchingType = locationTypes.find { it.name.equals(locationType, ignoreCase = true) }
-                    if (matchingType != null && matchingType.hasPhysicalSpecs()) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFFEFF6FF),
-                            border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Info,
-                                    contentDescription = null,
-                                    tint = Color(0xFF2563EB),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = "💡 مواصفات القالب: ${matchingType.formatSpecsBadge()}",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
-                                    color = Color(0xFF1E40AF)
-                                )
-                            }
-                        }
-                    }
-
-                    // Prefix Field
-                    OutlinedTextField(
-                        value = prefix,
-                        onValueChange = { prefix = it },
-                        label = { Text("البادئة النصية (Prefix) (مثل: R- أو B-)") },
-                        placeholder = { Text("مثال: R- للرفوف أو B- للصناديق") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF4F46E5),
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                        )
-                    )
-
-                    // Sequence Range Inputs
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = startNumberText,
-                            onValueChange = { startNumberText = it },
-                            label = { Text("من رقم (بداية التسلسل)") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF4F46E5),
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                            )
-                        )
-
-                        OutlinedTextField(
-                            value = endNumberText,
-                            onValueChange = { endNumberText = it },
-                            label = { Text("إلى رقم (نهاية التسلسل)") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF4F46E5),
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                            )
-                        )
-                    }
-
-                    // Zero-padding Toggle
+                if (primaryValidationErrorMessage != null) {
                     Surface(
-                        color = Color(0xFFF8FAFC),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { padZeros = !padZeros }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Checkbox(
-                                checked = padZeros,
-                                onCheckedChange = { padZeros = it },
-                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4F46E5))
-                            )
-                            Column {
-                                Text(
-                                    text = "ملء الأصفار للتنسيق (Zero-padding)",
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
-                                    ),
-                                    color = Color(0xFF0F172A)
-                                )
-                                Text(
-                                    text = "تنسيق الأرقام لتصبح موحدة مثل: 01, 02 ... 20 بدلاً من 1, 2 ... 20",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
-                                    color = Color(0xFF64748B)
-                                )
-                            }
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = bulkDescription,
-                        onValueChange = { bulkDescription = it },
-                        label = { Text("وصف اختياري للمواقع المولدة") },
-                        placeholder = { Text("مثال: رفوف مخصصة للمكونات السلبية") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF4F46E5),
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                        )
-                    )
-
-                    OutlinedTextField(
-                        value = bulkCapacityText,
-                        onValueChange = { bulkCapacityText = it },
-                        label = { Text("السعة التخزينية القصوى لكل موقع مولد") },
-                        placeholder = { Text("مثال: 200 وحدة لكل رف") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF4F46E5),
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                        )
-                    )
-
-                    // Live Preview Banner
-                    val sNum = startNumberText.toIntOrNull() ?: 1
-                    val eNum = endNumberText.toIntOrNull() ?: 20
-                    val totalCount = (eNum - sNum + 1).coerceAtLeast(1)
-                    val effectivePfx = prefix.ifBlank { "R-" }
-                    val digits = if (padZeros) eNum.toString().length.coerceAtLeast(2) else 1
-                    val p1 = if (padZeros) sNum.toString().padStart(digits, '0') else sNum.toString()
-                    val p2 = if (padZeros) (sNum + 1).toString().padStart(digits, '0') else (sNum + 1).toString()
-                    val p3 = if (padZeros) (sNum + 2).toString().padStart(digits, '0') else (sNum + 2).toString()
-                    val pEnd = if (padZeros) eNum.toString().padStart(digits, '0') else eNum.toString()
-
-                    val previewText = "سيتم إنشاء $totalCount موقعاً تخزينياً: ($effectivePfx$p1, $effectivePfx$p2, $effectivePfx$p3 ... $effectivePfx$pEnd) تابعة للموقع المختار ومزودة بمواصفات القالب."
-
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFFEEF2FF),
-                        border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFFEF2F2),
+                        border = BorderStroke(1.dp, Color(0xFFFECACA)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.FlashOn,
-                                    contentDescription = null,
-                                    tint = Color(0xFF4F46E5),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = "شريط المعاينة الحية للتوليد المتسلسل:",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = Color(0xFF3730A3)
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                tint = Color(0xFFDC2626),
+                                modifier = Modifier.size(18.dp)
+                            )
                             Text(
-                                text = previewText,
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                                color = Color(0xFF4338CA)
+                                text = primaryValidationErrorMessage!!,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color(0xFF991B1B)
                             )
                         }
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                if (showEditConfirmationDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showEditConfirmationDialog = false },
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = Color(0xFF4F46E5)
+                            )
+                        },
+                        title = {
+                            Text("تأكيد التعديل على الموقع")
+                        },
+                        text = {
+                            Text("هل أنت تأكد من رغبتك في حفظ وتأكيد التحديثات الجديدة على بيانات وسعة موقع التخزين؟")
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val finalIsPrimary = if (isPrimaryFrozen) true else isPrimary
+                                    if (isPrimaryApplicable && relevantExistingCount > 0 && !hasPrimaryInSystem && !finalIsPrimary) {
+                                        val entityLabel = if (isSite) "موقع" else "مستودع"
+                                        primaryValidationErrorMessage = "لديك $relevantExistingCount $entityLabel مسجلة مسبقاً، رجاءً عيّن أحدها كـ $entityLabel رئيسي"
+                                        showEditConfirmationDialog = false
+                                        return@Button
+                                    }
+                                    showEditConfirmationDialog = false
+                                    val calculatedOwnerId = selectedOwner?.let { user ->
+                                        user.uuid.filter { it.isDigit() }.toLongOrNull()
+                                            ?: user.uuid.hashCode().toLong().absoluteValue
+                                    }
+                                    val autoStructural = if (external) false else (locationType.equals("SITE", ignoreCase = true) || locationType.equals("WAREHOUSE", ignoreCase = true))
+                                    val intermediatesList = missingRanks.map { r ->
+                                        val pair = intermediateSelections[r]
+                                        IntermediateNodeSpec(
+                                            locationType = getRankDefaultType(r),
+                                            existingId = pair?.first,
+                                            name = pair?.second ?: ""
+                                        )
+                                    }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = onDismiss,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(stringResource(Res.string.cancel), fontWeight = FontWeight.Bold)
-                        }
+                                    val rawAddr = if (external) address.trim() else if (isManuallyEditedAddress) customAddressText.trim() else computedBreadcrumbAddress.trim()
+                                    val finalAddress = if (rawAddr.contains("[اسم الموقع]")) "" else rawAddr
+                                    val finalName = if (external) name.trim() else {
+                                        if (finalAddress.isBlank()) ""
+                                        else if (finalAddress.contains(" > ")) finalAddress.substringAfterLast(" > ").trim()
+                                        else finalAddress.trim()
+                                    }
 
-                        Button(
-                            onClick = {
-                                val start = startNumberText.toIntOrNull() ?: 1
-                                val end = endNumberText.toIntOrNull() ?: 20
-                                if (start <= end) {
-                                    onConfirmBulk(
+                                    onConfirm(
+                                        finalName,
+                                        "",
                                         selectedParentId,
-                                        locationType,
-                                        prefix.ifBlank { "R-" },
-                                        start,
-                                        end,
-                                        padZeros,
-                                        bulkDescription.trim(),
-                                        bulkCapacityText.toDoubleOrNull()
+                                        autoStructural,
+                                        external,
+                                        if (external) "SITE" else locationType,
+                                        if (external) "warehouse" else icon,
+                                        calculatedOwnerId,
+                                        "",
+                                        finalAddress,
+                                        if (external) null else customCapacityText.toDoubleOrNull(),
+                                        capacityUnit,
+                                        contactPerson.trim().ifBlank { null },
+                                        contactPhone.trim().ifBlank { null },
+                                        finalIsPrimary,
+                                        intermediatesList,
+                                        emptyList()
+                                    )
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
+                            ) {
+                                Text("تأكيد التحديث")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showEditConfirmationDialog = false }) {
+                                Text("إلغاء")
+                            }
+                        }
+                    )
+                }
+            }
+
+            // Fixed Footer Section
+            HorizontalDivider(color = Color(0xFFF1F5F9))
+            Surface(
+                color = Color.White,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(stringResource(Res.string.cancel), fontWeight = FontWeight.Bold)
+                    }
+
+                    val rawAddrForCheck = if (external) address.trim() else if (isManuallyEditedAddress) customAddressText.trim() else computedBreadcrumbAddress.trim()
+                    val finalAddrForCheck = if (rawAddrForCheck.contains("[اسم الموقع]")) "" else rawAddrForCheck
+                    val finalNameForCheck = if (external) name.trim() else {
+                        if (finalAddrForCheck.isBlank()) ""
+                        else if (finalAddrForCheck.contains(" > ")) finalAddrForCheck.substringAfterLast(" > ").trim()
+                        else finalAddrForCheck.trim()
+                    }
+                    val isValidSingleInput = if (external) name.isNotBlank() else (finalNameForCheck.isNotBlank() && finalNameForCheck != "[اسم الموقع]")
+
+                    val saveButtonText = when {
+                        isEditMode -> "حفظ التحديثات"
+                        count > 1 -> "حفظ وتوليد $count مواقع متطابقة ⚡"
+                        else -> "حفظ الموقع"
+                    }
+
+                    Button(
+                        onClick = {
+                            if (isValidSingleInput) {
+                                if (isEditMode) {
+                                    showEditConfirmationDialog = true
+                                } else {
+                                    val finalIsPrimary = if (isPrimaryFrozen) true else isPrimary
+                                    if (isPrimaryApplicable && relevantExistingCount > 0 && !hasPrimaryInSystem && !finalIsPrimary) {
+                                        val entityLabel = if (isSite) "موقع" else "مستودع"
+                                        primaryValidationErrorMessage = "لديك $relevantExistingCount $entityLabel مسجلة مسبقاً، رجاءً عيّن أحدها كـ $entityLabel رئيسي"
+                                        return@Button
+                                    }
+
+                                    if (gapCount > 0) {
+                                        val unfilledRank = missingRanks.firstOrNull { r ->
+                                            intermediateSelections[r]?.second?.isBlank() != false
+                                        }
+                                        if (unfilledRank != null) {
+                                            isIntermediateLayersSheetOpen = true
+                                            val label = getRankLabel(unfilledRank)
+                                            primaryValidationErrorMessage = "يوجد $gapCount مستويات مفقودة في التسلسل الهرمي، رجاءً اضغط على '+ تحديد الطبقات' لتعريف: $label"
+                                            return@Button
+                                        }
+                                    }
+
+                                    val intermediatesList = missingRanks.map { r ->
+                                        val pair = intermediateSelections[r]
+                                        IntermediateNodeSpec(
+                                            locationType = getRankDefaultType(r),
+                                            existingId = pair?.first,
+                                            name = pair?.second ?: ""
+                                        )
+                                    }
+
+                                    val evalTargetParentId = if (external) null else if (intermediatesList.isNotEmpty()) {
+                                        intermediatesList.lastOrNull { it.existingId != null }?.existingId ?: selectedParentId
+                                    } else selectedParentId
+
+                                    val isDuplicate = if (!isEditMode && !external && count <= 1) {
+                                        locations.any { loc ->
+                                            loc.id != (initialLocation?.id ?: -1L) &&
+                                            loc.parentId == evalTargetParentId &&
+                                            (loc.name.trim().equals(finalNameForCheck, ignoreCase = true) ||
+                                             (finalAddrForCheck.isNotBlank() && loc.address.trim().isNotBlank() && loc.address.trim().equals(finalAddrForCheck, ignoreCase = true)))
+                                        }
+                                    } else false
+
+                                    if (isDuplicate) {
+                                        hasDuplicateAddressError = true
+                                        primaryValidationErrorMessage = "هذا العنوان / الاسم مستخدم بالفعل ضمن هذا المسار"
+                                        addressShakeController.trigger()
+                                        return@Button
+                                    }
+
+                                    val calculatedOwnerId = selectedOwner?.let { user ->
+                                        user.uuid.filter { it.isDigit() }.toLongOrNull()
+                                            ?: user.uuid.hashCode().toLong().absoluteValue
+                                    }
+                                    val autoStructural = if (external) false else (locationType.equals("SITE", ignoreCase = true) || locationType.equals("WAREHOUSE", ignoreCase = true))
+                                    onConfirm(
+                                        finalNameForCheck,
+                                        "",
+                                        if (external) null else selectedParentId,
+                                        autoStructural,
+                                        external,
+                                        if (external) "SITE" else locationType,
+                                        if (external) "warehouse" else icon,
+                                        if (external) null else calculatedOwnerId,
+                                        "",
+                                        finalAddrForCheck,
+                                        if (external) null else customCapacityText.toDoubleOrNull(),
+                                        capacityUnit,
+                                        contactPerson.trim().ifBlank { null },
+                                        contactPhone.trim().ifBlank { null },
+                                        finalIsPrimary,
+                                        intermediatesList,
+                                        if (count > 1) generatedNames else emptyList()
                                     )
                                 }
-                            },
-                            enabled = (startNumberText.toIntOrNull() ?: 0) <= (endNumberText.toIntOrNull() ?: 0),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF4F46E5),
-                                contentColor = Color.White
-                            ),
-                            modifier = Modifier.weight(1.5f)
-                        ) {
+                            }
+                        },
+                        enabled = isValidSingleInput && (!isEditMode || hasChanged),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (external) Color(0xFF2563EB) else Color(0xFF4F46E5),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (count > 1) {
                             Icon(
                                 imageVector = Icons.Default.FlashOn,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("توليد $totalCount موقعاً دفعة واحدة", fontWeight = FontWeight.Bold)
                         }
+                        Text(saveButtonText, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
     }
 }
+
+
 
 private data class PackagingOption(
     val code: String,
@@ -4923,7 +7076,9 @@ private fun AddStockItemBottomSheet(
         reviewNeeded: Boolean,
         deleteOnDeplete: Boolean,
         link: String,
-        notes: String
+        notes: String,
+        unitWeight: Double?,
+        totalWeight: Double?
     ) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -4942,6 +7097,10 @@ private fun AddStockItemBottomSheet(
     var batch by remember { mutableStateOf("") }
     var packaging by remember { mutableStateOf("Box") }
     var isPackagingSheetOpen by remember { mutableStateOf(false) }
+
+    var isWeightModeUnit by remember { mutableStateOf(true) }
+    var unitWeightText by remember { mutableStateOf("") }
+    var totalWeightText by remember { mutableStateOf("") }
 
     val packagingOptionsList = remember {
         listOf(
@@ -5536,6 +7695,193 @@ private fun AddStockItemBottomSheet(
                     }
                 }
 
+                // ⚖️ قسم معامل احتساب وزن الشحنة على الرف (يظهر عند اختلاف وحدة الرف عن وحدة الصنف)
+                val selectedLocObj = locations.find { it.id == selectedLocationId }
+                val selectedPartObj = parts.find { it.id == selectedPartId }
+                val locCapUnit = selectedLocObj?.capacityUnit ?: "قطعة"
+                val partMeasureUnit = selectedPartObj?.units ?: "pcs"
+                val isWeightCapacity = locCapUnit.equals("kg", ignoreCase = true) ||
+                        locCapUnit.equals("كغ", ignoreCase = true) ||
+                        locCapUnit.equals("كيلوغرام", ignoreCase = true) ||
+                        locCapUnit.equals("ton", ignoreCase = true) ||
+                        locCapUnit.equals("طن", ignoreCase = true)
+                val isUnitMismatch = isWeightCapacity && !partMeasureUnit.equals(locCapUnit, ignoreCase = true)
+
+                if (isUnitMismatch) {
+                    val totalQtyVal = if (isCalculatorMode) {
+                        (packageCountText.toDoubleOrNull() ?: 0.0) * (capacityPerPackageText.toDoubleOrNull() ?: 0.0)
+                    } else {
+                        quantityText.toDoubleOrNull() ?: 0.0
+                    }
+
+                    val calcUnitWeight = if (isWeightModeUnit) {
+                        unitWeightText.toDoubleOrNull()
+                    } else {
+                        val tot = totalWeightText.toDoubleOrNull()
+                        if (tot != null && totalQtyVal > 0.0) tot / totalQtyVal else null
+                    }
+
+                    val calcTotalWeight = if (!isWeightModeUnit) {
+                        totalWeightText.toDoubleOrNull()
+                    } else {
+                        val uw = unitWeightText.toDoubleOrNull()
+                        if (uw != null && totalQtyVal > 0.0) uw * totalQtyVal else null
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFFFFBEB),
+                        border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFFFEF3C7)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Scale,
+                                        contentDescription = null,
+                                        tint = Color(0xFFD97706),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "معامل احتساب وزن الشحنة على الرف ⚖️",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.5.sp
+                                        ),
+                                        color = Color(0xFF92400E)
+                                    )
+                                    Text(
+                                        text = "سعة الرف تقاس بـ ($locCapUnit) والصنف بـ ($partMeasureUnit). أدخل الوزن للتحويل التلقائي:",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                        color = Color(0xFFB45309)
+                                    )
+                                }
+                            }
+
+                            // Mode Selector Toggle
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFFFEF3C7))
+                                    .padding(3.dp)
+                            ) {
+                                Surface(
+                                    onClick = { isWeightModeUnit = true },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isWeightModeUnit) Color.White else Color.Transparent,
+                                    shadowElevation = if (isWeightModeUnit) 1.dp else 0.dp,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(modifier = Modifier.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "⚖️ وزن الوحدة الواحدة",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.5.sp),
+                                            color = if (isWeightModeUnit) Color(0xFF92400E) else Color(0xFFB45309)
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    onClick = { isWeightModeUnit = false },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (!isWeightModeUnit) Color.White else Color.Transparent,
+                                    shadowElevation = if (!isWeightModeUnit) 1.dp else 0.dp,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(modifier = Modifier.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "📦 الوزن الكلي للشحنة",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.5.sp),
+                                            color = if (!isWeightModeUnit) Color(0xFF92400E) else Color(0xFFB45309)
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (isWeightModeUnit) {
+                                OutlinedTextField(
+                                    value = unitWeightText,
+                                    onValueChange = { unitWeightText = it },
+                                    label = { Text("وزن $partMeasureUnit الواحد (كغ / kg)") },
+                                    placeholder = { Text("مثال: 2.5") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color(0xFFD97706),
+                                        unfocusedBorderColor = Color(0xFFFDE68A),
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White
+                                    )
+                                )
+                            } else {
+                                OutlinedTextField(
+                                    value = totalWeightText,
+                                    onValueChange = { totalWeightText = it },
+                                    label = { Text("الوزن الإجمالي المحمّل على الرف (كغ / kg)") },
+                                    placeholder = { Text("مثال: 200") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color(0xFFD97706),
+                                        unfocusedBorderColor = Color(0xFFFDE68A),
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White
+                                    )
+                                )
+                            }
+
+                            // Live Calculation Summary
+                            val displayTotalWeight = calcTotalWeight?.let { "%.2f".format(it) } ?: "—"
+                            val displayUnitWeight = calcUnitWeight?.let { "%.2f".format(it) } ?: "—"
+
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text(
+                                        text = "الوزن الكلي المحسوب للرف: $displayTotalWeight كغ",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp),
+                                        color = Color(0xFF92400E)
+                                    )
+                                    Text(
+                                        text = "وزن الوحدة التقديري للأرشيف: $displayUnitWeight كغ / $partMeasureUnit",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                        color = Color(0xFFB45309)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // قسم المعلومات الإضافية القابل للطي (Accordion / Expandable Section)
                 var isAdditionalInfoExpanded by remember { mutableStateOf(false) }
 
@@ -6044,14 +8390,47 @@ private fun AddStockItemBottomSheet(
                     Button(
                         onClick = {
                             val pId = selectedPartId
-                            val qty = quantityText.toDoubleOrNull() ?: 1.0
+                            val qty = if (isCalculatorMode) {
+                                (packageCountText.toDoubleOrNull() ?: 0.0) * (capacityPerPackageText.toDoubleOrNull() ?: 0.0)
+                            } else {
+                                quantityText.toDoubleOrNull() ?: 1.0
+                            }
                             val price = purchasePriceText.toDoubleOrNull() ?: 0.0
+
+                            val selectedLocObj = locations.find { it.id == selectedLocationId }
+                            val selectedPartObj = parts.find { it.id == selectedPartId }
+                            val locCapUnit = selectedLocObj?.capacityUnit ?: "قطعة"
+                            val partMeasureUnit = selectedPartObj?.units ?: "pcs"
+                            val isWeightCap = locCapUnit.equals("kg", ignoreCase = true) ||
+                                    locCapUnit.equals("كغ", ignoreCase = true) ||
+                                    locCapUnit.equals("كيلوغرام", ignoreCase = true) ||
+                                    locCapUnit.equals("ton", ignoreCase = true) ||
+                                    locCapUnit.equals("طن", ignoreCase = true)
+                            val isMismatch = isWeightCap && !partMeasureUnit.equals(locCapUnit, ignoreCase = true)
+
+                            val calcUnitWeight = if (isMismatch) {
+                                if (isWeightModeUnit) unitWeightText.toDoubleOrNull()
+                                else {
+                                    val tot = totalWeightText.toDoubleOrNull()
+                                    if (tot != null && qty > 0.0) tot / qty else null
+                                }
+                            } else null
+
+                            val calcTotalWeight = if (isMismatch) {
+                                if (!isWeightModeUnit) totalWeightText.toDoubleOrNull()
+                                else {
+                                    val uw = unitWeightText.toDoubleOrNull()
+                                    if (uw != null && qty > 0.0) uw * qty else null
+                                }
+                            } else null
+
                             if (pId != null && qty > 0.0) {
                                 onConfirm(
                                     pId, selectedLocationId, qty, serial, batch, packaging,
                                     selectedStatus, price, currency, selectedSupplierPartId,
                                     selectedPurchaseOrderId, expiryDate,
-                                    false, false, link, notes
+                                    false, false, link, notes,
+                                    calcUnitWeight, calcTotalWeight
                                 )
                             }
                         },
@@ -6155,15 +8534,27 @@ private fun AddStockItemBottomSheet(
             users = users,
             locationTypes = locationTypes,
             onDismiss = { isAddNewLocationSheetOpen = false },
-            onConfirm = { name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address, customCapacity, capacityUnit ->
-                val insertedLocation = onAddNewLocation(
-                    name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address
+            onQuickAddParent = { parentName, parentType, grandparentId ->
+                onAddNewLocation(
+                    parentName, "", grandparentId, true, false, parentType, "warehouse", null, "", ""
                 )
-                selectedLocationId = insertedLocation.id
-                isAddNewLocationSheetOpen = false
             },
-            onConfirmBulk = { parentId, locationType, prefix, startNum, endNum, padZeros, desc, customCapacity ->
-                onAddNewLocationBulk?.invoke(parentId, locationType, prefix, startNum, endNum, padZeros, desc)
+            onConfirm = { name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address, customCapacity, capacityUnit, contactPerson, contactPhone, isPrimary, _, generatedNames ->
+                if (generatedNames.size > 1) {
+                    generatedNames.forEach { locName ->
+                        val computedAddress = if (address.contains(" > ")) {
+                            "${address.substringBeforeLast(" > ")} > $locName"
+                        } else locName
+                        onAddNewLocation(
+                            locName, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, computedAddress
+                        )
+                    }
+                } else {
+                    val insertedLocation = onAddNewLocation(
+                        name, desc, parentId, structural, external, locationType, icon, ownerId, customIcon, address
+                    )
+                    selectedLocationId = insertedLocation.id
+                }
                 isAddNewLocationSheetOpen = false
             }
         )
@@ -6606,11 +8997,12 @@ fun LocationSelectionBottomSheet(
     var tempSelectedLocationId by remember { mutableStateOf(selectedLocationId) }
 
     val filteredLocations = remember(locations, searchQuery) {
+        val sorted = sortLocationsHierarchically(locations)
         if (searchQuery.isBlank()) {
-            locations
+            sorted
         } else {
             val q = searchQuery.trim().lowercase()
-            locations.filter {
+            sorted.filter {
                 it.name.lowercase().contains(q) ||
                 it.description.lowercase().contains(q)
             }
@@ -6858,6 +9250,8 @@ fun LocationSelectionBottomSheet(
                             itemsIndexed(filteredLocations, key = { index, loc -> "select-loc-${loc.id}-$index" }) { _, loc ->
                                 val isSelected = tempSelectedLocationId == loc.id
                                 val isEnabled = !loc.structural
+                                val indentPadding = (loc.level.coerceIn(0, 5) * 24).dp
+                                val fullPath = loc.getFullHierarchyPath(locations)
                                 val toggleSelection = {
                                     if (isEnabled) {
                                         tempSelectedLocationId = if (tempSelectedLocationId == loc.id) null else loc.id
@@ -6880,18 +9274,20 @@ fun LocationSelectionBottomSheet(
                                             else -> Color(0xFFE2E8F0)
                                         }
                                     ),
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = indentPadding)
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                                             modifier = Modifier.weight(1f)
                                         ) {
                                             RadioButton(
@@ -6911,6 +9307,16 @@ fun LocationSelectionBottomSheet(
                                                     verticalAlignment = Alignment.CenterVertically,
                                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                                 ) {
+                                                    if (loc.level > 0) {
+                                                        Text(
+                                                            text = "↳",
+                                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 14.sp
+                                                            ),
+                                                            color = Color(0xFF4F46E5)
+                                                        )
+                                                    }
                                                     Text(
                                                         text = loc.name,
                                                         style = MaterialTheme.typography.bodyMedium.copy(
@@ -6921,7 +9327,9 @@ fun LocationSelectionBottomSheet(
                                                             !isEnabled -> Color(0xFF94A3B8)
                                                             isSelected -> Color(0xFF312E81)
                                                             else -> Color(0xFF0F172A)
-                                                        }
+                                                        },
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
                                                     )
 
                                                     if (loc.structural) {
@@ -6955,6 +9363,16 @@ fun LocationSelectionBottomSheet(
                                                             )
                                                         }
                                                     }
+                                                }
+
+                                                if (fullPath.isNotBlank() && fullPath != loc.name) {
+                                                    Text(
+                                                        text = "📍 $fullPath",
+                                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
+                                                        color = Color(0xFF4F46E5),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
                                                 }
 
                                                 if (loc.description.isNotBlank()) {
@@ -7338,18 +9756,22 @@ private fun StockFilterBottomSheet(
                 }
 
                 if (selectedTab == 0) {
-                    // Section: Locations Selector
+                    // Section: Locations Selector with Tree Hierarchy
+                    val sortedTreeLocations = remember(filteredLocations) {
+                        sortLocationsHierarchically(filteredLocations)
+                    }
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        filteredLocations.forEach { loc ->
+                        sortedTreeLocations.forEach { loc ->
                             val isChecked = selectedLocationIds.contains(loc.id)
+                            val indentPadding = (loc.level.coerceIn(0, 5) * 20).dp
                             val count = remember(loc.id, uiState.allStockItems) {
                                 uiState.allStockItems.count { it.locationId == loc.id }
                             }
-                            val totalQty = remember(loc.id, uiState.allStockItems) {
-                                uiState.allStockItems.filter { it.locationId == loc.id }.sumOf { it.quantity }
+                            val itemsInLoc = remember(loc.id, uiState.allStockItems) {
+                                uiState.allStockItems.filter { it.locationId == loc.id }
                             }
-                            val occupancyPct = loc.calculateOccupancyPercentage(totalQty)
-                            val effectiveCap = loc.effectiveCapacity
+                            val occupancyPct = loc.calculatePhysicalOccupancy(itemsInLoc, uiState.parts)
+                            val (percentageText, detailPreviewText) = loc.getOccupancySummary(itemsInLoc, uiState.parts)
                             val barColor = when {
                                 occupancyPct >= 90.0 -> Color(0xFFEF4444)
                                 occupancyPct >= 70.0 -> Color(0xFFF97316)
@@ -7368,7 +9790,9 @@ private fun StockFilterBottomSheet(
                                 shape = RoundedCornerShape(12.dp),
                                 color = if (isChecked) Color(0xFFEEF2FF).copy(alpha = 0.6f) else Color.White,
                                 border = BorderStroke(1.dp, if (isChecked) Color(0xFFC7D2FE) else Color(0xFFE2E8F0)),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = indentPadding)
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -7379,23 +9803,56 @@ private fun StockFilterBottomSheet(
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         modifier = Modifier.weight(1f)
                                     ) {
-                                        Text(badgeEmoji, fontSize = 20.sp)
-                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        if (loc.level > 0) {
                                             Text(
-                                                loc.name,
-                                                style = MaterialTheme.typography.labelMedium.copy(
+                                                text = "↳",
+                                                style = MaterialTheme.typography.titleMedium.copy(
                                                     fontWeight = FontWeight.Bold,
-                                                    fontSize = 12.sp
+                                                    fontSize = 15.sp
                                                 ),
-                                                color = Color(0xFF0F172A)
+                                                color = Color(0xFF4F46E5)
                                             )
+                                        }
+                                        Text(badgeEmoji, fontSize = 18.sp)
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    loc.name,
+                                                    style = MaterialTheme.typography.labelMedium.copy(
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 12.5.sp
+                                                    ),
+                                                    color = Color(0xFF0F172A),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = Color(0xFFEEF2FF)
+                                                ) {
+                                                    Text(
+                                                        text = loc.locationType.uppercase(),
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                                        color = Color(0xFF4338CA),
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                                        maxLines = 1
+                                                    )
+                                                }
+                                            }
+                                            val parentObj = uiState.locations.find { it.id == loc.parentId }
+                                            val pathText = if (parentObj != null) "📍 ${parentObj.getFullHierarchyPath(uiState.locations)}" else loc.description.ifBlank { "موقع تخزين رئيسي" }
                                             Text(
-                                                loc.description.ifBlank { "موقع تخزين • ${loc.locationType}" },
-                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
-                                                color = Color(0xFF64748B)
+                                                pathText,
+                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                                                color = Color(0xFF64748B),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                             if (!loc.structural) {
                                                 Spacer(modifier = Modifier.height(2.dp))
@@ -7410,10 +9867,12 @@ private fun StockFilterBottomSheet(
                                                             .height(5.dp)
                                                             .clip(CircleShape),
                                                         color = barColor,
-                                                        trackColor = Color(0xFFE2E8F0)
+                                                        trackColor = Color(0xFFE2E8F0),
+                                                        gapSize = 0.dp,
+                                                        drawStopIndicator = {}
                                                     )
                                                     Text(
-                                                        "الإشغال: ${occupancyPct.toInt()}% (${totalQty.toInt()}/${effectiveCap.toInt()})",
+                                                        "الإشغال: $percentageText",
                                                         style = MaterialTheme.typography.labelSmall.copy(
                                                             fontSize = 9.5.sp,
                                                             fontWeight = FontWeight.Bold
@@ -7421,6 +9880,11 @@ private fun StockFilterBottomSheet(
                                                         color = barColor
                                                     )
                                                 }
+                                                Text(
+                                                    detailPreviewText,
+                                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                                                    color = Color(0xFF64748B)
+                                                )
                                             }
                                         }
                                     }

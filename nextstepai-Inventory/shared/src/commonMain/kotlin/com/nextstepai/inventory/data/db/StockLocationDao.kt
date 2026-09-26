@@ -91,6 +91,66 @@ class StockLocationDao {
         }
     }
 
+    /**
+     * استعلام لجلب عدد المواقع الرئيسية (Root/Sites) التي ليس لها موقع أب.
+     * SELECT COUNT(*) FROM stock_locations WHERE parentUuid IS NULL AND isDeleted = 0
+     */
+    suspend fun getRootSitesCount(): Int {
+        return runCatching {
+            val conn = SqliteDatabaseManager.getConnection()
+            val sql = "SELECT COUNT(*) FROM stock_locations WHERE parentUuid IS NULL AND isDeleted = 0"
+            conn.prepare(sql).use { stmt ->
+                if (stmt.step()) stmt.getLong(0).toInt() else 0
+            }
+        }.getOrDefault(0)
+    }
+
+    /**
+     * استعلام لجلب عدد المستودعات التابعة لموقع معين أو إجمالي المستودعات.
+     * SELECT COUNT(*) FROM stock_locations WHERE locationType = 'WAREHOUSE' AND isDeleted = 0
+     */
+    suspend fun getWarehouseCount(parentUuid: String? = null): Int {
+        return runCatching {
+            val conn = SqliteDatabaseManager.getConnection()
+            val sql = if (parentUuid != null) {
+                "SELECT COUNT(*) FROM stock_locations WHERE locationType = 'WAREHOUSE' AND parentUuid = ? AND isDeleted = 0"
+            } else {
+                "SELECT COUNT(*) FROM stock_locations WHERE locationType = 'WAREHOUSE' AND isDeleted = 0"
+            }
+            conn.prepare(sql).use { stmt ->
+                if (parentUuid != null) stmt.bindText(1, parentUuid)
+                if (stmt.step()) stmt.getLong(0).toInt() else 0
+            }
+        }.getOrDefault(0)
+    }
+
+    /**
+     * دالة للتحقق من وجود موقع/مستودع أساسي حالي مسجل مسبقاً (findPrimaryLocation(type)).
+     */
+    suspend fun findPrimaryLocation(type: String): StockLocationEntity? {
+        return runCatching {
+            val conn = SqliteDatabaseManager.getConnection()
+            val isExternal = type.equals("EXTERNAL", ignoreCase = true)
+            val isSite = type.equals("SITE", ignoreCase = true) || type.equals("ROOT", ignoreCase = true)
+
+            val sql = when {
+                isExternal -> "SELECT $selectColumns FROM stock_locations WHERE external = 1 AND isDeleted = 0 AND metadata LIKE '%\"isPrimary\":true%' ORDER BY updatedAt DESC LIMIT 1"
+                isSite -> "SELECT $selectColumns FROM stock_locations WHERE (locationType = 'SITE' OR parentUuid IS NULL) AND external = 0 AND isDeleted = 0 AND metadata LIKE '%\"isPrimary\":true%' ORDER BY updatedAt DESC LIMIT 1"
+                else -> "SELECT $selectColumns FROM stock_locations WHERE locationType = ? AND external = 0 AND isDeleted = 0 AND metadata LIKE '%\"isPrimary\":true%' ORDER BY updatedAt DESC LIMIT 1"
+            }
+            conn.prepare(sql).use { stmt ->
+                if (!isExternal && !isSite) {
+                    stmt.bindText(1, type)
+                }
+                if (stmt.step()) {
+                    mapStockLocationEntity(stmt)
+                } else {
+                    null
+                }
+            }
+        }.getOrNull()
+    }
+
     private fun bindLocationEntity(stmt: SQLiteStatement, entity: StockLocationEntity) {
         stmt.bindText(1, entity.uuid)
         stmt.bindLong(2, entity.locationId)

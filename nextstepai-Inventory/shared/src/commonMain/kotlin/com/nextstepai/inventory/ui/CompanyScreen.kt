@@ -3414,7 +3414,7 @@ private fun ParentCompanySelectionBottomSheet(
                         }
                     }
                 } else {
-                    items(filteredCompanies, key = { it.id }) { comp ->
+                    itemsIndexed(filteredCompanies, key = { index, comp -> "parent-comp-${comp.id}-$index" }) { _, comp ->
                         val isSelected = selectedParentId == comp.id
                         Surface(
                             onClick = { onSelectParent(comp.id) },

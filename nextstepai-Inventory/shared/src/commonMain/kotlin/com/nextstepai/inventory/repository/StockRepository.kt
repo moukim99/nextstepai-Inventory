@@ -10,6 +10,9 @@ import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockLocationType
 import com.nextstepai.inventory.data.labelImagePath
 import com.nextstepai.inventory.data.withLabelSnapshot
+import com.nextstepai.inventory.data.isPrimary
+import com.nextstepai.inventory.data.withPrimary
+import com.nextstepai.inventory.data.IntermediateNodeSpec
 import com.nextstepai.inventory.data.StockTrackingType
 import com.nextstepai.inventory.data.db.NotificationHistoryDao
 import com.nextstepai.inventory.data.db.NotificationHistoryEntity
@@ -106,9 +109,13 @@ class StockRepository(
     fun getLocations(): List<StockLocation> {
         val entities = runCatching { runBlocking { locationDao.getAllLocations() } }.getOrDefault(emptyList())
         if (entities.isNotEmpty()) {
-            return entities.map { entity ->
+            val deduplicated = entities.groupBy { it.locationId }.map { (_, list) ->
+                list.maxByOrNull { it.updatedAt } ?: list.first()
+            }
+            return deduplicated.map { entity ->
                 StockLocation(
                     id = entity.locationId,
+                    uuid = entity.uuid,
                     name = entity.name,
                     description = entity.description,
                     parentId = entity.parentId,
@@ -221,14 +228,123 @@ class StockRepository(
     }
 
     /**
-     * إضافة أو تحديث موقع تخزيني جديد في الشجرة الهرمية لمواقع التخزين (StockLocation).
+     * كاشف التكرار الميداني للهرمية (Auto-Collision & Duplicate Guard):
+     * التحقق مما إذا كان ينتج عن حفظ موقع جديد/معدل نفس الاسم أو نفس العنوان تحت نفس الأب المباشر ونفس المسار.
+     */
+    fun isLocationDuplicateUnderSameParent(
+        name: String,
+        parentId: Long?,
+        excludeId: Long? = null,
+        address: String? = null
+    ): Boolean {
+        val trimmedName = name.trim()
+        if (trimmedName.isBlank()) return false
+        val trimmedAddress = address?.trim() ?: ""
+
+        val allLocations = getLocations()
+        return allLocations.any { loc ->
+            if (loc.id == excludeId) return@any false
+            if (loc.parentId != parentId) return@any false
+
+            val nameMatch = loc.name.trim().equals(trimmedName, ignoreCase = true)
+            val addressMatch = trimmedAddress.isNotBlank() && loc.address.trim().isNotBlank() &&
+                    loc.address.trim().equals(trimmedAddress, ignoreCase = true)
+
+            nameMatch || addressMatch
+        }
+    }
+
+    /**
+     * خوارزمية منع التكرار البرمجي آلياً (Auto-Collision Prevention Algorithm):
+     * توليد اسم فريد بإضافة ترقيم تسلسلي تلقائي عند وجود اسم مكرر تحت نفس الأب.
+     */
+    fun generateUniqueLocationName(baseName: String, parentId: Long?, excludeId: Long? = null): String {
+        val trimmed = baseName.trim().ifBlank { "موقع" }
+        var candidate = trimmed
+        var counter = 1
+        val allLocations = getLocations()
+
+        while (allLocations.any { loc ->
+            loc.id != excludeId && loc.parentId == parentId && loc.name.trim().equals(candidate, ignoreCase = true)
+        }) {
+            candidate = "$trimmed-${counter.toString().padStart(2, '0')}"
+            counter++
+        }
+        return candidate
+    }
+
+    /**
+     * إضافة أو تحديث موقع تخزيني جديد في الشجرة الهرمية لمواقع التخزين (StockLocation) مع حسم التعارضات المزامنة وحماية الموقع الأساسي.
      */
     fun addLocation(location: StockLocation): StockLocation {
-        val inserted = stockTable.insertLocation(location)
+        var finalLocation = location
+
+        if (location.isPrimary) {
+            // البحث عن الموقع الأساسي القائم حالياً من نفس الفئة المعزولة (موقع خارجي vs موقع داخلي vs مستودع داخلي)
+            val existingPrimary = getLocations().find { existing ->
+                existing.id != location.id && existing.isPrimary &&
+                        when {
+                            location.external -> existing.external
+                            location.locationType.equals("SITE", ignoreCase = true) -> existing.locationType.equals("SITE", ignoreCase = true) && !existing.external
+                            location.locationType.equals("WAREHOUSE", ignoreCase = true) -> existing.locationType.equals("WAREHOUSE", ignoreCase = true) && !existing.external
+                            else -> false
+                        }
+            }
+
+            if (existingPrimary != null) {
+                // سياسة حسم التعارضات عند التزامن (Conflict Resolution based on updatedAt)
+                val allEntities = runCatching { runBlocking { locationDao.getAllLocations() } }.getOrDefault(emptyList())
+                val locUpdatedAt = allEntities.find { it.locationId == location.id }?.updatedAt ?: Clock.System.now().toEpochMilliseconds()
+                val existingUpdatedAt = allEntities.find { it.locationId == existingPrimary.id }?.updatedAt ?: 0L
+
+                if (locUpdatedAt >= existingUpdatedAt) {
+                    // الكائن الجديد أحدث: إغلاق الصفة الأساسية عن الموقع القديم
+                    val demoted = existingPrimary.withPrimary(false)
+                    stockTable.insertLocation(demoted)
+                    runBlocking {
+                        locationDao.insertOrUpdate(demoted.toEntity())
+                    }
+                } else {
+                    // الموقع القديم أحدث: تجريد الكائن الجديد من الصفة الأساسية
+                    finalLocation = location.withPrimary(false)
+                }
+            }
+        }
+
+        val inserted = stockTable.insertLocation(finalLocation)
         runBlocking {
             locationDao.insertOrUpdate(inserted.toEntity())
         }
         return inserted
+    }
+
+    /**
+     * إنشاء سلسلة هرمية ذرية للموقع المستهدف مع كافة طبقاته الوسيطة المفقودة (Atomic Transaction).
+     */
+    fun addLocationWithIntermediates(
+        targetLocation: StockLocation,
+        intermediates: List<IntermediateNodeSpec>
+    ): StockLocation {
+        var currentParentId = targetLocation.parentId
+
+        for (spec in intermediates) {
+            if (spec.existingId != null && spec.existingId > 0L) {
+                currentParentId = spec.existingId
+            } else if (spec.name.isNotBlank()) {
+                val newIntermediate = StockLocation(
+                    name = spec.name.trim(),
+                    description = "طبقة وسيطة مضافة آلياً لحشو فجوة الهرمية",
+                    parentId = currentParentId,
+                    structural = true,
+                    locationType = spec.locationType
+                )
+                val inserted = addLocation(newIntermediate)
+                currentParentId = inserted.id
+            }
+        }
+
+        val finalTarget = targetLocation.copy(parentId = currentParentId)
+        return addLocation(finalTarget)
     }
 
     /**
@@ -239,10 +355,12 @@ class StockRepository(
     }
 
     /**
-     * حذف موقع تخزيني حذفاً مرناً (Soft Delete) بعد إجراء الفحوصات الأمنية الثلاثية:
+     * حذف موقع تخزيني حذفاً مرناً (Soft Delete) بعد إجراء الفحوصات الأمنية الثلاثية
+     * مع حماية عدم الوقوع في حالة انعدام الأساسي (Soft Delete Guard):
      * 1. التأكد من عدم وجود عناصر ومواد مخزنة داخل الموقع.
      * 2. التأكد من عدم وجود مواقع وأرفف فرعية (Child Locations) تابعة له.
      * 3. التأكد من عدم ارتباطه بأوامر إنتاج وتصنيع نشطة أو أوامر شراء معلقة.
+     * 4. تعيين أقدم موقع نشط كبديل أساسي آلياً عند حذف الكيان الأساسي الحالي.
      */
     fun deleteLocation(locationId: Long): Boolean {
         // الفحص الأول: خلو الموقع من العناصر المخزنة
@@ -277,6 +395,9 @@ class StockRepository(
         }
 
         val targetLoc = getLocations().find { it.id == locationId }
+        val wasPrimary = targetLoc?.isPrimary == true
+        val targetType = targetLoc?.locationType ?: ""
+
         val removedFromTable = stockTable.deleteLocation(locationId)
         runBlocking {
             locationDao.softDeleteLocation(locationId)
@@ -287,6 +408,25 @@ class StockRepository(
                 }
             }
         }
+
+        // حماية انعدام الأساسي (Soft Delete Guard): إذا كان الموقع المحذوف هو الأساسي، يُعيّن أقدم موقع نشط قائم من نفس الفئة المعزولة كبديل
+        if (wasPrimary && targetLoc != null) {
+            val remainingOfSameType = getLocations().filter { loc ->
+                loc.id != locationId &&
+                        when {
+                            targetLoc.external -> loc.external
+                            targetType.equals("SITE", ignoreCase = true) -> loc.locationType.equals("SITE", ignoreCase = true) && !loc.external
+                            targetType.equals("WAREHOUSE", ignoreCase = true) -> loc.locationType.equals("WAREHOUSE", ignoreCase = true) && !loc.external
+                            else -> false
+                        }
+            }
+
+            if (remainingOfSameType.isNotEmpty()) {
+                val oldestRemaining = remainingOfSameType.minByOrNull { it.id } ?: remainingOfSameType.first()
+                updateLocation(oldestRemaining.withPrimary(true))
+            }
+        }
+
         return removedFromTable
     }
 
@@ -360,6 +500,65 @@ class StockRepository(
             (parentTrackings + childTrackings).forEach { trackingDao.insertOrUpdate(it.toEntity()) }
         }
         return child
+    }
+
+    /**
+     * تنفيذ النقل المخزني السريع (Quick Stock Transfer) ونقل الكمية كلياً أو جزئياً وتوثيق المعاملة في سجل الحركات.
+     */
+    fun transferStockItem(
+        itemId: Long,
+        sourceLocationId: Long?,
+        targetLocationId: Long,
+        quantityToTransfer: Double,
+        reason: String,
+        notes: String = ""
+    ): Boolean {
+        // التأكد من تحميل/مزامنة السجل في جدول الذاكرة إذا أُمُر بالنقل مباشرة
+        if (stockTable.getAllStockItems().none { it.id == itemId }) {
+            runBlocking {
+                val entities = stockDao.getStockItemsPaged(limit = 1000, offset = 0)
+                val entity = entities.find { it.uuid == "stock-$itemId" || it.uuid.removePrefix("stock-").toLongOrNull() == itemId }
+                if (entity != null) {
+                    val stockItem = StockItem(
+                        id = itemId,
+                        partId = entity.partId,
+                        locationId = entity.locationId ?: 1L,
+                        quantity = entity.quantity,
+                        serial = entity.serial,
+                        batch = entity.batch,
+                        status = StockStatus.fromCode(entity.statusCode),
+                        packaging = entity.packaging,
+                        purchasePrice = entity.purchasePrice,
+                        expiryDate = entity.expiryDate,
+                        stocktakeDate = entity.stocktakeDate,
+                        notes = entity.notes
+                    )
+                    stockTable.insertStockItem(stockItem)
+                }
+            }
+        }
+
+        val (sourceItem, targetItem) = stockTable.transferStockItem(
+            itemId = itemId,
+            sourceLocationId = sourceLocationId,
+            targetLocationId = targetLocationId,
+            quantityToTransfer = quantityToTransfer,
+            reason = reason,
+            notes = notes
+        )
+
+        runBlocking {
+            stockDao.insertOrUpdate(sourceItem.toEntity())
+            val sourceTrackings = stockTable.getTrackingForStockItem(sourceItem.id)
+            sourceTrackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
+
+            if (targetItem != null) {
+                stockDao.insertOrUpdate(targetItem.toEntity())
+                val targetTrackings = stockTable.getTrackingForStockItem(targetItem.id)
+                targetTrackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
+            }
+        }
+        return true
     }
 
     /**
@@ -477,7 +676,7 @@ class StockRepository(
 
     private fun StockLocation.toEntity(): StockLocationEntity {
         return StockLocationEntity(
-            uuid = "location-$id",
+            uuid = uuid.ifBlank { "location-$id" },
             locationId = id,
             name = name,
             description = description,
