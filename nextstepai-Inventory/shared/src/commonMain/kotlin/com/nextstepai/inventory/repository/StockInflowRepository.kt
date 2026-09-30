@@ -15,6 +15,7 @@ import com.nextstepai.inventory.data.db.StockItemTrackingEntity
 import com.nextstepai.inventory.data.db.StockLocationDao
 import com.nextstepai.inventory.media.ImageProcessor
 import com.nextstepai.inventory.sync.SyncStatus
+import com.nextstepai.inventory.util.AppUuid
 import com.nextstepai.inventory.util.DateTimeUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -44,12 +45,15 @@ class StockInflowRepository(
             val conn = SqliteDatabaseManager.getConnection()
             var matchedPart: PartEntity? = null
 
+            val selectColumns = """
+                uuid, name, ipn, description, categoryUuid, units, minimumStock, maximumStock,
+                totalInStock, revision, keywords, assembly, component, isTemplate, variantOfUuid,
+                trackable, purchaseable, salable, virtual, active, locked, defaultLocationUuid,
+                defaultExpiryDays, link, localImagePath, metadata, version, syncStatus, isDeleted,
+                updatedAt, lastModifiedByDeviceUuid
+            """.trimIndent()
             val sql = """
-                SELECT uuid, id, name, ipn, description, revision, keywords, categoryId, units,
-                       assembly, component, isTemplate, variantOfId, trackable, purchaseable,
-                       salable, virtual, active, locked, minimumStock, maximumStock,
-                       defaultLocationId, defaultExpiryDays, totalInStock, localImagePath, link,
-                       syncStatus, isDeleted, updatedAt
+                SELECT $selectColumns
                 FROM parts
                 WHERE isDeleted = 0 AND (ipn = ? OR uuid = ?)
                 LIMIT 1
@@ -61,34 +65,36 @@ class StockInflowRepository(
                 if (stmt.step()) {
                     matchedPart = PartEntity(
                         uuid = stmt.getText(0),
-                        id = stmt.getLong(1),
-                        name = stmt.getText(2),
-                        ipn = stmt.getText(3),
-                        description = stmt.getText(4),
-                        revision = stmt.getText(5),
-                        keywords = stmt.getText(6),
-                        categoryId = if (stmt.isNull(7)) null else stmt.getLong(7),
-                        units = stmt.getText(8),
-                        assembly = stmt.getLong(9) != 0L,
-                        component = stmt.getLong(10) != 0L,
-                        isTemplate = stmt.getLong(11) != 0L,
-                        variantOfId = if (stmt.isNull(12)) null else stmt.getLong(12),
-                        trackable = stmt.getLong(13) != 0L,
-                        purchaseable = stmt.getLong(14) != 0L,
-                        salable = stmt.getLong(15) != 0L,
-                        virtual = stmt.getLong(16) != 0L,
-                        active = stmt.getLong(17) != 0L,
-                        locked = stmt.getLong(18) != 0L,
-                        minimumStock = stmt.getDouble(19),
-                        maximumStock = if (stmt.isNull(20)) null else stmt.getDouble(20),
-                        defaultLocationId = if (stmt.isNull(21)) null else stmt.getLong(21),
+                        name = stmt.getText(1),
+                        ipn = stmt.getText(2),
+                        description = stmt.getText(3),
+                        categoryUuid = if (stmt.isNull(4)) null else stmt.getText(4),
+                        units = stmt.getText(5),
+                        minimumStock = stmt.getDouble(6),
+                        maximumStock = if (stmt.isNull(7)) null else stmt.getDouble(7),
+                        totalInStock = stmt.getDouble(8),
+                        revision = stmt.getText(9),
+                        keywords = stmt.getText(10),
+                        assembly = stmt.getLong(11) != 0L,
+                        component = stmt.getLong(12) != 0L,
+                        isTemplate = stmt.getLong(13) != 0L,
+                        variantOfUuid = if (stmt.isNull(14)) null else stmt.getText(14),
+                        trackable = stmt.getLong(15) != 0L,
+                        purchaseable = stmt.getLong(16) != 0L,
+                        salable = stmt.getLong(17) != 0L,
+                        virtual = stmt.getLong(18) != 0L,
+                        active = stmt.getLong(19) != 0L,
+                        locked = stmt.getLong(20) != 0L,
+                        defaultLocationUuid = if (stmt.isNull(21)) null else stmt.getText(21),
                         defaultExpiryDays = if (stmt.isNull(22)) null else stmt.getLong(22).toInt(),
-                        totalInStock = stmt.getDouble(23),
+                        link = stmt.getText(23),
                         localImagePath = if (stmt.isNull(24)) null else stmt.getText(24),
-                        link = stmt.getText(25),
-                        syncStatus = SyncStatus.PENDING,
-                        isDeleted = stmt.getLong(27) != 0L,
-                        updatedAt = stmt.getLong(28)
+                        metadata = stmt.getText(25),
+                        version = stmt.getLong(26).toInt(),
+                        syncStatus = SyncStatus.valueOf(stmt.getText(27)),
+                        isDeleted = stmt.getLong(28) != 0L,
+                        updatedAt = stmt.getLong(29),
+                        lastModifiedByDeviceUuid = if (stmt.isNull(30)) null else stmt.getText(30)
                     )
                 }
             }
@@ -105,7 +111,8 @@ class StockInflowRepository(
             ?: locations.firstOrNull()
 
         if (receivingLoc != null) {
-            Pair(receivingLoc.locationId, receivingLoc.name)
+            val parsedId = receivingLoc.uuid.removePrefix("loc-").toLongOrNull() ?: 1L
+            Pair(parsedId, receivingLoc.name)
         } else {
             Pair(1L, "الرف الرئيسي - المستودع العام")
         }
@@ -126,63 +133,51 @@ class StockInflowRepository(
             try {
                 conn.prepare("BEGIN TRANSACTION").use { it.step() }
 
-                // 1. استعلام عن أعلى ID رقمي للأصناف لضمان التسلسل وعدم التعارض
-                var maxPartId = 0L
-                conn.prepare("SELECT COALESCE(MAX(id), 0) FROM parts").use { stmt ->
-                    if (stmt.step()) {
-                        maxPartId = stmt.getLong(0)
-                    }
-                }
-
                 sessionState.scannedItems.forEach { item ->
-                    var activePartId = item.partId
+                    var activePartUuid = item.partUuid ?: "part-${item.partId}"
 
-                    // 2. إنشاء الصنف الجديد بحساب المعرف الذري والتسلسلي
-                    if (activePartId == null || item.isNewPart) {
-                        maxPartId++
-                        activePartId = maxPartId
+                    // 2. إنشاء الصنف الجديد بحساب المعرف الذري
+                    if (item.isNewPart || item.partUuid == null) {
+                        activePartUuid = item.partUuid ?: AppUuid.generate()
 
                         val newPart = PartEntity(
-                            uuid = item.partUuid ?: "part-${now}-${item.barcode.take(12)}",
-                            id = activePartId,
+                            uuid = activePartUuid,
                             name = item.name.ifBlank { "صنف جديد (${item.barcode})" },
                             ipn = item.barcode,
                             units = "pcs",
-                            defaultLocationId = item.locationId,
+                            defaultLocationUuid = "loc-${item.locationId}",
                             totalInStock = 0.0,
+                            version = 1,
                             updatedAt = now
                         )
                         partDao.insertOrUpdate(newPart)
                     }
 
                     // 3. إدراج سجل المخزون الفعلي في stock_items
-                    val stockItemUuid = "stock-inflow-${now}-${item.tempId}"
+                    val stockItemUuid = AppUuid.generate()
                     val stockItem = StockItemEntity(
                         uuid = stockItemUuid,
-                        partId = activePartId,
-                        locationId = item.locationId,
+                        partUuid = activePartUuid,
+                        locationUuid = "loc-${item.locationId}",
                         quantity = item.quantity,
                         batch = "INFLOW-${DateTimeUtils.getCurrentDate()}",
-                        purchaseOrderId = sessionState.purchaseOrderId,
+                        purchaseOrderUuid = sessionState.purchaseOrderId?.let { "po-$it" },
                         statusCode = 10, // 10 = In Stock
                         updatedAt = now
                     )
                     stockItemDao.insertOrUpdate(stockItem)
 
                     // 4. تحديث الرصيد التراكمي في parts
-                    partDao.addStockToPart(partId = activePartId, qty = item.quantity)
+                    partDao.addStockToPart(partUuid = activePartUuid, qty = item.quantity)
 
                     // 5. تسجيل حركة التتبع في stock_item_tracking
                     val tracking = StockItemTrackingEntity(
-                        uuid = "track-${now}-${item.tempId}",
-                        trackingId = now,
-                        stockItemId = activePartId,
+                        uuid = AppUuid.generate(),
                         stockItemUuid = stockItemUuid,
-                        date = DateTimeUtils.getCurrentDateTime(),
                         trackingTypeCode = 10, // Inflow / Receipt
                         label = "استلام توريد ميداني",
                         notes = "مرجع الوثيقة: ${sessionState.poReference ?: "استلام حر"}",
-                        updatedAt = now
+                        createdAt = now
                     )
                     trackingDao.insertOrUpdate(tracking)
 
@@ -193,7 +188,7 @@ class StockInflowRepository(
                             val attachment = StockItemAttachmentEntity(
                                 uuid = "att-${now}-${item.tempId}",
                                 attachmentId = now,
-                                stockItemId = activePartId,
+                                stockItemId = item.partId ?: 1L,
                                 stockItemUuid = stockItemUuid,
                                 attachment = "attachments/webp_${stockItemUuid}.webp",
                                 comment = "ملصق باركود مقتطع",
@@ -228,13 +223,13 @@ class StockInflowRepository(
                 val sql = """
                     UPDATE purchase_order_lines
                     SET receivedQuantity = receivedQuantity + ?, updatedAt = ?
-                    WHERE orderUuid IN (SELECT uuid FROM purchase_orders WHERE supplierId = ? OR id = ?)
+                    WHERE orderUuid IN (SELECT uuid FROM purchase_orders WHERE supplierUuid = ? OR uuid = ?)
                 """.trimIndent()
                 conn.prepare(sql).use { stmt ->
                     stmt.bindDouble(1, totalQty)
                     stmt.bindLong(2, Clock.System.now().toEpochMilliseconds())
-                    stmt.bindLong(3, poId)
-                    stmt.bindLong(4, poId)
+                    stmt.bindText(3, "po-$poId")
+                    stmt.bindText(4, "po-$poId")
                     stmt.step()
                 }
             }

@@ -33,6 +33,7 @@ import com.nextstepai.inventory.media.ProcessedImage
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
+import com.nextstepai.inventory.util.AppUuid
 import com.nextstepai.inventory.util.DateTimeUtils
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -58,17 +59,13 @@ class StockRepository(
      * جلب سجلات المخزون الفعلي مقسمة صفحات (LIMIT & OFFSET) لمنع التحميل الكامل في الذاكرة.
      */
     suspend fun getStockItemsPaged(
-        partId: Long? = null,
         partUuid: String? = null,
-        locationId: Long? = null,
         locationUuid: String? = null,
         limit: Int = 20,
         offset: Int = 0
     ): List<StockItemEntity> {
         return stockDao.getStockItemsPaged(
-            partId = partId,
             partUuid = partUuid,
-            locationId = locationId,
             locationUuid = locationUuid,
             limit = limit,
             offset = offset
@@ -88,8 +85,8 @@ class StockRepository(
             val parsedId = entity.uuid.removePrefix("stock-").toLongOrNull() ?: (index + 1L)
             StockItem(
                 id = parsedId,
-                partId = entity.partId,
-                locationId = entity.locationId ?: 1L,
+                partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
+                locationId = entity.locationUuid?.removePrefix("loc-")?.toLongOrNull() ?: 1L,
                 quantity = entity.quantity,
                 serial = entity.serial,
                 batch = entity.batch,
@@ -109,20 +106,18 @@ class StockRepository(
     fun getLocations(): List<StockLocation> {
         val entities = runCatching { runBlocking { locationDao.getAllLocations() } }.getOrDefault(emptyList())
         if (entities.isNotEmpty()) {
-            val deduplicated = entities.groupBy { it.locationId }.map { (_, list) ->
-                list.maxByOrNull { it.updatedAt } ?: list.first()
-            }
-            return deduplicated.map { entity ->
+            return entities.map { entity ->
+                val parsedId = entity.uuid.removePrefix("loc-").toLongOrNull() ?: 1L
                 StockLocation(
-                    id = entity.locationId,
+                    id = parsedId,
                     uuid = entity.uuid,
                     name = entity.name,
                     description = entity.description,
-                    parentId = entity.parentId,
+                    parentId = entity.parentUuid?.removePrefix("loc-")?.toLongOrNull(),
                     structural = entity.structural,
                     external = entity.external,
                     locationType = entity.locationType,
-                    ownerId = entity.ownerId,
+                    ownerId = null,
                     icon = entity.icon,
                     customIcon = entity.customIcon,
                     address = entity.address,
@@ -294,8 +289,8 @@ class StockRepository(
             if (existingPrimary != null) {
                 // سياسة حسم التعارضات عند التزامن (Conflict Resolution based on updatedAt)
                 val allEntities = runCatching { runBlocking { locationDao.getAllLocations() } }.getOrDefault(emptyList())
-                val locUpdatedAt = allEntities.find { it.locationId == location.id }?.updatedAt ?: Clock.System.now().toEpochMilliseconds()
-                val existingUpdatedAt = allEntities.find { it.locationId == existingPrimary.id }?.updatedAt ?: 0L
+                val locUpdatedAt = allEntities.find { it.uuid == location.uuid || it.uuid == "loc-${location.id}" }?.updatedAt ?: Clock.System.now().toEpochMilliseconds()
+                val existingUpdatedAt = allEntities.find { it.uuid == existingPrimary.uuid || it.uuid == "loc-${existingPrimary.id}" }?.updatedAt ?: 0L
 
                 if (locUpdatedAt >= existingUpdatedAt) {
                     // الكائن الجديد أحدث: إغلاق الصفة الأساسية عن الموقع القديم
@@ -400,7 +395,7 @@ class StockRepository(
 
         val removedFromTable = stockTable.deleteLocation(locationId)
         runBlocking {
-            locationDao.softDeleteLocation(locationId)
+            locationDao.softDeleteLocation(targetLoc?.uuid ?: "loc-$locationId")
             targetLoc?.labelImagePath?.let { path ->
                 runCatching {
                     val file = File(path)
@@ -471,15 +466,15 @@ class StockRepository(
             val allStock = stockTable.getAllStockItems().filter { it.partId == partId }
             val currentTotalStock = allStock.sumOf { it.quantity }
             val parts = partDao.getPartsPaged(limit = 1000, offset = 0)
-            val part = parts.find { it.id == partId }
+            val part = parts.find { it.uuid == "part-$partId" || it.uuid.removePrefix("part-").toLongOrNull() == partId }
             if (part != null && part.minimumStock > 0.0 && currentTotalStock <= part.minimumStock) {
                 val now = Clock.System.now().toEpochMilliseconds()
                 val notif = NotificationHistoryEntity(
-                    uuid = "low-stock-${part.id}-$now",
+                    uuid = AppUuid.generate(),
                     title = "⚠️ تنبيه انخفاض المخزون: ${part.name}",
                     message = "وصل الرصيد الفعلي لـ '${part.name}' إلى $currentTotalStock ${part.units}، وهو أقل من أو يساوي الحد الأدنى المحدد (${part.minimumStock} ${part.units}).",
                     notificationType = "LOW_STOCK_ALERT",
-                    targetEntityUuid = "part-${part.id}",
+                    targetEntityUuid = part.uuid,
                     scheduledDate = now,
                     isTriggered = true
                 )
@@ -521,8 +516,8 @@ class StockRepository(
                 if (entity != null) {
                     val stockItem = StockItem(
                         id = itemId,
-                        partId = entity.partId,
-                        locationId = entity.locationId ?: 1L,
+                        partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
+                        locationId = entity.locationUuid?.removePrefix("loc-")?.toLongOrNull() ?: 1L,
                         quantity = entity.quantity,
                         serial = entity.serial,
                         batch = entity.batch,
@@ -610,7 +605,7 @@ class StockRepository(
             SyncPayload(
                 uuid = entity.uuid,
                 entityType = "StockItem",
-                payloadJson = "{\"partId\":${entity.partId},\"quantity\":${entity.quantity},\"serial\":\"${entity.serial}\"}",
+                payloadJson = "{\"partUuid\":\"${entity.partUuid}\",\"quantity\":${entity.quantity},\"serial\":\"${entity.serial}\"}",
                 isDeleted = entity.isDeleted,
                 updatedAt = entity.updatedAt
             )
@@ -658,34 +653,27 @@ class StockRepository(
 
     private fun StockItemTracking.toEntity(): StockItemTrackingEntity {
         return StockItemTrackingEntity(
-            uuid = "tracking-$id",
-            trackingId = id,
-            stockItemId = stockItemId,
+            uuid = AppUuid.generate(),
             stockItemUuid = "stock-$stockItemId",
-            date = date,
             trackingTypeCode = trackingType.code,
-            userId = userId,
             label = label,
             notes = notes,
             deltas = deltas,
+            userUuid = userId?.let { "usr-$it" },
+            createdAt = Clock.System.now().toEpochMilliseconds(),
             syncStatus = SyncStatus.PENDING
         )
     }
 
-
-
     private fun StockLocation.toEntity(): StockLocationEntity {
         return StockLocationEntity(
-            uuid = uuid.ifBlank { "location-$id" },
-            locationId = id,
+            uuid = if (uuid.isNotBlank()) uuid else "loc-$id",
             name = name,
             description = description,
-            parentId = parentId,
-            parentUuid = parentId?.let { "location-$it" },
+            parentUuid = parentId?.let { "loc-$it" },
             structural = structural,
             external = external,
             locationType = locationType,
-            ownerId = ownerId,
             icon = icon,
             customIcon = customIcon,
             address = address,
@@ -703,10 +691,8 @@ class StockRepository(
     private fun StockItem.toEntity(): StockItemEntity {
         return StockItemEntity(
             uuid = "stock-$id",
-            partId = partId,
             partUuid = "part-$partId",
-            locationId = locationId,
-            locationUuid = locationId?.let { "location-$it" },
+            locationUuid = "loc-$locationId",
             quantity = quantity,
             serial = serial,
             batch = batch,
@@ -714,17 +700,16 @@ class StockRepository(
             packaging = packaging,
             purchasePrice = purchasePrice,
             purchasePriceCurrency = purchasePriceCurrency,
-            purchaseOrderId = purchaseOrderId,
-            supplierPartId = supplierPartId,
-            salesOrderId = salesOrderId,
-            customerId = customerId,
-            buildId = buildId,
+            purchaseOrderUuid = purchaseOrderId?.let { "po-$it" },
+            supplierPartUuid = supplierPartId?.let { "sup-p-$it" } ?: "",
+            salesOrderUuid = salesOrderId?.let { "so-$it" },
+            customerUuid = customerId?.let { "comp-$it" } ?: "",
+            buildUuid = buildId?.let { "bo-$it" },
             isBuilding = isBuilding,
-            parentId = parentId,
-            parentUuid = parentId?.let { "stock-$it" },
+            parentStockItemUuid = parentId?.let { "stock-$it" },
             expiryDate = expiryDate,
             stocktakeDate = stocktakeDate,
-            stocktakeUserId = stocktakeUserId,
+            stocktakeUserUuid = stocktakeUserId?.let { "usr-$it" },
             reviewNeeded = reviewNeeded,
             deleteOnDeplete = deleteOnDeplete,
             link = link,

@@ -1,6 +1,10 @@
 package com.nextstepai.inventory.ui
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.launch
 import com.nextstepai.inventory.data.BuildOrder
 import com.nextstepai.inventory.data.Company
 import com.nextstepai.inventory.data.POStatus
@@ -57,31 +61,35 @@ class PurchaseOrderViewModel(
     }
 
     fun loadData() {
-        val suppliers = companyRepository.searchCompanies(supplierOnly = true)
-        val parts = partRepository.getParts()
-        val builds = buildRepository.searchBuilds()
-        val sales = salesRepository.searchOrders()
-        var orders = poRepository.searchOrders(
-            query = _uiState.value.searchQuery,
-            status = _uiState.value.statusFilter
-        )
-        if (_uiState.value.selectedSupplierId != null) {
-            orders = orders.filter { it.supplierId == _uiState.value.selectedSupplierId }
-        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val suppliers = companyRepository.searchCompanies(supplierOnly = true)
+                val parts = partRepository.getParts()
+                val builds = buildRepository.searchBuilds()
+                val sales = salesRepository.searchOrders()
+                var orders = poRepository.searchOrders(
+                    query = _uiState.value.searchQuery,
+                    status = _uiState.value.statusFilter
+                )
+                if (_uiState.value.selectedSupplierId != null) {
+                    orders = orders.filter { it.supplierId == _uiState.value.selectedSupplierId }
+                }
 
-        val updatedSelected = _uiState.value.selectedOrder?.let { sel ->
-            orders.find { it.id == sel.id }
-        }
+                val updatedSelected = _uiState.value.selectedOrder?.let { sel ->
+                    orders.find { it.id == sel.id }
+                }
 
-        _uiState.update {
-            it.copy(
-                orders = orders,
-                suppliers = suppliers,
-                parts = parts,
-                buildOrders = builds,
-                salesOrders = sales,
-                selectedOrder = updatedSelected
-            )
+                _uiState.update {
+                    it.copy(
+                        orders = orders,
+                        suppliers = suppliers,
+                        parts = parts,
+                        buildOrders = builds,
+                        salesOrders = sales,
+                        selectedOrder = updatedSelected
+                    )
+                }
+            } catch (_: Throwable) {}
         }
     }
 

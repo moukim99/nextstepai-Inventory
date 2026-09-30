@@ -8,6 +8,9 @@ import com.nextstepai.inventory.data.db.AppSettingsEntity
 import com.nextstepai.inventory.data.db.NotificationHistoryDao
 import com.nextstepai.inventory.data.db.NotificationHistoryEntity
 import com.nextstepai.inventory.repository.AppSettingsRepository
+import com.nextstepai.inventory.util.AppUuid
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,10 +44,14 @@ class SettingsViewModel(
     }
 
     fun loadSettings() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isLoading = true) }
-            val loaded = repository.loadSettings()
-            _uiState.update { it.copy(settings = loaded, isLoading = false) }
+            try {
+                val loaded = repository.loadSettings()
+                _uiState.update { it.copy(settings = loaded, isLoading = false) }
+            } catch (e: Throwable) {
+                _uiState.update { it.copy(isLoading = false) }
+            }
         }
     }
 
@@ -94,7 +101,7 @@ class SettingsViewModel(
             try {
                 val now = Clock.System.now().toEpochMilliseconds()
                 val testNotification = NotificationHistoryEntity(
-                    uuid = "notif-test-$now",
+                    uuid = AppUuid.generate(),
                     title = "تنبيه تجريبي - NextStepAI",
                     message = "تم منح كافة الصلاحيات بنجاح، والكاميرا والتنبيهات جاهزة للاستخدام!",
                     notificationType = "SYSTEM_TEST",

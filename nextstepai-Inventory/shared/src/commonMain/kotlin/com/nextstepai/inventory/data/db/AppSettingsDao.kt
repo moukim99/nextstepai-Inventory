@@ -11,11 +11,11 @@ class AppSettingsDao {
         var entity: AppSettingsEntity? = null
 
         val sql = """
-            SELECT id, notificationTime, soundEnabled, vibrationEnabled, docExpiryWarningDays,
+            SELECT uuid, notificationTime, soundEnabled, vibrationEnabled, docExpiryWarningDays,
                    lowStockAlertsEnabled, themeMode, language, defaultCurrency, scannerBeepEnabled,
                    biometricLockEnabled, syncWifiOnly
             FROM app_settings
-            WHERE id = 1
+            WHERE uuid = 'default-settings'
         """.trimIndent()
 
         conn.prepare(sql).use { stmt ->
@@ -36,11 +36,11 @@ class AppSettingsDao {
         val conn = SqliteDatabaseManager.getConnection()
         val sql = """
             INSERT INTO app_settings (
-                id, notificationTime, soundEnabled, vibrationEnabled, docExpiryWarningDays,
+                uuid, notificationTime, soundEnabled, vibrationEnabled, docExpiryWarningDays,
                 lowStockAlertsEnabled, themeMode, language, defaultCurrency, scannerBeepEnabled,
                 biometricLockEnabled, syncWifiOnly
-            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
+            ) VALUES ('default-settings', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(uuid) DO UPDATE SET
                 notificationTime = excluded.notificationTime,
                 soundEnabled = excluded.soundEnabled,
                 vibrationEnabled = excluded.vibrationEnabled,
@@ -72,7 +72,8 @@ class AppSettingsDao {
 
     private fun mapAppSettings(stmt: SQLiteStatement): AppSettingsEntity {
         return AppSettingsEntity(
-            id = stmt.getLong(0).toInt(),
+            uuid = stmt.getText(0),
+            id = 1,
             notificationTime = stmt.getText(1),
             soundEnabled = stmt.getLong(2) == 1L,
             vibrationEnabled = stmt.getLong(3) == 1L,

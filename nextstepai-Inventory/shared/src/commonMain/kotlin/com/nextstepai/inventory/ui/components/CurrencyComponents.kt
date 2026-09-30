@@ -250,7 +250,7 @@ fun CurrencySelectionBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.70f)
+                .imePadding()
                 .padding(horizontal = 20.dp)
         ) {
             // Header Section

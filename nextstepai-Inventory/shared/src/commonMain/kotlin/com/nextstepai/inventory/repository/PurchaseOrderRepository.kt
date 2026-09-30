@@ -9,6 +9,8 @@ import com.nextstepai.inventory.data.db.PurchaseOrderEntity
 import com.nextstepai.inventory.data.db.PurchaseOrderLineEntity
 import com.nextstepai.inventory.data.db.PartDao
 import com.nextstepai.inventory.data.db.StockItemDao
+import com.nextstepai.inventory.data.db.StockItemEntity
+import com.nextstepai.inventory.util.AppUuid
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
@@ -175,14 +177,21 @@ class PurchaseOrderRepository(
                         )
                     )
 
-                    partDao.addStockToPart(line.supplierPartId, qty)
+                    partDao.addStockToPart("part-${line.supplierPartId}", qty)
 
-                    stockDao.insertStockItemForPO(
-                        partId = line.supplierPartId,
-                        qty = qty,
-                        purchasePrice = line.purchasePrice,
-                        currency = order?.orderCurrency ?: "USD",
-                        batch = order?.reference ?: "PO-RECV"
+                    stockDao.insertOrUpdate(
+                        StockItemEntity(
+                            uuid = AppUuid.generate(),
+                            partUuid = "part-${line.supplierPartId}",
+                            locationUuid = "loc-001",
+                            quantity = qty,
+                            purchasePrice = line.purchasePrice,
+                            purchasePriceCurrency = order?.orderCurrency ?: "USD",
+                            batch = order?.reference ?: "PO-RECV",
+                            purchaseOrderUuid = "po-${order?.id ?: 1L}",
+                            statusCode = 10,
+                            updatedAt = Clock.System.now().toEpochMilliseconds()
+                        )
                     )
 
                     if (order != null) {

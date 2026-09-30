@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.*
 import com.nextstepai.inventory.ui.components.LocationBarcodeScannerBottomSheet
 import com.nextstepai.inventory.ui.components.DynamicBreadcrumbAddressField
 import com.nextstepai.inventory.ui.components.ShakeController
+import com.nextstepai.inventory.data.PendingAttachment
 import com.nextstepai.inventory.util.BarcodePayloadHelper
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -115,65 +116,6 @@ fun StockScreen(
                 onAddLocationClick = { viewModel.setAddLocationDialogOpen(true) }
             )
         },
-        floatingActionButton = {
-            Row(
-                modifier = Modifier.padding(bottom = 20.dp, start = 12.dp, end = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // زر إضافة موقع جديد
-                FloatingActionButton(
-                    onClick = { viewModel.setAddLocationDialogOpen(true) },
-                    containerColor = Color(0xFF059669),
-                    contentColor = Color.White,
-                    shape = RoundedCornerShape(18.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.padding(horizontal = 14.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AddLocation,
-                            contentDescription = "إضافة موقع تخزين جديد",
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = "موقع جديد",
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
-                        )
-                    }
-                }
-
-                // زر إضافة وحدة مخزنية
-                ExtendedFloatingActionButton(
-                    onClick = { viewModel.setAddDialogOpen(true) },
-                    containerColor = Color(0xFF4F46E5),
-                    contentColor = Color.White,
-                    shape = RoundedCornerShape(18.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(Res.string.add_new_stock),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "إضافة وحدة",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.5.sp
-                        )
-                    )
-                }
-            }
-        },
-        floatingActionButtonPosition = FabPosition.Start,
         modifier = modifier
     ) { paddingValues ->
         Box(
@@ -402,7 +344,7 @@ fun StockScreen(
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(bottom = 80.dp)
+                        contentPadding = PaddingValues(bottom = 16.dp)
                     ) {
                         itemsIndexed(filteredStock, key = { index, item -> "stock-${item.id}-$index" }) { _, item ->
                             val part = uiState.parts.find { it.id == item.partId }
@@ -419,6 +361,63 @@ fun StockScreen(
                             )
                         }
                     }
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 12.dp, start = 12.dp, end = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FloatingActionButton(
+                    onClick = { viewModel.setAddLocationDialogOpen(true) },
+                    containerColor = Color(0xFF059669),
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(18.dp),
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddLocation,
+                            contentDescription = "إضافة موقع تخزين جديد",
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "موقع جديد",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        )
+                    }
+                }
+
+                ExtendedFloatingActionButton(
+                    onClick = { viewModel.setAddDialogOpen(true) },
+                    containerColor = Color(0xFF4F46E5),
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(18.dp),
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(Res.string.add_new_stock),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "إضافة وحدة",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.5.sp
+                        )
+                    )
                 }
             }
         }
@@ -470,7 +469,7 @@ fun StockScreen(
             users = uiState.users,
             locationTypes = uiState.locationTypes,
             onDismiss = { viewModel.setAddDialogOpen(false) },
-            onAddNewPart = { name, ipn, desc, catId, units, assembly, component, isTemplate, variantOf, minStock, maxStock, revision, keywords, trackable, purchaseable, salable, virtual, defaultLocId, defaultExpiryDays, link, imageUrl, active, locked ->
+            onAddNewPart = { name, ipn, desc, catId, units, assembly, component, isTemplate, variantOf, minStock, maxStock, revision, keywords, trackable, purchaseable, salable, virtual, defaultLocId, defaultExpiryDays, pendingAttachments, active, locked ->
                 viewModel.addNewPart(
                     name = name,
                     ipn = ipn,
@@ -491,8 +490,7 @@ fun StockScreen(
                     virtual = virtual,
                     defaultLocationId = defaultLocId,
                     defaultExpiryDays = defaultExpiryDays,
-                    link = link,
-                    imageUrl = imageUrl,
+                    pendingAttachments = pendingAttachments,
                     active = active,
                     locked = locked
                 )
@@ -1030,7 +1028,7 @@ private fun StockAttachmentsBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -1293,7 +1291,7 @@ private fun StockTestResultsBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -1594,7 +1592,7 @@ private fun StockTrackingHistoryBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -4946,7 +4944,7 @@ internal fun AddStockLocationBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.92f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -7042,8 +7040,7 @@ private fun AddStockItemBottomSheet(
         virtual: Boolean,
         defaultLocationId: Long?,
         defaultExpiryDays: Int?,
-        link: String,
-        imageUrl: String?,
+        pendingAttachments: List<PendingAttachment>,
         active: Boolean,
         locked: Boolean
     ) -> Part,
@@ -7181,7 +7178,7 @@ private fun AddStockItemBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.92f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -8514,13 +8511,14 @@ private fun AddStockItemBottomSheet(
             categories = categories,
             locations = locations,
             templateParts = remember(parts) { parts.filter { it.isTemplate } },
+            allParts = parts,
             onDismiss = { isAddPartSheetOpen = false },
-            onConfirm = { name, ipn, desc, catId, units, assembly, component, isTemplate, variantOf, minStock, maxStock, revision, keywords, trackable, purchaseable, salable, virtual, defaultLocId, defaultExpiryDays, link, imageUrl, active, locked ->
+            onConfirm = { name, ipn, desc, catId, units, assembly, component, isTemplate, variantOf, minStock, maxStock, revision, keywords, trackable, purchaseable, salable, virtual, defaultLocId, defaultExpiryDays, pendingAttachments, active, locked ->
                 val insertedPart = onAddNewPart(
                     name, ipn, desc, catId, units, assembly, component,
                     isTemplate, variantOf, minStock, maxStock, revision,
                     keywords, trackable, purchaseable, salable, virtual,
-                    defaultLocId, defaultExpiryDays, link, imageUrl, active, locked
+                    defaultLocId, defaultExpiryDays, pendingAttachments, active, locked
                 )
                 selectedPartId = insertedPart.id
                 isAddPartSheetOpen = false
@@ -8610,7 +8608,7 @@ fun PartSelectionBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.88f)
+                .imePadding()
         ) {
                 // Header Section
                 Row(
@@ -9030,7 +9028,7 @@ fun LocationSelectionBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.88f)
+                .imePadding()
         ) {
                 // Header Section
                 Row(
@@ -9587,7 +9585,7 @@ private fun StockFilterBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
         ) {
             // 1. Header Section
             Row(

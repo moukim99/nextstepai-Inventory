@@ -191,14 +191,19 @@ val StockLocation.labelSnapshotData: String?
     }
 
 /**
+ * نص لقطة ملصق الموقع الحالي المحسوب قياسياً للمطابقة لكشف الفروقات والأرشفة.
+ */
+val StockLocation.currentLabelSnapshot: String
+    get() = "$name|$parentId|${effectiveCapacity.toInt()}|$locationType"
+
+/**
  * اكتشاف البيانات القديمة (Stale Label Detection) بمقارنة بيانات الموقع اللحظية باللقطة المطبوعة.
  */
 val StockLocation.isLabelStale: Boolean
     get() {
         val genAt = labelGeneratedAt ?: return false
         val snapshot = labelSnapshotData ?: return true
-        val currentSnapshot = "$name|$parentId|${effectiveCapacity.toInt()}|$locationType"
-        return currentSnapshot != snapshot
+        return currentLabelSnapshot != snapshot
     }
 
 /**

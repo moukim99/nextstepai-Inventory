@@ -156,6 +156,10 @@ fun WarehouseScreen(
     onScanClick: () -> Unit = {}
 ) {
     var currentSubView by remember { mutableStateOf(WarehouseSubView.MAIN_DASHBOARD) }
+    
+    CommonBackHandler(enabled = currentSubView != WarehouseSubView.MAIN_DASHBOARD) {
+        currentSubView = WarehouseSubView.MAIN_DASHBOARD
+    }
     var isQuickEntryOpen by remember { mutableStateOf(false) }
     val inflowViewModel = remember { StockInflowViewModel() }
     var activeInflowOption by remember { mutableStateOf<InflowOptionItem?>(null) }
@@ -177,36 +181,9 @@ fun WarehouseScreen(
         ) { subView ->
             when (subView) {
                 WarehouseSubView.MAIN_DASHBOARD -> {
-                    Scaffold(
-                        floatingActionButton = {
-                            Box(
-                                modifier = Modifier.padding(bottom = 20.dp, start = 12.dp, end = 12.dp)
-                            ) {
-                                ExtendedFloatingActionButton(
-                                    onClick = { isQuickEntryOpen = true },
-                                    containerColor = Color(0xFF4F46E5),
-                                    contentColor = Color.White,
-                                    shape = RoundedCornerShape(18.dp),
-                                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Add,
-                                        contentDescription = "الادخال السريع",
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "الادخال السريع",
-                                        style = MaterialTheme.typography.labelLarge.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.5.sp
-                                        )
-                                    )
-                                }
-                            }
-                        },
-                        floatingActionButtonPosition = FabPosition.Start
-                    ) { paddingValues ->
+                    Box(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
                         WarehouseMainDashboard(
                             stockItemsCount = stockUiState.stockItems.size,
                             locationsCount = stockUiState.locations.size,
@@ -214,9 +191,33 @@ fun WarehouseScreen(
                             categoriesCount = partUiState.categories.size,
                             onOpenStockClick = { currentSubView = WarehouseSubView.STOCK },
                             onOpenPartsClick = { currentSubView = WarehouseSubView.PARTS },
-                            onOpenLocationsClick = { currentSubView = WarehouseSubView.LOCATIONS },
-                            modifier = Modifier.padding(paddingValues)
+                            onOpenLocationsClick = { currentSubView = WarehouseSubView.LOCATIONS }
                         )
+
+                        ExtendedFloatingActionButton(
+                            onClick = { isQuickEntryOpen = true },
+                            containerColor = Color(0xFF4F46E5),
+                            contentColor = Color.White,
+                            shape = RoundedCornerShape(18.dp),
+                            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(bottom = 12.dp, start = 12.dp, end = 12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "الادخال السريع",
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "الادخال السريع",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.5.sp
+                                )
+                            )
+                        }
                     }
 
                     if (isQuickEntryOpen) {
@@ -682,6 +683,8 @@ private fun WarehouseMainDashboard(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 }
@@ -729,6 +732,7 @@ private fun QuickEntryBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 10.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -1187,6 +1191,7 @@ private fun StockInflowTypePickerDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {

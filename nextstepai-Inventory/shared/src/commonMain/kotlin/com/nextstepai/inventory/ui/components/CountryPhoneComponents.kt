@@ -165,7 +165,7 @@ fun CountryPickerDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             Text(

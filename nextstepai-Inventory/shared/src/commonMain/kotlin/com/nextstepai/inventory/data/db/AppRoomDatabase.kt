@@ -33,14 +33,16 @@ import androidx.room.TypeConverters
         PartStarEntity::class,
         PartSalePriceEntity::class,
         NotificationHistoryEntity::class,
-        AppUserEntity::class
+        AppUserEntity::class,
+        PartAllocationEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(SyncStatusConverter::class)
 abstract class AppRoomDatabase : RoomDatabase() {
     abstract fun partDao(): PartDao
+    abstract fun partAllocationDao(): PartAllocationDao
     abstract fun bomItemDao(): BomItemDao
     abstract fun stockItemDao(): StockItemDao
     abstract fun stockLocationDao(): StockLocationDao

@@ -63,7 +63,7 @@ fun SearchablePartPickerDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             Row(
@@ -178,7 +178,7 @@ fun SearchableCompanyPickerDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             Row(

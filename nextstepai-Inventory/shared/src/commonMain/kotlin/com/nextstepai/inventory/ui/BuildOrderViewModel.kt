@@ -2,6 +2,9 @@ package com.nextstepai.inventory.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.launch
 import com.nextstepai.inventory.data.AppUser
 import com.nextstepai.inventory.data.BuildItem
 import com.nextstepai.inventory.data.BuildOrder
@@ -83,40 +86,46 @@ class BuildOrderViewModel(
     }
 
     private fun loadUsers() {
-        viewModelScope.launch {
-            val activeUsers = userRepository.getActiveUsers()
-            _uiState.update { it.copy(users = activeUsers) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val activeUsers = userRepository.getActiveUsers()
+                _uiState.update { it.copy(users = activeUsers) }
+            } catch (_: Throwable) {}
         }
     }
 
     fun loadData() {
-        val assemblies = partRepository.getParts().filter { it.assembly }
-        var builds = repository.searchBuilds(
-            query = _uiState.value.searchQuery,
-            status = _uiState.value.statusFilter
-        )
-        if (_uiState.value.selectedPartId != null) {
-            builds = builds.filter { it.partId == _uiState.value.selectedPartId }
-        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val assemblies = partRepository.getParts().filter { it.assembly }
+                var builds = repository.searchBuilds(
+                    query = _uiState.value.searchQuery,
+                    status = _uiState.value.statusFilter
+                )
+                if (_uiState.value.selectedPartId != null) {
+                    builds = builds.filter { it.partId == _uiState.value.selectedPartId }
+                }
 
-        val updatedSelected = _uiState.value.selectedBuild?.let { sel ->
-            builds.find { it.id == sel.id }
-        }
-        val lineItems = updatedSelected?.let { repository.getLineItemsForBuild(it.id) } ?: emptyList()
-        val buildItems = updatedSelected?.let { repository.getBuildItemsForBuild(it.id) } ?: emptyList()
-        val allPhases = phaseTable.getAllPhases().sortedBy { it.sequenceOrder }
-        val activePhaseUuid = _uiState.value.selectedPhaseUuid ?: allPhases.firstOrNull()?.uuid
+                val updatedSelected = _uiState.value.selectedBuild?.let { sel ->
+                    builds.find { it.id == sel.id }
+                }
+                val lineItems = updatedSelected?.let { repository.getLineItemsForBuild(it.id) } ?: emptyList()
+                val buildItems = updatedSelected?.let { repository.getBuildItemsForBuild(it.id) } ?: emptyList()
+                val allPhases = phaseTable.getAllPhases().sortedBy { it.sequenceOrder }
+                val activePhaseUuid = _uiState.value.selectedPhaseUuid ?: allPhases.firstOrNull()?.uuid
 
-        _uiState.update {
-            it.copy(
-                builds = builds,
-                assemblyParts = assemblies,
-                selectedBuild = updatedSelected,
-                selectedLineItems = lineItems,
-                allocatedBuildItems = buildItems,
-                phases = allPhases,
-                selectedPhaseUuid = activePhaseUuid
-            )
+                _uiState.update {
+                    it.copy(
+                        builds = builds,
+                        assemblyParts = assemblies,
+                        selectedBuild = updatedSelected,
+                        selectedLineItems = lineItems,
+                        allocatedBuildItems = buildItems,
+                        phases = allPhases,
+                        selectedPhaseUuid = activePhaseUuid
+                    )
+                }
+            } catch (_: Throwable) {}
         }
     }
 

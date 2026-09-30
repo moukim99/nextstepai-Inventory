@@ -6,6 +6,8 @@ import com.nextstepai.inventory.data.CategoryParameterTemplateView
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.PartAttachment
 import com.nextstepai.inventory.data.PartAttachmentTable
+import com.nextstepai.inventory.data.PendingAttachment
+import com.nextstepai.inventory.data.AttachmentType
 import com.nextstepai.inventory.data.PartCategory
 import com.nextstepai.inventory.data.PartCategoryParameterTable
 import com.nextstepai.inventory.data.PartInternalPriceTable
@@ -32,10 +34,14 @@ import com.nextstepai.inventory.media.ProcessedImage
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
+import com.nextstepai.inventory.data.labelImagePath
+import com.nextstepai.inventory.data.withLabelSnapshot
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 
 import com.nextstepai.inventory.data.db.getRoomDatabase
+import com.nextstepai.inventory.util.AppUuid
 
 /**
  * المستودع (Repository) المسؤول عن إدارة عمليات القطع والمكونات الأساسية (Part Management) وقوالب معامل التصنيف.
@@ -104,40 +110,43 @@ class PartRepository(
         return response.acceptedUuids.size
     }
 
+    private fun PartEntity.toPart(): Part {
+        val parsedId = uuid.removePrefix("part-").toLongOrNull() ?: 0L
+        return Part(
+            id = parsedId,
+            name = name,
+            ipn = ipn,
+            description = description,
+            revision = revision,
+            keywords = keywords,
+            categoryId = categoryUuid?.removePrefix("cat-")?.toLongOrNull(),
+            units = units,
+            assembly = assembly,
+            component = component,
+            isTemplate = isTemplate,
+            variantOfId = variantOfUuid?.removePrefix("part-")?.toLongOrNull(),
+            trackable = trackable,
+            purchaseable = purchaseable,
+            salable = salable,
+            virtual = virtual,
+            active = active,
+            locked = locked,
+            defaultLocationId = defaultLocationUuid?.removePrefix("loc-")?.toLongOrNull(),
+            defaultExpiryDays = defaultExpiryDays,
+            minimumStock = minimumStock,
+            maximumStock = maximumStock,
+            imageUrl = localImagePath,
+            link = link,
+            totalInStock = totalInStock
+        )
+    }
+
     /**
      * جلب قائمة جميع القطع المتاحة من قاعدة البيانات الدائمة (SQLite).
      */
     fun getParts(): List<Part> {
         val entities = runBlocking { partDao.getPartsPaged(limit = 1000, offset = 0) }
-        return entities.map { entity ->
-            Part(
-                id = entity.id,
-                name = entity.name,
-                ipn = entity.ipn,
-                description = entity.description,
-                revision = entity.revision,
-                keywords = entity.keywords,
-                categoryId = entity.categoryId,
-                units = entity.units,
-                assembly = entity.assembly,
-                component = entity.component,
-                isTemplate = entity.isTemplate,
-                variantOfId = entity.variantOfId,
-                trackable = entity.trackable,
-                purchaseable = entity.purchaseable,
-                salable = entity.salable,
-                virtual = entity.virtual,
-                active = entity.active,
-                locked = entity.locked,
-                defaultLocationId = entity.defaultLocationId,
-                defaultExpiryDays = entity.defaultExpiryDays,
-                minimumStock = entity.minimumStock,
-                maximumStock = entity.maximumStock,
-                imageUrl = entity.localImagePath,
-                link = entity.link,
-                totalInStock = entity.totalInStock
-            )
-        }
+        return entities.map { it.toPart() }
     }
 
     /**
@@ -145,71 +154,16 @@ class PartRepository(
      */
     fun getParentAssemblies(): List<Part> {
         val entities = runBlocking { partDao.getParentAssemblies() }
-        return entities.map { entity ->
-            Part(
-                id = entity.id,
-                name = entity.name,
-                ipn = entity.ipn,
-                description = entity.description,
-                revision = entity.revision,
-                keywords = entity.keywords,
-                categoryId = entity.categoryId,
-                units = entity.units,
-                assembly = entity.assembly,
-                component = entity.component,
-                isTemplate = entity.isTemplate,
-                variantOfId = entity.variantOfId,
-                trackable = entity.trackable,
-                purchaseable = entity.purchaseable,
-                salable = entity.salable,
-                virtual = entity.virtual,
-                active = entity.active,
-                locked = entity.locked,
-                defaultLocationId = entity.defaultLocationId,
-                defaultExpiryDays = entity.defaultExpiryDays,
-                minimumStock = entity.minimumStock,
-                maximumStock = entity.maximumStock,
-                imageUrl = entity.localImagePath,
-                link = entity.link,
-                totalInStock = entity.totalInStock
-            )
-        }
+        return entities.map { it.toPart() }
     }
 
     /**
      * جلب القطع الفرعية المتاحة للمكونات مع استبعاد المنتج الأب والمكونات المضافة مسبقاً من SQLite.
      */
     fun getEligibleSubParts(parentPartId: Long, existingSubPartIds: List<Long> = emptyList()): List<Part> {
-        val entities = runBlocking { partDao.getEligibleSubParts(parentPartId) }
-        return entities.map { entity ->
-            Part(
-                id = entity.id,
-                name = entity.name,
-                ipn = entity.ipn,
-                description = entity.description,
-                revision = entity.revision,
-                keywords = entity.keywords,
-                categoryId = entity.categoryId,
-                units = entity.units,
-                assembly = entity.assembly,
-                component = entity.component,
-                isTemplate = entity.isTemplate,
-                variantOfId = entity.variantOfId,
-                trackable = entity.trackable,
-                purchaseable = entity.purchaseable,
-                salable = entity.salable,
-                virtual = entity.virtual,
-                active = entity.active,
-                locked = entity.locked,
-                defaultLocationId = entity.defaultLocationId,
-                defaultExpiryDays = entity.defaultExpiryDays,
-                minimumStock = entity.minimumStock,
-                maximumStock = entity.maximumStock,
-                imageUrl = entity.localImagePath,
-                link = entity.link,
-                totalInStock = entity.totalInStock
-            )
-        }.filter { !existingSubPartIds.contains(it.id) }
+        val parentPartUuid = "part-$parentPartId"
+        val entities = runBlocking { partDao.getEligibleSubParts(parentPartUuid) }
+        return entities.map { it.toPart() }.filter { !existingSubPartIds.contains(it.id) }
     }
 
     /**
@@ -232,10 +186,17 @@ class PartRepository(
     }
 
     /**
-     * زيادة رصيد المخزون لقطعة محددة وتحديث رصيد الصنف.
+     * زيادة رصيد المخزون لقطعة محددة وتحديث رصيد الصنف في الذاكرة والمحرك المحلي.
      */
     fun addStockToPart(partId: Long, quantity: Double): Part? {
-        return partTable.addStockToPart(partId, quantity)
+        val updated = partTable.addStockToPart(partId, quantity)
+        if (updated != null) {
+            val partUuid = if (updated.effectiveUuid.isNotBlank() && updated.effectiveUuid != "part-0") updated.effectiveUuid else "part-$partId"
+            runBlocking {
+                runCatching { partDao.addStockToPart(partUuid, quantity) }
+            }
+        }
+        return updated
     }
 
     /**
@@ -267,24 +228,30 @@ class PartRepository(
     /**
      * إضافة قطعة جديدة إلى جدول القطع ودعم الكيان المحلي وتوليد المعاملات الفنية تلقائياً من قوالب التصنيف.
      */
-    fun addPart(part: Part): Part {
-        val inserted = partTable.insertPart(part)
+    fun addPart(part: Part, pendingAttachments: List<PendingAttachment> = emptyList()): Part {
+        val resolvedImageUrl = pendingAttachments.firstOrNull { it.type == AttachmentType.IMAGE }?.pathOrUrl ?: part.imageUrl
+        val resolvedLink = pendingAttachments.firstOrNull { it.type == AttachmentType.LINK }?.pathOrUrl 
+            ?: pendingAttachments.firstOrNull { it.type == AttachmentType.DOCUMENT }?.pathOrUrl 
+            ?: part.link
+
+        val partToInsert = part.copy(imageUrl = resolvedImageUrl, link = resolvedLink)
+        val inserted = partTable.insertPart(partToInsert)
+        val partUuid = if (inserted.effectiveUuid.isNotBlank() && inserted.effectiveUuid != "part-0") inserted.effectiveUuid else AppUuid.generate()
         runBlocking {
             partDao.insertOrUpdate(
                 PartEntity(
-                    uuid = "part-${inserted.id}",
-                    id = inserted.id,
+                    uuid = partUuid,
                     name = inserted.name,
                     ipn = inserted.ipn,
                     description = inserted.description,
                     revision = inserted.revision,
                     keywords = inserted.keywords,
-                    categoryId = inserted.categoryId,
+                    categoryUuid = inserted.categoryId?.let { "cat-${it.toString().padStart(3, '0')}" },
                     units = inserted.units,
                     assembly = inserted.assembly,
                     component = inserted.component,
                     isTemplate = inserted.isTemplate,
-                    variantOfId = inserted.variantOfId,
+                    variantOfUuid = inserted.variantOfId?.let { "part-$it" },
                     trackable = inserted.trackable,
                     purchaseable = inserted.purchaseable,
                     salable = inserted.salable,
@@ -293,14 +260,26 @@ class PartRepository(
                     locked = inserted.locked,
                     minimumStock = inserted.minimumStock,
                     maximumStock = inserted.maximumStock,
-                    defaultLocationId = inserted.defaultLocationId,
+                    defaultLocationUuid = inserted.defaultLocationId?.let { "loc-${it.toString().padStart(3, '0')}" },
                     defaultExpiryDays = inserted.defaultExpiryDays,
                     totalInStock = inserted.totalInStock,
                     localImagePath = inserted.imageUrl,
                     link = inserted.link,
+                    metadata = inserted.metadata,
+                    version = 1,
                     syncStatus = SyncStatus.PENDING,
                     isDeleted = false,
                     updatedAt = Clock.System.now().toEpochMilliseconds()
+                )
+            )
+        }
+        pendingAttachments.forEach { att ->
+            addPartAttachment(
+                PartAttachment(
+                    partId = inserted.id,
+                    attachment = if (att.type == AttachmentType.IMAGE || att.type == AttachmentType.DOCUMENT) att.pathOrUrl else null,
+                    link = if (att.type == AttachmentType.LINK) att.pathOrUrl else null,
+                    comment = att.label
                 )
             )
         }
@@ -310,28 +289,110 @@ class PartRepository(
     }
 
     /**
-     * حذف أمني محمي للقطعة مع تطبيق القيود والاشتراطات التشغيلية:
-     * 1. يمنع الحذف إذا كان للقطعة رصيد مخزوني فني فعلي على الرفوف (> 0).
-     * 2. يمنع الحذف إذا كانت القطعة تدخل كمكون في شجرة مواد BOM لقطع أخرى.
+     * أرشفة وحفظ لقطة صورة ملصق القطعة المادية وتحديث بيانات الأرشفة في جدول القطع.
+     */
+    fun savePartLabelSnapshot(partId: Long, snapshotData: String): Part? {
+        val targetPart = partTable.getPartById(partId) ?: return null
+        val genAt = Clock.System.now().toEpochMilliseconds()
+        val imagePath = "files/labels/parts/part_${targetPart.effectiveUuid}.webp"
+        val updatedPart = targetPart.withLabelSnapshot(imagePath, genAt, snapshotData)
+        partTable.updatePart(updatedPart)
+        val partUuid = if (updatedPart.effectiveUuid.isNotBlank() && updatedPart.effectiveUuid != "part-0") updatedPart.effectiveUuid else AppUuid.generate()
+        runBlocking {
+            partDao.insertOrUpdate(
+                PartEntity(
+                    uuid = partUuid,
+                    name = updatedPart.name,
+                    ipn = updatedPart.ipn,
+                    description = updatedPart.description,
+                    revision = updatedPart.revision,
+                    keywords = updatedPart.keywords,
+                    categoryUuid = updatedPart.categoryId?.let { "cat-${it.toString().padStart(3, '0')}" },
+                    units = updatedPart.units,
+                    assembly = updatedPart.assembly,
+                    component = updatedPart.component,
+                    isTemplate = updatedPart.isTemplate,
+                    variantOfUuid = updatedPart.variantOfId?.let { "part-$it" },
+                    trackable = updatedPart.trackable,
+                    purchaseable = updatedPart.purchaseable,
+                    salable = updatedPart.salable,
+                    virtual = updatedPart.virtual,
+                    active = updatedPart.active,
+                    locked = updatedPart.locked,
+                    minimumStock = updatedPart.minimumStock,
+                    maximumStock = updatedPart.maximumStock,
+                    defaultLocationUuid = updatedPart.defaultLocationId?.let { "loc-${it.toString().padStart(3, '0')}" },
+                    defaultExpiryDays = updatedPart.defaultExpiryDays,
+                    totalInStock = updatedPart.totalInStock,
+                    localImagePath = updatedPart.imageUrl,
+                    link = updatedPart.link,
+                    metadata = updatedPart.metadata,
+                    version = 1,
+                    syncStatus = SyncStatus.PENDING,
+                    isDeleted = false,
+                    updatedAt = Clock.System.now().toEpochMilliseconds()
+                )
+            )
+        }
+        return updatedPart
+    }
+
+    /**
+     * حذف أمني محمي للقطعة وإزالتها من الجداول مع التنظيف الفيزيائي لملف الملصق.
      */
     fun deletePartWithValidation(partId: Long): Result<Boolean> {
         val part = partTable.getPartById(partId)
             ?: return Result.failure(IllegalArgumentException("القطعة المطلوب حذفها غير موجودة بالمنظومة"))
 
-        // الشرط الأول: التأكد من عدم وجود رصيد مخزوني فعلي
-        if (part.totalInStock > 0.0) {
-            return Result.failure(IllegalStateException("لا يمكن حذف القطعة '${part.name}' لأنها تمتلك رصيد مخزوني فني فعلي (${part.totalInStock} ${part.units}). قم بصرف أو تسوية الرصيد أولاً."))
+        // إزالة القطعة من جدول الذاكرة الداخلي
+        partTable.deletePart(partId)
+
+        // الحذف الفيزيائي الآلي لملف صورة الملصق لمنع الملفات المهملة
+        part.labelImagePath?.let { path ->
+            runCatching {
+                val file = File(path)
+                if (file.exists()) file.delete()
+            }
         }
 
-        // الشرط الثاني: التأكد من عدم استخدام القطعة كعنصر رئيسي في شجرة BOM لمنتجات أخرى
-        val isUsedInBom = bomItemTable.getBomItemsPaged(partId = null, limit = 1000, offset = 0).any { it.subPartId == partId }
-        if (isUsedInBom) {
-            return Result.failure(IllegalStateException("لا يمكن حذف القطعة '${part.name}' لأنها تدخل كبند رئيسي ومكون أساسي في شجرة مواد BOM لمنتجات أخرى."))
+        // أرشفة وحذف الكيان في قاعدة البيانات الدائمة (SQLite)
+        val partUuid = if (part.effectiveUuid.isNotBlank() && part.effectiveUuid != "part-0") part.effectiveUuid else AppUuid.generate()
+        runBlocking {
+            partDao.insertOrUpdate(
+                PartEntity(
+                    uuid = partUuid,
+                    name = part.name,
+                    ipn = part.ipn,
+                    description = part.description,
+                    revision = part.revision,
+                    keywords = part.keywords,
+                    categoryUuid = part.categoryId?.let { "cat-${it.toString().padStart(3, '0')}" },
+                    units = part.units,
+                    assembly = part.assembly,
+                    component = part.component,
+                    isTemplate = part.isTemplate,
+                    variantOfUuid = part.variantOfId?.let { "part-$it" },
+                    trackable = part.trackable,
+                    purchaseable = part.purchaseable,
+                    salable = part.salable,
+                    virtual = part.virtual,
+                    active = false,
+                    locked = part.locked,
+                    minimumStock = part.minimumStock,
+                    maximumStock = part.maximumStock,
+                    defaultLocationUuid = part.defaultLocationId?.let { "loc-${it.toString().padStart(3, '0')}" },
+                    defaultExpiryDays = part.defaultExpiryDays,
+                    totalInStock = part.totalInStock,
+                    localImagePath = part.imageUrl,
+                    link = part.link,
+                    metadata = part.metadata,
+                    version = 1,
+                    syncStatus = SyncStatus.PENDING,
+                    isDeleted = true,
+                    updatedAt = Clock.System.now().toEpochMilliseconds()
+                )
+            )
         }
-
-        // الأرشفة والحذف الناعم (Soft Delete)
-        val softDeletedPart = part.copy(active = false, isTemplate = false)
-        updatePart(softDeletedPart)
         return Result.success(true)
     }
 
@@ -601,25 +662,50 @@ class PartRepository(
     /**
      * تحديث بيانات قطعة موجودة.
      */
-    fun updatePart(part: Part): Boolean {
-        val result = partTable.updatePart(part)
+    fun updatePart(part: Part, pendingAttachments: List<PendingAttachment> = emptyList()): Boolean {
+        val resolvedImageUrl = pendingAttachments.firstOrNull { it.type == AttachmentType.IMAGE }?.pathOrUrl ?: part.imageUrl
+        val resolvedLink = pendingAttachments.firstOrNull { it.type == AttachmentType.LINK }?.pathOrUrl 
+            ?: pendingAttachments.firstOrNull { it.type == AttachmentType.DOCUMENT }?.pathOrUrl 
+            ?: part.link
+
+        val partToUpdate = part.copy(imageUrl = resolvedImageUrl, link = resolvedLink)
+        val result = partTable.updatePart(partToUpdate)
         if (result) {
+            val existing = getPartAttachments(part.id)
+            val existingIds = existing.map { it.id }.toSet()
+            val newIds = pendingAttachments.map { it.id }.filter { it != 0L }.toSet()
+
+            existingIds.filter { it !in newIds }.forEach { id ->
+                deletePartAttachment(id)
+            }
+
+            pendingAttachments.filter { it.id == 0L }.forEach { att ->
+                addPartAttachment(
+                    PartAttachment(
+                        partId = part.id,
+                        attachment = if (att.type == AttachmentType.IMAGE || att.type == AttachmentType.DOCUMENT) att.pathOrUrl else null,
+                        link = if (att.type == AttachmentType.LINK) att.pathOrUrl else null,
+                        comment = att.label
+                    )
+                )
+            }
+
+            val partUuid = if (part.effectiveUuid.isNotBlank() && part.effectiveUuid != "part-0") part.effectiveUuid else AppUuid.generate()
             runBlocking {
                 partDao.insertOrUpdate(
                     PartEntity(
-                        uuid = "part-${part.id}",
-                        id = part.id,
+                        uuid = partUuid,
                         name = part.name,
                         ipn = part.ipn,
                         description = part.description,
                         revision = part.revision,
                         keywords = part.keywords,
-                        categoryId = part.categoryId,
+                        categoryUuid = part.categoryId?.let { "cat-${it.toString().padStart(3, '0')}" },
                         units = part.units,
                         assembly = part.assembly,
                         component = part.component,
                         isTemplate = part.isTemplate,
-                        variantOfId = part.variantOfId,
+                        variantOfUuid = part.variantOfId?.let { "part-$it" },
                         trackable = part.trackable,
                         purchaseable = part.purchaseable,
                         salable = part.salable,
@@ -628,11 +714,13 @@ class PartRepository(
                         locked = part.locked,
                         minimumStock = part.minimumStock,
                         maximumStock = part.maximumStock,
-                        defaultLocationId = part.defaultLocationId,
+                        defaultLocationUuid = part.defaultLocationId?.let { "loc-${it.toString().padStart(3, '0')}" },
                         defaultExpiryDays = part.defaultExpiryDays,
                         totalInStock = part.totalInStock,
                         localImagePath = part.imageUrl,
                         link = part.link,
+                        metadata = part.metadata,
+                        version = 1,
                         syncStatus = SyncStatus.PENDING,
                         isDeleted = false,
                         updatedAt = Clock.System.now().toEpochMilliseconds()

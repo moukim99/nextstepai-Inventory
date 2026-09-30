@@ -2,9 +2,12 @@ package com.nextstepai.inventory.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import com.nextstepai.inventory.data.AppUser
 import com.nextstepai.inventory.data.Company
 import com.nextstepai.inventory.data.Part
+import com.nextstepai.inventory.data.PendingAttachment
 import com.nextstepai.inventory.data.PartCategory
 import com.nextstepai.inventory.data.PurchaseOrder
 import com.nextstepai.inventory.data.StockItem
@@ -93,43 +96,49 @@ class StockViewModel(
     }
 
     private fun loadUsers() {
-        viewModelScope.launch {
-            val activeUsers = userRepository.getActiveUsers()
-            _uiState.update { it.copy(users = activeUsers) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val activeUsers = userRepository.getActiveUsers()
+                _uiState.update { it.copy(users = activeUsers) }
+            } catch (_: Throwable) {}
         }
     }
 
     fun loadData() {
-        val allParts = partRepository.getParts()
-        val categories = partRepository.getCategories()
-        val locations = stockRepository.getLocations()
-        val locationTypes = stockRepository.getLocationTypes()
-        val rawStock = stockRepository.getStockItems()
-        val purchaseOrders = poRepository.searchOrders()
-        val suppliers = companyRepository.getCompanies().filter { it.isSupplier }
-        val supplierParts = suppliers.flatMap { companyRepository.getSupplierPartsForCompany(it.id) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val allParts = partRepository.getParts()
+                val categories = partRepository.getCategories()
+                val locations = stockRepository.getLocations()
+                val locationTypes = stockRepository.getLocationTypes()
+                val rawStock = stockRepository.getStockItems()
+                val purchaseOrders = poRepository.searchOrders()
+                val suppliers = companyRepository.getCompanies().filter { it.isSupplier }
+                val supplierParts = suppliers.flatMap { companyRepository.getSupplierPartsForCompany(it.id) }
 
-        val selectedLocs = _uiState.value.selectedLocationIds
-        val singleLoc = _uiState.value.selectedLocationId
-        val effectiveLocIds = if (selectedLocs.isNotEmpty()) selectedLocs else if (singleLoc != null) setOf(singleLoc) else emptySet()
+                val selectedLocs = _uiState.value.selectedLocationIds
+                val singleLoc = _uiState.value.selectedLocationId
+                val effectiveLocIds = if (selectedLocs.isNotEmpty()) selectedLocs else if (singleLoc != null) setOf(singleLoc) else emptySet()
 
-        val filteredStock = rawStock.filter { item ->
-            (effectiveLocIds.isEmpty() || (item.locationId != null && item.locationId in effectiveLocIds)) &&
-                    (_uiState.value.selectedPartId == null || item.partId == _uiState.value.selectedPartId)
-        }
+                val filteredStock = rawStock.filter { item ->
+                    (effectiveLocIds.isEmpty() || (item.locationId != null && item.locationId in effectiveLocIds)) &&
+                            (_uiState.value.selectedPartId == null || item.partId == _uiState.value.selectedPartId)
+                }
 
-        _uiState.update {
-            it.copy(
-                stockItems = filteredStock,
-                allStockItems = rawStock,
-                locations = locations,
-                locationTypes = locationTypes,
-                parts = allParts,
-                categories = categories,
-                purchaseOrders = purchaseOrders,
-                suppliers = suppliers,
-                supplierParts = supplierParts
-            )
+                _uiState.update {
+                    it.copy(
+                        stockItems = filteredStock,
+                        allStockItems = rawStock,
+                        locations = locations,
+                        locationTypes = locationTypes,
+                        parts = allParts,
+                        categories = categories,
+                        purchaseOrders = purchaseOrders,
+                        suppliers = suppliers,
+                        supplierParts = supplierParts
+                    )
+                }
+            } catch (_: Throwable) {}
         }
     }
 
@@ -207,8 +216,7 @@ class StockViewModel(
         virtual: Boolean = false,
         defaultLocationId: Long? = null,
         defaultExpiryDays: Int? = null,
-        link: String = "",
-        imageUrl: String? = null,
+        pendingAttachments: List<PendingAttachment> = emptyList(),
         active: Boolean = true,
         locked: Boolean = false
     ): Part {
@@ -234,11 +242,9 @@ class StockViewModel(
             defaultExpiryDays = defaultExpiryDays,
             minimumStock = minimumStock,
             maximumStock = maximumStock,
-            imageUrl = imageUrl,
-            totalInStock = 0.0,
-            link = link
+            totalInStock = 0.0
         )
-        val inserted = partRepository.addPart(newPart)
+        val inserted = partRepository.addPart(newPart, pendingAttachments)
         loadData()
         return inserted
     }

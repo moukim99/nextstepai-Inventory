@@ -43,6 +43,10 @@ fun ProductionScreen(
 ) {
     var currentSubView by remember { mutableStateOf(ProductionSubView.MAIN_DASHBOARD) }
 
+    CommonBackHandler(enabled = currentSubView != ProductionSubView.MAIN_DASHBOARD) {
+        currentSubView = ProductionSubView.MAIN_DASHBOARD
+    }
+
     val buildOrderUiState by buildOrderViewModel.uiState.collectAsState()
     val bomUiState by bomViewModel.uiState.collectAsState()
 

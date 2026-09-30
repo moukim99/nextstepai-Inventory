@@ -1,12 +1,18 @@
 package com.nextstepai.inventory.ui
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.launch
+import com.nextstepai.inventory.data.AppUser
 import com.nextstepai.inventory.data.BomItem
 import com.nextstepai.inventory.data.CategoryParameterTemplateView
 import com.nextstepai.inventory.data.Company
 import com.nextstepai.inventory.data.ManufacturerPart
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.PartAttachment
+import com.nextstepai.inventory.data.PendingAttachment
 import com.nextstepai.inventory.data.PartCategory
 import com.nextstepai.inventory.data.PartNotes
 import com.nextstepai.inventory.data.PartParameter
@@ -19,17 +25,25 @@ import com.nextstepai.inventory.data.db.PartPricingEntity
 import com.nextstepai.inventory.data.db.PartSalePriceEntity
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockItem
+import com.nextstepai.inventory.data.StockItemAttachment
 import com.nextstepai.inventory.data.StockStatus
+import com.nextstepai.inventory.data.db.PartAllocationEntity
 import kotlin.time.Clock
 import com.nextstepai.inventory.repository.BomRepository
 import com.nextstepai.inventory.repository.CompanyRepository
+import com.nextstepai.inventory.repository.PartAllocationRepository
 import com.nextstepai.inventory.repository.PartRepository
 import com.nextstepai.inventory.repository.PartsSummary
 import com.nextstepai.inventory.repository.StockRepository
+import com.nextstepai.inventory.repository.UserRepository
+import com.nextstepai.inventory.util.DateTimeUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.runBlocking
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 
 /**
  * حالة واجهة المستخدم لشاشة إدارة القطع والمكونات والقوالب الفنية والقطع ذات الصلة (Part Management UI State).
@@ -38,10 +52,13 @@ data class PartUiState(
     val parts: List<Part> = emptyList(),
     val categories: List<PartCategory> = emptyList(),
     val stockLocations: List<StockLocation> = emptyList(),
+    val stockItems: List<StockItem> = emptyList(),
+    val users: List<AppUser> = emptyList(),
     val templateParts: List<Part> = emptyList(),
     val summary: PartsSummary = PartsSummary(0, 0, 0, 0, 0, 0),
     val searchQuery: String = "",
     val selectedCategoryId: Long? = null,
+    val selectedCategoryIds: Set<Long> = emptySet(),
     val categoryParameterTemplates: List<CategoryParameterTemplateView> = emptyList(),
     val allParameterTemplates: List<PartParameterTemplate> = emptyList(),
     val selectedPartParameters: List<PartParameter> = emptyList(),
@@ -65,6 +82,9 @@ data class PartUiState(
     val starredOnlyFilter: Boolean = false,
     val isFilterBottomSheetOpen: Boolean = false,
     val selectedPart: Part? = null,
+    val selectedAllocationPart: Part? = null,
+    val selectedPartAllocations: List<PartAllocationEntity> = emptyList(),
+    val isAllocationsBottomSheetOpen: Boolean = false,
     val isAddPartDialogOpen: Boolean = false,
     val isAddCategoryParamDialogOpen: Boolean = false,
     val isAddManufacturerPartDialogOpen: Boolean = false,
@@ -80,7 +100,9 @@ class PartViewModel(
     private val repository: PartRepository = PartRepository(),
     private val bomRepository: BomRepository = BomRepository(),
     private val companyRepository: CompanyRepository = CompanyRepository(),
-    private val stockRepository: StockRepository = StockRepository()
+    private val stockRepository: StockRepository = StockRepository(),
+    private val userRepository: UserRepository = UserRepository(),
+    private val allocationRepository: PartAllocationRepository = com.nextstepai.inventory.repository.PartAllocationRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PartUiState())
@@ -94,35 +116,44 @@ class PartViewModel(
      * تحميل البيانات الأولية وتحديث القوائم المفلترة.
      */
     fun loadData() {
-        _uiState.update { it.copy(isLoading = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isLoading = true) }
+            try {
+                val categories = repository.getCategories()
+                val templateParts = repository.getTemplateParts()
+                val summary = repository.getPartsSummary()
+                val starredIds = repository.getStarredPartIdsForUser(1L).toSet()
+                val allCompanies = companyRepository.getCompanies()
+                val stockLocations = stockRepository.getLocations()
+                val stockItems = stockRepository.getStockItems()
+                val activeUsers = userRepository.getActiveUsers()
 
-        val categories = repository.getCategories()
-        val templateParts = repository.getTemplateParts()
-        val summary = repository.getPartsSummary()
-        val starredIds = repository.getStarredPartIdsForUser(1L).toSet()
-        val allCompanies = companyRepository.getCompanies()
-        val stockLocations = stockRepository.getLocations()
+                val filteredParts = repository.searchParts(
+                    query = _uiState.value.searchQuery,
+                    categoryId = _uiState.value.selectedCategoryId,
+                    lowStockOnly = _uiState.value.lowStockOnlyFilter,
+                    assemblyOnly = _uiState.value.assemblyOnlyFilter
+                ).let { list ->
+                    if (_uiState.value.starredOnlyFilter) list.filter { starredIds.contains(it.id) } else list
+                }
 
-        val filteredParts = repository.searchParts(
-            query = _uiState.value.searchQuery,
-            categoryId = _uiState.value.selectedCategoryId,
-            lowStockOnly = _uiState.value.lowStockOnlyFilter,
-            assemblyOnly = _uiState.value.assemblyOnlyFilter
-        ).let { list ->
-            if (_uiState.value.starredOnlyFilter) list.filter { starredIds.contains(it.id) } else list
-        }
-
-        _uiState.update {
-            it.copy(
-                parts = filteredParts,
-                categories = categories,
-                stockLocations = stockLocations,
-                templateParts = templateParts,
-                summary = summary,
-                starredPartIds = starredIds,
-                allCompanies = allCompanies,
-                isLoading = false
-            )
+                _uiState.update {
+                    it.copy(
+                        parts = filteredParts,
+                        categories = categories,
+                        stockLocations = stockLocations,
+                        stockItems = stockItems,
+                        users = activeUsers,
+                        templateParts = templateParts,
+                        summary = summary,
+                        starredPartIds = starredIds,
+                        allCompanies = allCompanies,
+                        isLoading = false
+                    )
+                }
+            } catch (e: Throwable) {
+                _uiState.update { it.copy(isLoading = false) }
+            }
         }
     }
 
@@ -249,43 +280,88 @@ class PartViewModel(
     }
 
     /**
-     * استلام شحنة ومخزون جديد بجدول stock_items وتسجيل حركة التتبع آلياً بجدول stock_item_tracking.
+     * استلام شحنة ومخزون جديد بجدول stock_items وتوليد رقم الدفعة آلياً وتسجيل حركة التتبع آلياً بجدول stock_item_tracking.
      */
     fun receiveStockItem(
         partId: Long,
         locationId: Long?,
         quantity: Double,
         packaging: String = "صندوق",
-        batch: String = "",
-        serial: String = "",
-        purchasePrice: Double = 0.0,
-        purchasePriceCurrency: String = "USD",
-        expiryDate: String = "",
-        notes: String = ""
+        referenceDoc: String = "",
+        notes: String = "",
+        receiptDate: String = "",
+        receivedByUserId: Long? = null,
+        capturedDocBytes: ByteArray? = null,
+        capturedDocPath: String? = null
     ) {
         val part = repository.getPartById(partId) ?: return
         try {
-            val generatedBatch = batch.ifBlank { "BATCH-${Clock.System.now().toEpochMilliseconds().toString().takeLast(6)}" }
+            // 1. توليد رقم الدفعة آلياً بصيغة موحدة (BATCH-YYYYMMDD-XXXX)
+            val nowMs = Clock.System.now().toEpochMilliseconds()
+            val nowDateTime = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+            val dateStr = "${nowDateTime.year}${nowDateTime.monthNumber.toString().padStart(2, '0')}${nowDateTime.dayOfMonth.toString().padStart(2, '0')}"
+            val stampFragment = nowMs.toString().takeLast(4)
+            val generatedBatch = if (referenceDoc.isNotBlank()) {
+                val cleanRef = referenceDoc.replace(Regex("[^A-Za-z0-9]"), "").take(6).uppercase()
+                "BATCH-$dateStr-$cleanRef"
+            } else {
+                "BATCH-$dateStr-$stampFragment"
+            }
+
+            // 2. تحديد المعرف الخاص بالمستخدم المسؤول عن العمليات وتاريخ الاستلام
+            val effectiveDate = receiptDate.ifBlank { DateTimeUtils.getCurrentDateTime() }
+            val activeUserId = receivedByUserId ?: runBlocking {
+                runCatching {
+                    userRepository.getActiveUsers().firstOrNull()?.uuid?.removePrefix("usr-")?.toLongOrNull()
+                }.getOrNull() ?: 1L
+            }
+
+            // 3. إدراج عنصر المخزون في جدول stock_items
             val stockItem = StockItem(
                 partId = partId,
                 locationId = locationId,
                 quantity = quantity,
                 packaging = packaging.ifBlank { "صندوق" },
                 batch = generatedBatch,
-                serial = serial,
-                purchasePrice = purchasePrice,
-                purchasePriceCurrency = purchasePriceCurrency,
-                expiryDate = expiryDate,
+                serial = "",
+                purchasePrice = 0.0,
+                purchasePriceCurrency = "USD",
+                expiryDate = "",
+                stocktakeDate = effectiveDate,
+                stocktakeUserId = activeUserId,
+                link = referenceDoc,
                 notes = notes,
                 status = StockStatus.OK
             )
 
+            // 4. حفظ سجل المخزون وتوليد حركة التتبع في المعاملة الذرية
             val insertedStock = stockRepository.addStockItem(stockItem)
+
+            // 5. في حال توفر صورة مستند مرفقة (مسار أو بايتات)، ضغطها وإضافتها لجدول المرفقات
+            val finalAttachment = capturedDocPath ?: if (capturedDocBytes != null && capturedDocBytes.isNotEmpty()) {
+                "attachments/doc_receipt_${insertedStock.id}_${nowMs}.webp"
+            } else null
+
+            if (!finalAttachment.isNullOrBlank()) {
+                runCatching {
+                    stockRepository.addStockItemAttachment(
+                        StockItemAttachment(
+                            stockItemId = insertedStock.id,
+                            attachment = finalAttachment,
+                            link = referenceDoc.ifBlank { null },
+                            comment = "مستند توثيقي لشحنة استلام $generatedBatch",
+                            uploadDate = DateTimeUtils.getCurrentDate()
+                        )
+                    )
+                }
+            }
+
+            // 6. تحديث إجمالي الرصيد التراكمي للقطعة عبر كافة المواقع
             repository.addStockToPart(partId, quantity)
 
             _uiState.update { state ->
                 state.copy(
-                    message = "تم استلام الشحنة (${insertedStock.quantity} ${part.units}) وتوثيقها بجدول المخزون والتتبع بنجاح"
+                    message = "تم استلام الشحنة (${insertedStock.quantity} ${part.units}) بتاريخ ($effectiveDate) وتوثيقها برقم الدفعة ($generatedBatch) بنجاح"
                 )
             }
             loadData()
@@ -294,6 +370,61 @@ class PartViewModel(
             _uiState.update { state ->
                 state.copy(message = "خطأ أثناء استلام الشحنة: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * دالة متوافقة مع المعلمات السابقة لاستلام الشحنة (Backward Compatibility Overload).
+     */
+    fun receiveStockItem(
+        partId: Long,
+        locationId: Long?,
+        quantity: Double,
+        packaging: String,
+        batch: String,
+        serial: String,
+        purchasePrice: Double,
+        purchasePriceCurrency: String,
+        expiryDate: String,
+        notes: String
+    ) {
+        val refDoc = if (batch.isNotBlank() && !batch.startsWith("BATCH-")) batch else ""
+        receiveStockItem(
+            partId = partId,
+            locationId = locationId,
+            quantity = quantity,
+            packaging = packaging,
+            referenceDoc = refDoc,
+            notes = notes
+        )
+    }
+
+    /**
+     * تنفيذ النقل المخزني السريع لنقل كمية مخزنية بين المواقع.
+     */
+    fun transferStockItem(
+        itemId: Long,
+        sourceLocationId: Long?,
+        targetLocationId: Long,
+        quantity: Double,
+        reason: String,
+        notes: String = ""
+    ) {
+        try {
+            val success = stockRepository.transferStockItem(
+                itemId = itemId,
+                sourceLocationId = sourceLocationId,
+                targetLocationId = targetLocationId,
+                quantityToTransfer = quantity,
+                reason = reason,
+                notes = notes
+            )
+            if (success) {
+                _uiState.update { it.copy(message = "تم نقل المخزون بنجاح") }
+                loadData()
+            }
+        } catch (e: Exception) {
+            _uiState.update { it.copy(message = "خطأ أثناء نقل المخزون: ${e.message}") }
         }
     }
 
@@ -490,6 +621,37 @@ class PartViewModel(
     }
 
     /**
+     * تحديث بيانات قطعة موجودة في النظام.
+     */
+    fun updatePart(part: Part, pendingAttachments: List<PendingAttachment> = emptyList()) {
+        val success = repository.updatePart(part, pendingAttachments)
+        if (success) {
+            _uiState.update { state ->
+                state.copy(
+                    selectedPart = if (state.selectedPart?.id == part.id) part else state.selectedPart,
+                    message = "تم تحديث بيانات القطعة '${part.name}' بنجاح"
+                )
+            }
+            loadData()
+        } else {
+            _uiState.update {
+                it.copy(message = "فشل تحديث بيانات القطعة")
+            }
+        }
+    }
+
+    /**
+     * حفظ وأرشفة لقطة بيانات ملصق القطعة المطبوع.
+     */
+    fun savePartLabelSnapshot(partId: Long, snapshotData: String): Part? {
+        val updated = repository.savePartLabelSnapshot(partId, snapshotData)
+        if (updated != null) {
+            loadData()
+        }
+        return updated
+    }
+
+    /**
      * حذف أمني محمي للقطعة مع تطبيق القيود والاشتراطات التشغيلية.
      */
     fun deletePart(partId: Long) {
@@ -552,8 +714,7 @@ class PartViewModel(
         virtual: Boolean = false,
         defaultLocationId: Long? = null,
         defaultExpiryDays: Int? = null,
-        link: String = "",
-        imageUrl: String? = null,
+        pendingAttachments: List<PendingAttachment> = emptyList(),
         active: Boolean = true,
         locked: Boolean = false
     ) {
@@ -579,13 +740,11 @@ class PartViewModel(
             defaultExpiryDays = defaultExpiryDays,
             minimumStock = minimumStock,
             maximumStock = maximumStock,
-            imageUrl = imageUrl,
             totalInStock = 0.0,
-            link = link,
             creationDate = "2025-02-15"
         )
 
-        repository.addPart(newPart)
+        repository.addPart(newPart, pendingAttachments)
 
         _uiState.update {
             it.copy(
@@ -691,6 +850,7 @@ class PartViewModel(
 
     fun applyFilters(
         categoryId: Long?,
+        categoryIds: Set<Long> = emptySet(),
         lowStock: Boolean,
         assembly: Boolean,
         component: Boolean,
@@ -698,9 +858,12 @@ class PartViewModel(
         salable: Boolean,
         starred: Boolean
     ) {
+        val effectiveCatIds = if (categoryIds.isNotEmpty()) categoryIds else if (categoryId != null) setOf(categoryId) else emptySet()
+        val effectiveSingleCatId = if (effectiveCatIds.size == 1) effectiveCatIds.first() else null
         _uiState.update {
             it.copy(
-                selectedCategoryId = categoryId,
+                selectedCategoryId = effectiveSingleCatId,
+                selectedCategoryIds = effectiveCatIds,
                 lowStockOnlyFilter = lowStock,
                 assemblyOnlyFilter = assembly,
                 componentOnlyFilter = component,
@@ -717,6 +880,7 @@ class PartViewModel(
         _uiState.update {
             it.copy(
                 selectedCategoryId = null,
+                selectedCategoryIds = emptySet(),
                 lowStockOnlyFilter = false,
                 assemblyOnlyFilter = false,
                 componentOnlyFilter = false,
@@ -732,10 +896,13 @@ class PartViewModel(
         val state = _uiState.value
         var filtered = repository.searchParts(
             query = state.searchQuery,
-            categoryId = state.selectedCategoryId,
+            categoryId = if (state.selectedCategoryIds.size == 1) state.selectedCategoryIds.first() else state.selectedCategoryId,
             lowStockOnly = state.lowStockOnlyFilter,
             assemblyOnly = state.assemblyOnlyFilter
         )
+        if (state.selectedCategoryIds.size > 1) {
+            filtered = filtered.filter { it.categoryId != null && state.selectedCategoryIds.contains(it.categoryId) }
+        }
         if (state.componentOnlyFilter) {
             filtered = filtered.filter { it.component }
         }
@@ -748,6 +915,91 @@ class PartViewModel(
         if (state.starredOnlyFilter) {
             filtered = filtered.filter { state.starredPartIds.contains(it.id) }
         }
-        _uiState.update { it.copy(parts = filtered) }
+
+        val enrichedParts = filtered.map { part ->
+            val hard = runBlocking { allocationRepository.getCommittedQuantity(part.id) }
+            val soft = runBlocking { allocationRepository.getSoftQuantity(part.id) }
+            if (hard > 0 || soft > 0) {
+                part.copy(totalHardAllocated = hard, totalSoftAllocated = soft)
+            } else {
+                part
+            }
+        }
+
+        _uiState.update { it.copy(parts = enrichedParts) }
+    }
+
+    /**
+     * فتح ورقة تفاصيل الحجوزات والمخصصات لقطعة محددة وتحميل الحجوزات النشطة.
+     */
+    fun openAllocationsForPart(part: Part) {
+        viewModelScope.launch {
+            val allocations = allocationRepository.getActiveAllocationsForPart(part.id)
+            val hard = allocationRepository.getCommittedQuantity(part.id)
+            val soft = allocationRepository.getSoftQuantity(part.id)
+            val updatedPart = part.copy(totalHardAllocated = hard, totalSoftAllocated = soft)
+
+            _uiState.update {
+                it.copy(
+                    selectedAllocationPart = updatedPart,
+                    selectedPartAllocations = allocations,
+                    isAllocationsBottomSheetOpen = true
+                )
+            }
+        }
+    }
+
+    /**
+     * إغلاق ورقة تفاصيل الحجوزات والمخصصات.
+     */
+    fun closeAllocationsBottomSheet() {
+        _uiState.update {
+            it.copy(
+                isAllocationsBottomSheetOpen = false,
+                selectedAllocationPart = null,
+                selectedPartAllocations = emptyList()
+            )
+        }
+    }
+
+    /**
+     * فك/إلغاء حجز مخزون وإعادة الكمية فورياً للمخزون الحر وتحديث الواجهة بمرونة.
+     */
+    fun releaseAllocation(partId: Long, allocationId: Long) {
+        viewModelScope.launch {
+            val result = allocationRepository.releaseAllocation(allocationId)
+            if (result.isSuccess) {
+                val allocations = allocationRepository.getActiveAllocationsForPart(partId)
+                val hard = allocationRepository.getCommittedQuantity(partId)
+                val soft = allocationRepository.getSoftQuantity(partId)
+
+                _uiState.update { currentState ->
+                    val updatedParts = currentState.parts.map { p ->
+                        if (p.id == partId) p.copy(
+                            totalHardAllocated = hard,
+                            totalSoftAllocated = soft,
+                            allocatedToBuildOrders = 0.0,
+                            allocatedToSalesOrders = 0.0
+                        ) else p
+                    }
+                    val updatedSelected = currentState.selectedAllocationPart?.takeIf { it.id == partId }
+                        ?.copy(
+                            totalHardAllocated = hard,
+                            totalSoftAllocated = soft,
+                            allocatedToBuildOrders = 0.0,
+                            allocatedToSalesOrders = 0.0
+                        )
+
+                    currentState.copy(
+                        parts = updatedParts,
+                        selectedAllocationPart = updatedSelected ?: currentState.selectedAllocationPart,
+                        selectedPartAllocations = allocations,
+                        message = "تم فك الحجز وإعادة الكمية للمخزون الحر بنجاح"
+                    )
+                }
+            } else {
+                _uiState.update { it.copy(message = "تعذر فك الحجز: ${result.exceptionOrNull()?.message}") }
+            }
+        }
     }
 }

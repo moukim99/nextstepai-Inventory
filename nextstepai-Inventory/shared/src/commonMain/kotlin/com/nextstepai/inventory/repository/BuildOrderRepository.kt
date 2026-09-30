@@ -111,7 +111,7 @@ class BuildOrderRepository(
 
         // 1. سعر الشراء الفعلي المسجل في جدول المخزون للقطعة الفرعية
         val stockItems = runBlocking {
-            runCatching { stockDao.getStockItemsPaged(partId = subPartId, limit = 10) }.getOrDefault(emptyList())
+            runCatching { stockDao.getStockItemsPaged(partUuid = "part-$subPartId", limit = 10) }.getOrDefault(emptyList())
         }
         val stockPrice = stockItems.firstOrNull { it.purchasePrice > 0.0 }?.purchasePrice
         if (stockPrice != null && stockPrice > 0.0) {

@@ -59,6 +59,7 @@ kotlin {
             implementation(libs.jetbrains.adaptive.navigation)
             implementation(libs.jetbrains.adaptive.navigation.suite)
             implementation(libs.camerak)
+            implementation(libs.uuidCreator)
             implementation("com.github.javakeyring:java-keyring:1.0.4")
         }
         getByName("jvmMain") {

@@ -13,6 +13,7 @@ fun getRoomDatabase(): AppRoomDatabase {
     return instance ?: synchronized(AppRoomDatabase::class) {
         instance ?: getDatabaseBuilder()
             .setDriver(BundledSQLiteDriver())
+            .fallbackToDestructiveMigration(dropAllTables = true)
             .setQueryCoroutineContext(Dispatchers.IO)
             .build()
             .also { instance = it }

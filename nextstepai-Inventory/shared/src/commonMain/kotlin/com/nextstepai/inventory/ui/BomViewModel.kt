@@ -1,6 +1,10 @@
 package com.nextstepai.inventory.ui
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.launch
 import com.nextstepai.inventory.data.BomItem
 import com.nextstepai.inventory.data.BomItemSubstituteView
 import com.nextstepai.inventory.data.ManufacturingPhase
@@ -55,37 +59,41 @@ class BomViewModel(
     }
 
     fun loadData() {
-        val allParts = partRepository.getParts()
-        val assemblies = partRepository.getParentAssemblies()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val allParts = partRepository.getParts()
+                val assemblies = partRepository.getParentAssemblies()
 
-        val currentPartId = _uiState.value.selectedPartId
-        val bomList = if (currentPartId != null) {
-            bomRepository.getBomItemsForPart(currentPartId)
-        } else {
-            assemblies.flatMap { bomRepository.getBomItemsForPart(it.id) }
-        }
-        val allPhases = bomRepository.getAllPhases()
-        val existingSubPartIds = bomList.map { it.subPartId }
-        val eligibleComponents = if (currentPartId != null) {
-            partRepository.getEligibleSubParts(currentPartId, existingSubPartIds)
-        } else {
-            allParts.filter { it.component }
-        }
+                val currentPartId = _uiState.value.selectedPartId
+                val bomList = if (currentPartId != null) {
+                    bomRepository.getBomItemsForPart(currentPartId)
+                } else {
+                    assemblies.flatMap { bomRepository.getBomItemsForPart(it.id) }
+                }
+                val allPhases = bomRepository.getAllPhases()
+                val existingSubPartIds = bomList.map { it.subPartId }
+                val eligibleComponents = if (currentPartId != null) {
+                    partRepository.getEligibleSubParts(currentPartId, existingSubPartIds)
+                } else {
+                    allParts.filter { it.component }
+                }
 
-        val substitutes = bomList.associate { item ->
-            item.id to bomRepository.getSubstitutesForBomItem(item.id, allParts)
-        }
+                val substitutes = bomList.associate { item ->
+                    item.id to bomRepository.getSubstitutesForBomItem(item.id, allParts)
+                }
 
-        _uiState.update {
-            it.copy(
-                selectedPartId = currentPartId,
-                parentParts = assemblies,
-                availableComponents = eligibleComponents,
-                allParts = allParts,
-                bomItems = bomList,
-                phases = allPhases,
-                substitutesMap = substitutes
-            )
+                _uiState.update {
+                    it.copy(
+                        selectedPartId = currentPartId,
+                        parentParts = assemblies,
+                        availableComponents = eligibleComponents,
+                        allParts = allParts,
+                        bomItems = bomList,
+                        phases = allPhases,
+                        substitutesMap = substitutes
+                    )
+                }
+            } catch (_: Throwable) {}
         }
     }
 

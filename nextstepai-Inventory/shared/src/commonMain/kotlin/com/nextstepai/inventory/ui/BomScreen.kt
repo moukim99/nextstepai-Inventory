@@ -68,34 +68,6 @@ fun BomScreen(
                 onBackClick = onBackClick
             )
         },
-        floatingActionButton = {
-            Box(
-                modifier = Modifier.padding(bottom = 20.dp, start = 12.dp, end = 12.dp)
-            ) {
-                ExtendedFloatingActionButton(
-                    onClick = { viewModel.setAddDialogOpen(true) },
-                    containerColor = Color(0xFF4F46E5),
-                    contentColor = Color.White,
-                    shape = RoundedCornerShape(18.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(Res.string.add_bom_item),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "إضافة مكون",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.5.sp
-                        )
-                    )
-                }
-            }
-        },
-        floatingActionButtonPosition = FabPosition.Start,
         modifier = modifier
     ) { paddingValues ->
         Box(
@@ -333,7 +305,7 @@ fun BomScreen(
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(bottom = 80.dp)
+                        contentPadding = PaddingValues(bottom = 16.dp)
                     ) {
                         itemsIndexed(filteredBomItems, key = { index, it -> "bom-${it.uuid.ifBlank { it.id.toString() }}-$index" }) { _, bomItem ->
                             val component = uiState.allParts.find { it.id == bomItem.subPartId }
@@ -350,6 +322,31 @@ fun BomScreen(
                         }
                     }
                 }
+            }
+
+            ExtendedFloatingActionButton(
+                onClick = { viewModel.setAddDialogOpen(true) },
+                containerColor = Color(0xFF4F46E5),
+                contentColor = Color.White,
+                shape = RoundedCornerShape(18.dp),
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 12.dp, start = 12.dp, end = 12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(Res.string.add_bom_item),
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "إضافة مكون",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp
+                    )
+                )
             }
         }
     }
@@ -962,7 +959,7 @@ private fun AddBomItemBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.88f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -1865,7 +1862,7 @@ private fun SelectSubPartBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.88f)
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
                 Row(
@@ -2090,7 +2087,7 @@ private fun SelectSubstituteForAddBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.8f)
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             Row(
@@ -2293,7 +2290,7 @@ private fun AddSubstituteBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.75f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -2485,7 +2482,7 @@ private fun BomFilterBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -2972,7 +2969,7 @@ private fun SelectParentAssemblyBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             // Header Section
@@ -3307,7 +3304,7 @@ internal fun SelectUnitBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.82f)
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             Row(
@@ -3765,7 +3762,7 @@ private fun SelectPhaseBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.82f)
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             Row(

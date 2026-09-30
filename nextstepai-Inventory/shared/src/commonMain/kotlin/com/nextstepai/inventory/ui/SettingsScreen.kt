@@ -1007,6 +1007,7 @@ fun SettingsScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .imePadding()
                                 .padding(horizontal = 24.dp, vertical = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {

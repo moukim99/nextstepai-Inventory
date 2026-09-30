@@ -69,34 +69,6 @@ fun CompanyScreen(
                 onBackClick = onBackClick
             )
         },
-        floatingActionButton = {
-            Box(
-                modifier = Modifier.padding(bottom = 20.dp, start = 12.dp, end = 12.dp)
-            ) {
-                ExtendedFloatingActionButton(
-                    onClick = { viewModel.openAddCompanyDialog() },
-                    containerColor = Color(0xFF4F46E5),
-                    contentColor = Color.White,
-                    shape = RoundedCornerShape(18.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(Res.string.add_new_company),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "تسجيل شركة",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.5.sp
-                        )
-                    )
-                }
-            }
-        },
-        floatingActionButtonPosition = FabPosition.Start,
         modifier = modifier
     ) { paddingValues ->
         Box(
@@ -303,7 +275,7 @@ fun CompanyScreen(
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
-                        contentPadding = PaddingValues(bottom = 80.dp)
+                        contentPadding = PaddingValues(bottom = 16.dp)
                     ) {
                         itemsIndexed(uiState.companies, key = { index, company -> "company-${company.id}-$index" }) { _, company ->
                             val stats = uiState.companyStatsMap[company.id] ?: CompanyStats()
@@ -315,6 +287,31 @@ fun CompanyScreen(
                         }
                     }
                 }
+            }
+
+            ExtendedFloatingActionButton(
+                onClick = { viewModel.openAddCompanyDialog() },
+                containerColor = Color(0xFF4F46E5),
+                contentColor = Color.White,
+                shape = RoundedCornerShape(18.dp),
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 12.dp, start = 12.dp, end = 12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(Res.string.add_new_company),
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "تسجيل شركة",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp
+                    )
+                )
             }
         }
     }
@@ -926,7 +923,7 @@ private fun CompanyDetailsBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.92f)
+                .imePadding()
         ) {
             // 1. Header Section
             Column(
@@ -2717,7 +2714,7 @@ private fun AddCompanyBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.92f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -3253,7 +3250,7 @@ private fun ParentCompanySelectionBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.70f)
+                .imePadding()
                 .padding(horizontal = 20.dp)
         ) {
             // Header Section
@@ -3600,7 +3597,7 @@ private fun AddCompanyAttachmentBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.72f)
+                .imePadding()
         ) {
             // 1. Header Section
             Row(
@@ -3995,7 +3992,7 @@ private fun AddContactBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.70f)
+                .imePadding()
         ) {
             // Header
             Row(
@@ -4184,7 +4181,7 @@ private fun AddAddressBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.70f)
+                .imePadding()
         ) {
             // Header
             Row(
@@ -4382,7 +4379,7 @@ private fun AddBankAccountBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -4707,7 +4704,7 @@ private fun EditLegalRecordBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -5095,7 +5092,7 @@ private fun AddManufacturerPartBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.72f)
+                .imePadding()
         ) {
             // 1. Header Section
             Row(
@@ -5474,7 +5471,7 @@ private fun AddSupplierPartBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.72f)
+                .imePadding()
         ) {
             // Header
             Row(
@@ -5818,7 +5815,7 @@ private fun CompanyFilterBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
         ) {
             // 1. Header Section
             Row(

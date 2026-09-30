@@ -77,34 +77,6 @@ fun PurchaseOrderScreen(
                 onBackClick = onBackClick
             )
         },
-        floatingActionButton = {
-            Box(
-                modifier = Modifier.padding(bottom = 20.dp, start = 12.dp, end = 12.dp)
-            ) {
-                ExtendedFloatingActionButton(
-                    onClick = { viewModel.setAddOrderDialogOpen(true) },
-                    containerColor = Color(0xFF4F46E5),
-                    contentColor = Color.White,
-                    shape = RoundedCornerShape(18.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(Res.string.add_new_order),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "أمر شراء جديد",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.5.sp
-                        )
-                    )
-                }
-            }
-        },
-        floatingActionButtonPosition = FabPosition.Start,
         modifier = modifier
     ) { paddingValues ->
         Box(
@@ -271,7 +243,7 @@ fun PurchaseOrderScreen(
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(bottom = 80.dp)
+                        contentPadding = PaddingValues(bottom = 16.dp)
                     ) {
                         itemsIndexed(uiState.orders, key = { index, order -> "po-${order.id}-$index" }) { _, order ->
                             PurchaseOrderCard(
@@ -281,6 +253,31 @@ fun PurchaseOrderScreen(
                         }
                     }
                 }
+            }
+
+            ExtendedFloatingActionButton(
+                onClick = { viewModel.setAddOrderDialogOpen(true) },
+                containerColor = Color(0xFF4F46E5),
+                contentColor = Color.White,
+                shape = RoundedCornerShape(18.dp),
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 12.dp, start = 12.dp, end = 12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(Res.string.add_new_order),
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "أمر شراء جديد",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp
+                    )
+                )
             }
         }
     }
@@ -431,7 +428,7 @@ private fun PurchaseOrdersTopBar(
                     containerColor = Color.White,
                     shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
                 ) {
-                    Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
+                    Box(modifier = Modifier.fillMaxWidth().imePadding()) {
                         SalesOrderScreen(
                             onNavigateBack = { isSalesOrderDialogOpen = false }
                         )
@@ -678,7 +675,7 @@ private fun OrderDetailsBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.88f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -922,7 +919,7 @@ private fun AddPurchaseOrderBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.92f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -1801,7 +1798,7 @@ private fun SelectSupplierBottomSheet(
         containerColor = Color.White,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f).padding(horizontal = 20.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().imePadding().padding(horizontal = 20.dp, vertical = 10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("اختر المورد المعتمد لأمر الشراء", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color(0xFF0F172A))
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "إغلاق") }
@@ -1867,7 +1864,7 @@ private fun SelectPartForPOBottomSheet(
         containerColor = Color.White,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f).padding(horizontal = 20.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().imePadding().padding(horizontal = 20.dp, vertical = 10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("اختر المكون المتاح لأمر الشراء", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color(0xFF0F172A))
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "إغلاق") }
@@ -1933,7 +1930,7 @@ private fun SelectBuildOrderForPOBottomSheet(
         containerColor = Color.White,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f).padding(horizontal = 20.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().imePadding().padding(horizontal = 20.dp, vertical = 10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("اختر أمر الإنتاج لتغطية العجز", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color(0xFF0F172A))
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "إغلاق") }
@@ -1999,7 +1996,7 @@ private fun SelectSalesOrderForPOBottomSheet(
         containerColor = Color.White,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f).padding(horizontal = 20.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().imePadding().padding(horizontal = 20.dp, vertical = 10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("اختر أمر بيع العميل المراد التوريد له", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color(0xFF0F172A))
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "إغلاق") }
@@ -2076,7 +2073,7 @@ private fun AddPOLineItemBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -2291,7 +2288,7 @@ private fun PurchaseOrderFilterBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
         ) {
             // Header Section
             Row(

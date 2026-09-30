@@ -369,12 +369,19 @@ class StockItemTable {
         )
         stockItems.add(newItem)
 
+        val trackingNotes = if (newItem.link.isNotBlank()) {
+            if (newItem.notes.isNotBlank()) "مرجع الوثيقة: ${newItem.link} | ${newItem.notes}" else "مرجع الوثيقة: ${newItem.link}"
+        } else {
+            newItem.notes
+        }
+
         recordTracking(
             stockItemId = newItem.id,
             trackingType = StockTrackingType.CREATED,
-            label = "إنشاء وحدة مخزنية جديدة",
-            notes = newItem.notes,
-            deltas = "{\"quantity\":[0.0,${newItem.quantity}],\"status\":[0,${newItem.status.code}]}"
+            userId = newItem.stocktakeUserId,
+            label = "استلام شحنة مخزنية (Stock In)",
+            notes = trackingNotes,
+            deltas = "{\"quantity\":[0.0,${newItem.quantity}],\"batch\":\"${newItem.batch}\",\"status\":[0,${newItem.status.code}],\"locationId\":${newItem.locationId}}"
         )
 
         return newItem

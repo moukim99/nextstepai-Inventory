@@ -1,6 +1,10 @@
 package com.nextstepai.inventory.ui
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.launch
 import com.nextstepai.inventory.data.*
 import com.nextstepai.inventory.repository.CompanyRepository
 import com.nextstepai.inventory.repository.PartRepository
@@ -105,82 +109,86 @@ class CompanyViewModel(
     }
 
     fun loadData() {
-        val filter = _uiState.value.roleFilter
-        var list = repository.searchCompanies(
-            query = _uiState.value.searchQuery,
-            supplierOnly = filter == CompanyRoleFilter.SUPPLIER_ONLY,
-            manufacturerOnly = filter == CompanyRoleFilter.MANUFACTURER_ONLY,
-            customerOnly = filter == CompanyRoleFilter.CUSTOMER_ONLY
-        )
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val filter = _uiState.value.roleFilter
+                var list = repository.searchCompanies(
+                    query = _uiState.value.searchQuery,
+                    supplierOnly = filter == CompanyRoleFilter.SUPPLIER_ONLY,
+                    manufacturerOnly = filter == CompanyRoleFilter.MANUFACTURER_ONLY,
+                    customerOnly = filter == CompanyRoleFilter.CUSTOMER_ONLY
+                )
 
-        val allCompanies = repository.getCompanies()
-        val supCount = allCompanies.count { it.isSupplier }
-        val mfgCount = allCompanies.count { it.isManufacturer }
-        val custCount = allCompanies.count { it.isCustomer }
+                val allCompanies = repository.getCompanies()
+                val supCount = allCompanies.count { it.isSupplier }
+                val mfgCount = allCompanies.count { it.isManufacturer }
+                val custCount = allCompanies.count { it.isCustomer }
 
-        val statsMap = list.associate { company ->
-            val supParts = repository.getSupplierPartsForCompany(company.id).size
-            val mfgParts = repository.getManufacturerPartsForCompany(company.id).size
-            val orders = poRepository.searchOrders("", supplierId = company.id).size
-            val addrs = repository.getAddressesForCompany(company.id)
-            val primaryAddr = addrs.find { it.isPrimary } ?: addrs.firstOrNull()
-            val addrText = primaryAddr?.let {
-                val cityStr = it.city.ifBlank { it.line1 }
-                if (cityStr.isNotBlank()) {
-                    if (it.country.isNotBlank()) "$cityStr، ${it.country}" else cityStr
-                } else company.address
-            } ?: company.address
+                val statsMap = list.associate { company ->
+                    val supParts = repository.getSupplierPartsForCompany(company.id).size
+                    val mfgParts = repository.getManufacturerPartsForCompany(company.id).size
+                    val orders = poRepository.searchOrders("", supplierId = company.id).size
+                    val addrs = repository.getAddressesForCompany(company.id)
+                    val primaryAddr = addrs.find { it.isPrimary } ?: addrs.firstOrNull()
+                    val addrText = primaryAddr?.let {
+                        val cityStr = it.city.ifBlank { it.line1 }
+                        if (cityStr.isNotBlank()) {
+                            if (it.country.isNotBlank()) "$cityStr، ${it.country}" else cityStr
+                        } else company.address
+                    } ?: company.address
 
-            company.id to CompanyStats(
-                supplierPartsCount = supParts,
-                manufacturerPartsCount = mfgParts,
-                ordersCount = orders,
-                primaryAddress = addrText
-            )
-        }
-
-        // Apply country & scope filters in memory (Zero DB changes)
-        val selectedCountries = _uiState.value.selectedCountries
-        val selectedScope = _uiState.value.selectedScope
-
-        if (selectedCountries.isNotEmpty()) {
-            list = list.filter { comp ->
-                val stats = statsMap[comp.id]
-                val addrNorm = ((stats?.primaryAddress ?: "") + " " + comp.address).normalizeArabic()
-                selectedCountries.any { country ->
-                    val cNorm = country.normalizeArabic()
-                    addrNorm.contains(cNorm) ||
-                    (country.contains("السعودية") && (addrNorm.contains("الرياض") || addrNorm.contains("جده") || addrNorm.contains("السعوديه") || comp.phone.startsWith("+966"))) ||
-                    (country.contains("الصين") && (addrNorm.contains("الصين") || addrNorm.contains("شنغهاي") || comp.phone.startsWith("+86")))
+                    company.id to CompanyStats(
+                        supplierPartsCount = supParts,
+                        manufacturerPartsCount = mfgParts,
+                        ordersCount = orders,
+                        primaryAddress = addrText
+                    )
                 }
-            }
-        }
 
-        if (selectedScope == "DOMESTIC") {
-            list = list.filter { comp ->
-                val stats = statsMap[comp.id]
-                val addrStr = (stats?.primaryAddress ?: "") + " " + comp.address
-                addrStr.contains("السعودية", ignoreCase = true) || addrStr.contains("الرياض", ignoreCase = true) || comp.phone.startsWith("+966")
-            }
-        } else if (selectedScope == "GLOBAL") {
-            list = list.filter { comp ->
-                val stats = statsMap[comp.id]
-                val addrStr = (stats?.primaryAddress ?: "") + " " + comp.address
-                !addrStr.contains("السعودية", ignoreCase = true) && !addrStr.contains("الرياض", ignoreCase = true) && !comp.phone.startsWith("+966")
-            }
-        }
+                // Apply country & scope filters in memory (Zero DB changes)
+                val selectedCountries = _uiState.value.selectedCountries
+                val selectedScope = _uiState.value.selectedScope
 
-        val allParts = partRepository.getParts()
+                if (selectedCountries.isNotEmpty()) {
+                    list = list.filter { comp ->
+                        val stats = statsMap[comp.id]
+                        val addrNorm = ((stats?.primaryAddress ?: "") + " " + comp.address).normalizeArabic()
+                        selectedCountries.any { country ->
+                            val cNorm = country.normalizeArabic()
+                            addrNorm.contains(cNorm) ||
+                            (country.contains("السعودية") && (addrNorm.contains("الرياض") || addrNorm.contains("جده") || addrNorm.contains("السعوديه") || comp.phone.startsWith("+966"))) ||
+                            (country.contains("الصين") && (addrNorm.contains("الصين") || addrNorm.contains("شنغهاي") || comp.phone.startsWith("+86")))
+                        }
+                    }
+                }
 
-        _uiState.update {
-            it.copy(
-                companies = list,
-                companyStatsMap = statsMap,
-                totalSuppliersCount = supCount,
-                totalManufacturersCount = mfgCount,
-                totalCustomersCount = custCount,
-                allParts = allParts
-            )
+                if (selectedScope == "DOMESTIC") {
+                    list = list.filter { comp ->
+                        val stats = statsMap[comp.id]
+                        val addrStr = (stats?.primaryAddress ?: "") + " " + comp.address
+                        addrStr.contains("السعودية", ignoreCase = true) || addrStr.contains("الرياض", ignoreCase = true) || comp.phone.startsWith("+966")
+                    }
+                } else if (selectedScope == "GLOBAL") {
+                    list = list.filter { comp ->
+                        val stats = statsMap[comp.id]
+                        val addrStr = (stats?.primaryAddress ?: "") + " " + comp.address
+                        !addrStr.contains("السعودية", ignoreCase = true) && !addrStr.contains("الرياض", ignoreCase = true) && !comp.phone.startsWith("+966")
+                    }
+                }
+
+                val allParts = partRepository.getParts()
+
+                _uiState.update {
+                    it.copy(
+                        companies = list,
+                        companyStatsMap = statsMap,
+                        totalSuppliersCount = supCount,
+                        totalManufacturersCount = mfgCount,
+                        totalCustomersCount = custCount,
+                        allParts = allParts
+                    )
+                }
+            } catch (_: Throwable) {}
         }
     }
 

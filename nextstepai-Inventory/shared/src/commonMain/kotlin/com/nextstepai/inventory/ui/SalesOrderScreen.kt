@@ -77,25 +77,20 @@ fun SalesOrderScreen(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                 )
             }
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { viewModel.setAddOrderDialogOpen(true) },
-                icon = { Icon(Icons.Default.AddShoppingCart, contentDescription = null) },
-                text = { Text("أمر بيع جديد", fontWeight = FontWeight.Bold) },
-                containerColor = Color(0xFF4F46E5),
-                contentColor = Color.White
-            )
         }
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF8FAFC))
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFF8FAFC))
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
             // شريط البحث والرسائل
             OutlinedTextField(
                 value = uiState.searchQuery,
@@ -132,13 +127,28 @@ fun SalesOrderScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
                     itemsIndexed(uiState.orders, key = { index, order -> "so-item-${order.id}-$index" }) { _, order ->
                         SalesOrderCard(order = order, onClick = { viewModel.selectOrder(order) })
                     }
                 }
             }
+        }
+
+            ExtendedFloatingActionButton(
+                onClick = { viewModel.setAddOrderDialogOpen(true) },
+                icon = { Icon(Icons.Default.AddShoppingCart, contentDescription = null) },
+                text = { Text("أمر بيع جديد", fontWeight = FontWeight.Bold) },
+                containerColor = Color(0xFF4F46E5),
+                contentColor = Color.White,
+                shape = RoundedCornerShape(18.dp),
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 12.dp, start = 12.dp, end = 12.dp)
+            )
         }
     }
 
@@ -238,7 +248,7 @@ private fun SalesOrderDetailsBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.88f)
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             // Header
@@ -422,7 +432,7 @@ private fun AddSalesOrderBottomSheet(
         containerColor = Color.White,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
+        Column(modifier = Modifier.fillMaxWidth().imePadding()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -875,7 +885,7 @@ private fun SelectCustomerBottomSheet(
         containerColor = Color.White,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f).padding(horizontal = 20.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().imePadding().padding(horizontal = 20.dp, vertical = 10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("اختر العميل المستهدف لأمر البيع", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color(0xFF0F172A))
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "إغلاق") }
@@ -941,7 +951,7 @@ private fun SelectPartForSOBottomSheet(
         containerColor = Color.White,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f).padding(horizontal = 20.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().imePadding().padding(horizontal = 20.dp, vertical = 10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("اختر المنتج/المادة لأمر البيع", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color(0xFF0F172A))
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "إغلاق") }

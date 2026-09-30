@@ -15,6 +15,7 @@ kotlin = "2.4.10"
 kotlinx-coroutines = "1.11.0"
 kotlinx-datetime = "0.8.0"
 material3 = "1.11.0-alpha07"
+uuid-creator = "6.1.1"
 androidx-room = "2.7.1"
 androidx-sqlite = "2.7.1"
 androidx-datastore = "1.1.3"
@@ -57,6 +58,7 @@ androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version
 androidx-biometric-ktx = { module = "androidx.biometric:biometric-ktx", version.ref = "androidx-biometric" }
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanist-permissions" }
 camerak = { module = "io.github.kashif-mehmood-km:camerak", version.ref = "camerak" }
+uuidCreator = { module = "com.github.f4b6a3:uuid-creator", version.ref = "uuid-creator" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

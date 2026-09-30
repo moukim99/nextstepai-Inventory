@@ -1,5 +1,7 @@
 package com.nextstepai.inventory.data
 
+import kotlin.time.Clock
+
 /**
  * تمثيل تصنيف القطعة (PartCategory) ضمن الهيكل الشجري للمؤسسة.
  *
@@ -49,24 +51,174 @@ data class Part(
     val creationDate: String = "",
     val creationUserId: Long = 1L,
     val responsibleUserId: Long? = null,
+    val metadata: String = "{}",
 
     // الحقول المحسوبة والكميات التراكمية للعرض في الواجهات
     val totalInStock: Double = 0.0,
     val allocatedToBuildOrders: Double = 0.0,
     val allocatedToSalesOrders: Double = 0.0,
+    val totalHardAllocated: Double = 0.0,
+    val totalSoftAllocated: Double = 0.0,
     val orderingQuantity: Double = 0.0
 ) {
     /**
-     * حساب الكمية المتاحة الصافية للاستخدام (المخزون الكلي - الكميات المحجوزة لأوامر الإنتاج والبيع)
+     * المعرف الفريد السلسلي للقطعة للاستخدام الموحد في المسارات وحفظ الملفات.
      */
-    val availableStock: Double
-        get() = (totalInStock - allocatedToBuildOrders - allocatedToSalesOrders).coerceAtLeast(0.0)
+    val effectiveUuid: String
+        get() = "part-$id"
 
     /**
-     * التحقق مما إذا كان مستوى المخزون أقل من الحد الأدنى المطلوب للتنبيه.
+     * حساب إجمالي المخصصات المحجوزة المؤكدة (Committed Allocated = HARD)
+     */
+    val committedAllocated: Double
+        get() = totalHardAllocated
+
+    /**
+     * حساب الكمية المتاحة الصافية للاستخدام (Live Balances Formula: Net Available = Total On-Hand - Committed Allocated)
+     */
+    val availableStock: Double
+        get() = (totalInStock - committedAllocated).coerceAtLeast(0.0)
+
+    /**
+     * إجمالي المحجوز الكلي (مؤكد + مبدئي)
+     */
+    val totalAllocatedQuantity: Double
+        get() = committedAllocated + totalSoftAllocated
+
+    /**
+     * التحقق مما إذا كان مستوى المخزون المتاح أقل من الحد الأدنى المطلوب للتنبيه.
      */
     val isLowStock: Boolean
         get() = active && minimumStock > 0 && availableStock < minimumStock
+}
+
+/**
+ * استخراج مسار صورة الملصق المحفوظة للقطعة من عمود metadata JSON.
+ */
+val Part.labelImagePath: String?
+    get() {
+        val idx = metadata.indexOf("\"labelImagePath\":")
+        if (idx == -1) return null
+        val sub = metadata.substring(idx + 17).trimStart()
+        if (sub.startsWith("null")) return null
+        val quoteStart = sub.indexOf('"')
+        if (quoteStart == -1) return null
+        val quoteEnd = sub.indexOf('"', quoteStart + 1)
+        if (quoteEnd == -1) return null
+        return sub.substring(quoteStart + 1, quoteEnd)
+    }
+
+/**
+ * استخراج الطابع الزمني لتوليد بطاقة ملصق القطعة من عمود metadata JSON.
+ */
+val Part.labelGeneratedAt: Long?
+    get() {
+        val idx = metadata.indexOf("\"labelGeneratedAt\":")
+        if (idx == -1) return null
+        val sub = metadata.substring(idx + 19).trimStart()
+        val numStr = sub.takeWhile { it.isDigit() }
+        return numStr.toLongOrNull()
+    }
+
+/**
+ * استخراج بيانات لقطة ملصق القطعة من عمود metadata JSON.
+ */
+val Part.labelSnapshotData: String?
+    get() {
+        val idx = metadata.indexOf("\"labelSnapshotData\":")
+        if (idx == -1) return null
+        val sub = metadata.substring(idx + 20).trimStart()
+        val quoteStart = sub.indexOf('"')
+        if (quoteStart == -1) return null
+        val quoteEnd = sub.indexOf('"', quoteStart + 1)
+        if (quoteEnd == -1) return null
+        return sub.substring(quoteStart + 1, quoteEnd)
+    }
+
+/**
+ * نص لقطة ملصق القطعة الحالي المحسوب قياسياً للمطابقة لكشف الفروقات والأرشفة.
+ */
+val Part.currentLabelSnapshot: String
+    get() = "$name|$ipn|$categoryId|$component|$assembly|$salable"
+
+/**
+ * اكتشاف البيانات القديمة (Stale Label Detection) بمقارنة بيانات القطعة اللحظية باللقطة المطبوعة.
+ */
+val Part.isLabelStale: Boolean
+    get() {
+        val genAt = labelGeneratedAt ?: return false
+        val snapshot = labelSnapshotData ?: return true
+        return currentLabelSnapshot != snapshot
+    }
+
+/**
+ * تحليل الفروقات التفصيلية بين بيانات القطعة الحالية واللقطة المطبوعة في الملصق لتوضيح أسباب إعادة الطباعة للمشرف.
+ */
+fun Part.getLabelDiffDetails(categoryName: String? = null): List<String> {
+    val snapshot = labelSnapshotData ?: return listOf("لم يتم توليد لقطة سابقة للملصق")
+    val partsList = snapshot.split("|")
+    if (partsList.size < 6) return listOf("بيانات اللقطة المطبوعة غير مكتملة")
+
+    val snapName = partsList[0]
+    val snapIpn = partsList[1]
+    val snapCategoryId = partsList[2].takeIf { it != "null" }?.toLongOrNull()
+    val snapComponent = partsList[3].toBoolean()
+    val snapAssembly = partsList[4].toBoolean()
+    val snapSalable = partsList[5].toBoolean()
+
+    val diffs = mutableListOf<String>()
+    if (snapName != name) {
+        diffs.add("تم تغيير اسم القطعة من '$snapName' إلى '$name'")
+    }
+    if (snapIpn != ipn) {
+        diffs.add("تم تعديل كود الـ IPN من '$snapIpn' إلى '$ipn'")
+    }
+    if (snapCategoryId != categoryId) {
+        val catText = if (!categoryName.isNullOrBlank()) "إلى '$categoryName'" else ""
+        diffs.add("تم تعديل تصنيف القطعة $catText".trim())
+    }
+    if (snapComponent != component || snapAssembly != assembly || snapSalable != salable) {
+        diffs.add("تم تعديل طبيعة وتصنيف استخدام القطعة")
+    }
+
+    if (diffs.isEmpty() && isLabelStale) {
+        diffs.add("تم تحديث بيانات تعريفية على القطعة")
+    }
+    return diffs
+}
+
+/**
+ * دمج الخواص والمفاتيح داخل نص الـ JSON لعمود metadata دون مسح الخواص السابقة.
+ */
+private fun updatePartJsonMetadata(existingJson: String, updates: Map<String, String>): String {
+    val map = mutableMapOf<String, String>()
+    val clean = existingJson.trim().removePrefix("{").removeSuffix("}").trim()
+    if (clean.isNotBlank()) {
+        val regex = """"(.*?)"\s*:\s*("(.*?)"|[\d\.]+|true|false|null)""".toRegex()
+        regex.findAll(clean).forEach { match ->
+            val key = match.groupValues[1]
+            val value = match.groupValues[2]
+            map[key] = value
+        }
+    }
+    updates.forEach { (k, v) -> map[k] = v }
+    return map.entries.joinToString(prefix = "{", postfix = "}") { (k, v) -> "\"$k\":$v" }
+}
+
+/**
+ * تحديث بيانات لقطة أرشفة ملصق القطعة المودعة في عمود metadata دون مسح الخواص السابقة.
+ */
+fun Part.withLabelSnapshot(imagePath: String, genAt: Long, snapshotData: String): Part {
+    val safeData = snapshotData.replace("\"", "\\\"")
+    val updatedMetadata = updatePartJsonMetadata(
+        metadata,
+        mapOf(
+            "labelImagePath" to "\"$imagePath\"",
+            "labelGeneratedAt" to genAt.toString(),
+            "labelSnapshotData" to "\"$safeData\""
+        )
+    )
+    return this.copy(metadata = updatedMetadata)
 }
 
 /**
@@ -135,6 +287,7 @@ class PartTable {
                 minimumStock = 10.0,
                 totalInStock = 8.0, // ينشط تنبيه انخفاض المخزون
                 allocatedToBuildOrders = 2.0,
+                totalHardAllocated = 2.0,
                 creationDate = "2025-02-01"
             )
         )
@@ -169,6 +322,7 @@ class PartTable {
                 minimumStock = 5.0,
                 totalInStock = 30.0,
                 allocatedToSalesOrders = 5.0,
+                totalHardAllocated = 5.0,
                 creationDate = "2025-02-12"
             )
         )
@@ -209,7 +363,7 @@ class PartTable {
     }
 
     /**
-     * إدراج قطعة جديدة مع التحقق من شروط التبعية الشجرية للقطع (Template/Variant Rules).
+     * إدراج قطعة جديدة مع التحقق من شروط التبعية الشجرية وتوليد لقطة أرشفة ملصق القطعة المبدئية تلقائياً.
      */
     fun insertPart(part: Part): Part {
         // التحقق منطقياً من تبعية القالب: لا يمكن ربط variantOfId إلا لقطعة معرّفة كـ isTemplate = true
@@ -220,11 +374,23 @@ class PartTable {
             }
         }
 
-        val newPart = part.copy(
-            id = if (part.id == 0L) nextPartId++ else part.id
-        )
-        parts.add(newPart)
-        return newPart
+        val assignedId = if (part.id == 0L) nextPartId++ else part.id
+        val isNewPart = part.id == 0L || part.labelGeneratedAt == null
+        val partWithBaseInfo = part.copy(id = assignedId)
+
+        // الأتمتة التلقائية: توليد وحفظ لقطة البيانات التأسيسية فور الإنشاء
+        val finalPart = if (isNewPart) {
+            val now = Clock.System.now().toEpochMilliseconds()
+            val initialSnapshot = partWithBaseInfo.currentLabelSnapshot
+            val imagePath = "files/labels/parts/part_${partWithBaseInfo.effectiveUuid}.webp"
+            partWithBaseInfo.withLabelSnapshot(imagePath, now, initialSnapshot)
+        } else {
+            partWithBaseInfo
+        }
+
+        parts.removeAll { it.id == finalPart.id }
+        parts.add(finalPart)
+        return finalPart
     }
 
     /**
@@ -237,6 +403,13 @@ class PartTable {
             return true
         }
         return false
+    }
+
+    /**
+     * حذف قطعة من القائمة المباشرة بالذاكرة.
+     */
+    fun deletePart(partId: Long): Boolean {
+        return parts.removeAll { it.id == partId }
     }
 
     /**

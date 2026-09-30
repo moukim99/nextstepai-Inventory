@@ -78,34 +78,6 @@ fun BuildOrderScreen(
                 onBackClick = onBackClick
             )
         },
-        floatingActionButton = {
-            Box(
-                modifier = Modifier.padding(bottom = 20.dp, start = 12.dp, end = 12.dp)
-            ) {
-                ExtendedFloatingActionButton(
-                    onClick = { viewModel.setAddDialogOpen(true) },
-                    containerColor = Color(0xFF4F46E5),
-                    contentColor = Color.White,
-                    shape = RoundedCornerShape(18.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(Res.string.add_new_build),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "إنشاء أمر تصنيع",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.5.sp
-                        )
-                    )
-                }
-            }
-        },
-        floatingActionButtonPosition = FabPosition.Start,
         modifier = modifier
     ) { paddingValues ->
         Box(
@@ -273,7 +245,7 @@ fun BuildOrderScreen(
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(bottom = 24.dp)
+                        contentPadding = PaddingValues(bottom = 16.dp)
                     ) {
                         itemsIndexed(uiState.builds, key = { index, build -> "build-${build.id}-$index" }) { _, build ->
                             BuildOrderRichCard(
@@ -285,6 +257,31 @@ fun BuildOrderScreen(
                         }
                     }
                 }
+            }
+
+            ExtendedFloatingActionButton(
+                onClick = { viewModel.setAddDialogOpen(true) },
+                containerColor = Color(0xFF4F46E5),
+                contentColor = Color.White,
+                shape = RoundedCornerShape(18.dp),
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 12.dp, start = 12.dp, end = 12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(Res.string.add_new_build),
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "إنشاء أمر تصنيع",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp
+                    )
+                )
             }
         }
     }
@@ -899,7 +896,7 @@ private fun BuildDetailsBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.92f)
+                .imePadding()
         ) {
             // Header Section
             Column(
@@ -1970,7 +1967,7 @@ private fun AddBuildOrderBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.92f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -2659,7 +2656,7 @@ private fun SelectSalesOrderBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.82f)
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             Row(
@@ -2935,7 +2932,7 @@ private fun SelectLocationForBuildBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.82f)
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             Row(
@@ -3170,7 +3167,7 @@ private fun SelectAssemblyForBuildBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.82f)
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             Row(
@@ -3410,7 +3407,7 @@ private fun BuildOrderFilterBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .imePadding()
         ) {
             // Header Section
             Row(
@@ -3865,7 +3862,7 @@ private fun SelectUserBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.82f)
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             Row(

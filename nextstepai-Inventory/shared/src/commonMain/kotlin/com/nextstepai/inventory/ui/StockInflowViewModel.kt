@@ -110,15 +110,14 @@ class StockInflowViewModel(
     fun addQuantityForKnownPart(part: PartEntity, quantity: Double) {
         val currentDefaultLocId = _uiState.value.defaultLocationId
         val currentDefaultLocName = _uiState.value.defaultLocationName
-        val targetLocId = part.defaultLocationId ?: currentDefaultLocId
 
         val newItem = ScannedInflowItem(
             barcode = part.ipn.ifBlank { part.uuid },
-            partId = part.id,
+            partId = part.uuid.removePrefix("part-").toLongOrNull() ?: 1L,
             partUuid = part.uuid,
             name = part.name,
             quantity = quantity,
-            locationId = targetLocId,
+            locationId = currentDefaultLocId,
             locationName = currentDefaultLocName,
             isNewPart = false,
             croppedImageBytes = _scannedImageBytes.value

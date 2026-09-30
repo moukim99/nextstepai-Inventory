@@ -1,6 +1,7 @@
 package com.nextstepai.inventory.data.db
 
 data class AppSettingsEntity(
+    val uuid: String = "default-settings",
     val id: Int = 1,
     val notificationTime: String = "09:00",
     val soundEnabled: Boolean = true,

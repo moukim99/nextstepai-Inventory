@@ -1,5 +1,14 @@
 package com.nextstepai.inventory.data
 
+enum class AttachmentType { IMAGE, DOCUMENT, LINK }
+
+data class PendingAttachment(
+    val id: Long = 0L,
+    val type: AttachmentType,
+    val pathOrUrl: String,
+    val label: String
+)
+
 /**
  * نموذج بيانات مرفقات ووثائق القطع (PartAttachment) المستوحى من InvenTree.
  *

@@ -43,6 +43,10 @@ fun ManagementScreen(
 ) {
     var currentSubView by remember { mutableStateOf(ManagementSubView.MAIN_DASHBOARD) }
 
+    CommonBackHandler(enabled = currentSubView != ManagementSubView.MAIN_DASHBOARD) {
+        currentSubView = ManagementSubView.MAIN_DASHBOARD
+    }
+
     val companyUiState by companyViewModel.uiState.collectAsState()
     val poUiState by purchaseOrderViewModel.uiState.collectAsState()
 

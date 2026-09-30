@@ -3,6 +3,8 @@ package com.nextstepai.inventory
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,8 +21,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.nextstepai.inventory.data.AppThemeMode
 import com.nextstepai.inventory.ui.*
 import com.nextstepai.inventory.ui.theme.AppIcons
@@ -73,6 +77,10 @@ fun App() {
                 var productionResetKey by remember { mutableIntStateOf(0) }
                 var managementResetKey by remember { mutableIntStateOf(0) }
 
+                CommonBackHandler(enabled = loginUiState.isLoggedIn && !showSplash && currentScreen != Screen.WAREHOUSE) {
+                    currentScreen = Screen.WAREHOUSE
+                }
+
                 val reloadAllData = remember {
                     {
                         partViewModel.loadData()
@@ -100,11 +108,12 @@ fun App() {
                         navigationSuite = {
                             Surface(
                                 modifier = Modifier
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .navigationBarsPadding()
+                                    .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 4.dp)
                                     .fillMaxWidth(),
-                                shape = RoundedCornerShape(25.dp),
+                                shape = RoundedCornerShape(24.dp),
                                 color = MaterialTheme.colorScheme.surface,
-                                shadowElevation = 4.dp,
+                                shadowElevation = 6.dp,
                                 border = BorderStroke(
                                     1.dp,
                                     MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
@@ -115,7 +124,8 @@ fun App() {
                                     colors = NavigationSuiteDefaults.colors(
                                         navigationBarContainerColor = Color.Transparent,
                                         shortNavigationBarContainerColor = Color.Transparent
-                                    )
+                                    ),
+                                    modifier = Modifier.height(64.dp)
                                 ) {
                                     item(
                                         selected = currentScreen == Screen.WAREHOUSE,
@@ -130,7 +140,15 @@ fun App() {
                                                 tint = if (currentScreen == Screen.WAREHOUSE) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         },
-                                        label = { Text(stringResource(Res.string.nav_warehouse)) }
+                                        label = {
+                                            Text(
+                                                text = stringResource(Res.string.nav_warehouse),
+                                                style = MaterialTheme.typography.labelMedium.copy(
+                                                    fontWeight = if (currentScreen == Screen.WAREHOUSE) FontWeight.Bold else FontWeight.Medium,
+                                                    fontSize = 12.sp
+                                                )
+                                            )
+                                        }
                                     )
                                     item(
                                         selected = currentScreen == Screen.PRODUCTION,
@@ -145,7 +163,15 @@ fun App() {
                                                 tint = if (currentScreen == Screen.PRODUCTION) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         },
-                                        label = { Text(stringResource(Res.string.nav_builds)) }
+                                        label = {
+                                            Text(
+                                                text = stringResource(Res.string.nav_builds),
+                                                style = MaterialTheme.typography.labelMedium.copy(
+                                                    fontWeight = if (currentScreen == Screen.PRODUCTION) FontWeight.Bold else FontWeight.Medium,
+                                                    fontSize = 12.sp
+                                                )
+                                            )
+                                        }
                                     )
                                     item(
                                         selected = currentScreen == Screen.MANAGEMENT,
@@ -160,7 +186,15 @@ fun App() {
                                                 tint = if (currentScreen == Screen.MANAGEMENT) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         },
-                                        label = { Text(stringResource(Res.string.nav_management)) }
+                                        label = {
+                                            Text(
+                                                text = stringResource(Res.string.nav_management),
+                                                style = MaterialTheme.typography.labelMedium.copy(
+                                                    fontWeight = if (currentScreen == Screen.MANAGEMENT) FontWeight.Bold else FontWeight.Medium,
+                                                    fontSize = 12.sp
+                                                )
+                                            )
+                                        }
                                     )
                                     item(
                                         selected = currentScreen == Screen.SETTINGS,
@@ -172,7 +206,15 @@ fun App() {
                                                 tint = if (currentScreen == Screen.SETTINGS) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         },
-                                        label = { Text(stringResource(Res.string.nav_settings)) }
+                                        label = {
+                                            Text(
+                                                text = stringResource(Res.string.nav_settings),
+                                                style = MaterialTheme.typography.labelMedium.copy(
+                                                    fontWeight = if (currentScreen == Screen.SETTINGS) FontWeight.Bold else FontWeight.Medium,
+                                                    fontSize = 12.sp
+                                                )
+                                            )
+                                        }
                                     )
                                 }
                             }

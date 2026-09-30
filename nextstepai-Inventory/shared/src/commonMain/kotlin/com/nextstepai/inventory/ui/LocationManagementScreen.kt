@@ -75,6 +75,7 @@ import com.nextstepai.inventory.data.calculateOccupancyPercentage
 import com.nextstepai.inventory.data.capacityUnit
 import com.nextstepai.inventory.data.contactPerson
 import com.nextstepai.inventory.data.contactPhone
+import com.nextstepai.inventory.data.currentLabelSnapshot
 import com.nextstepai.inventory.data.effectiveCapacity
 import com.nextstepai.inventory.data.formatQuantity
 import com.nextstepai.inventory.data.isLabelStale
@@ -297,16 +298,30 @@ fun LocationManagementScreen(
         }
     }
 
+    val onDisabledSwitchClick: (StockLocation) -> Unit = { loc ->
+        val entityTypeName = if (loc.locationType.equals("SITE", ignoreCase = true) || loc.external) "الموقع" else "المستودع"
+        coroutineScope.launch {
+            snackbarHostState.showSnackbar(
+                message = "هذا هو $entityTypeName الوحيد المسجل بالنظام وهو رئيسي أساسي تلقائياً",
+                duration = SnackbarDuration.Short
+            )
+        }
+    }
+
     val onTogglePrimary: (StockLocation, Boolean) -> Unit = { loc, newChecked ->
-        val isSite = loc.locationType.equals("SITE", ignoreCase = true) || loc.external
-        val isWarehouse = loc.locationType.equals("WAREHOUSE", ignoreCase = true)
+        val isExternal = loc.external
+        val isSite = loc.locationType.equals("SITE", ignoreCase = true) && !loc.external
+        val isWarehouse = loc.locationType.equals("WAREHOUSE", ignoreCase = true) && !loc.external
 
         if (newChecked) {
             val existingPrimary = uiState.locations.find { existing ->
                 existing.id != loc.id && existing.isPrimary &&
-                        if (isSite) (existing.locationType.equals("SITE", ignoreCase = true) || existing.external)
-                        else if (isWarehouse) existing.locationType.equals("WAREHOUSE", ignoreCase = true)
-                        else false
+                        when {
+                            isExternal -> existing.external
+                            isSite -> existing.locationType.equals("SITE", ignoreCase = true) && !existing.external
+                            isWarehouse -> existing.locationType.equals("WAREHOUSE", ignoreCase = true) && !existing.external
+                            else -> false
+                        }
             }
 
             if (existingPrimary != null) {
@@ -320,12 +335,18 @@ fun LocationManagementScreen(
                 pendingEnableLocationId = loc.id
                 coroutineScope.launch {
                     snackbarHostState.showSnackbar(
-                        message = "يجب إلغاء تعيين الموقع الأساسي الحالي أولاً",
+                        message = "يجب إلغاء تعيين الموقع الأساسي الحالي (${existingPrimary.name}) أولاً",
                         duration = SnackbarDuration.Short
                     )
                 }
             } else {
                 viewModel.updateLocation(loc.withPrimary(true))
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar(
+                        message = "تم تعيين '${loc.name}' كـ موقع أساسي بنجاح",
+                        duration = SnackbarDuration.Short
+                    )
+                }
             }
         } else {
             viewModel.updateLocation(loc.withPrimary(false))
@@ -342,6 +363,19 @@ fun LocationManagementScreen(
                     highlightedLocationId = pendingTarget.id
                     viewModel.updateLocation(pendingTarget.withPrimary(true))
                     pendingEnableLocationId = null
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = "تم تعيين '${pendingTarget.name}' كـ موقع أساسي تلقائياً",
+                            duration = SnackbarDuration.Short
+                        )
+                    }
+                }
+            } else {
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar(
+                        message = "تم إلغاء تعيين الموقع الأساسي بنجاح",
+                        duration = SnackbarDuration.Short
+                    )
                 }
             }
         }
@@ -367,42 +401,17 @@ fun LocationManagementScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             LocationTopBar(onBackClick = onBackClick)
-        },
-        floatingActionButton = {
-            Box(
-                modifier = Modifier.padding(bottom = 16.dp, start = 12.dp, end = 12.dp)
-            ) {
-                ExtendedFloatingActionButton(
-                    onClick = { viewModel.setAddLocationDialogOpen(true) },
-                    containerColor = Color(0xFF4F46E5),
-                    contentColor = Color.White,
-                    shape = RoundedCornerShape(18.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AddLocation,
-                        contentDescription = "إضافة موقع",
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "إضافة موقع",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.5.sp
-                        )
-                    )
-                }
-            }
-        },
-        floatingActionButtonPosition = FabPosition.Start
+        }
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp)
         ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
             Spacer(modifier = Modifier.height(12.dp))
 
             // شريط البحث والفلتر: البحث على اليمين والفلتر على اليسار (في RTL)
@@ -575,10 +584,37 @@ fun LocationManagementScreen(
                     listState = listState,
                     highlightedLocationId = highlightedLocationId,
                     onTogglePrimary = onTogglePrimary,
+                    onDisabledSwitchClick = onDisabledSwitchClick,
                     onShowItems = { selectedLocationForItems = it },
                     onPrintLabel = { selectedLocationForPrint = it },
                     onEditLocation = { selectedLocationForEdit = it },
                     onDeleteLocation = { selectedLocationForDelete = it }
+                )
+            }
+        }
+
+            ExtendedFloatingActionButton(
+                onClick = { viewModel.setAddLocationDialogOpen(true) },
+                containerColor = Color(0xFF4F46E5),
+                contentColor = Color.White,
+                shape = RoundedCornerShape(18.dp),
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 16.dp, start = 12.dp, end = 12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AddLocation,
+                    contentDescription = "إضافة موقع",
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "إضافة موقع",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp
+                    )
                 )
             }
         }
@@ -698,7 +734,6 @@ fun LocationManagementScreen(
                     loc.name.equals(scannedResult.trim(), ignoreCase = true)
                 }
                 if (matchedLoc != null) {
-                    selectedLocationForItems = matchedLoc
                     searchQuery = matchedLoc.name
                 } else {
                     searchQuery = scannedResult
@@ -715,7 +750,7 @@ fun LocationManagementScreen(
             parentPath = parentPath,
             onDismiss = { selectedLocationForPrint = null },
             onRegenerateLabel = {
-                val currentSnapshot = "${loc.name}|${loc.parentId}|${loc.effectiveCapacity.formatQuantity()}|${loc.locationType}|${loc.capacityUnit}"
+                val currentSnapshot = loc.currentLabelSnapshot
                 val updated = viewModel.saveLocationLabelSnapshot(loc.id, currentSnapshot)
                 if (updated != null) {
                     selectedLocationForPrint = updated
@@ -845,6 +880,7 @@ private fun LazyLocationsList(
     listState: LazyListState,
     highlightedLocationId: Long?,
     onTogglePrimary: (StockLocation, Boolean) -> Unit,
+    onDisabledSwitchClick: (StockLocation) -> Unit,
     onShowItems: (StockLocation) -> Unit,
     onPrintLabel: (StockLocation) -> Unit,
     onEditLocation: (StockLocation) -> Unit,
@@ -863,6 +899,7 @@ private fun LazyLocationsList(
                 allStockItems = allStockItems,
                 highlightedLocationId = highlightedLocationId,
                 onTogglePrimary = { newChecked -> onTogglePrimary(loc, newChecked) },
+                onDisabledSwitchClick = { onDisabledSwitchClick(loc) },
                 onShowItems = { onShowItems(loc) },
                 onPrintLabel = { onPrintLabel(loc) },
                 onEditLocation = { onEditLocation(loc) },
@@ -879,6 +916,7 @@ private fun LocationCardItem(
     allStockItems: List<StockItem>,
     highlightedLocationId: Long?,
     onTogglePrimary: (Boolean) -> Unit,
+    onDisabledSwitchClick: () -> Unit,
     onShowItems: () -> Unit,
     onPrintLabel: () -> Unit,
     onEditLocation: () -> Unit,
@@ -1233,6 +1271,13 @@ private fun LocationCardItem(
                 ) {
                     if (isPrimaryApplicable) {
                         Surface(
+                            onClick = {
+                                if (isSwitchEnabled) {
+                                    onTogglePrimary(!location.isPrimary)
+                                } else {
+                                    onDisabledSwitchClick()
+                                }
+                            },
                             shape = RoundedCornerShape(12.dp),
                             color = if (location.isPrimary) Color(0xFFFEF3C7) else Color(0xFFF1F5F9),
                             border = BorderStroke(1.dp, if (location.isPrimary) Color(0xFFFDE68A) else Color(0xFFE2E8F0)),
@@ -1255,13 +1300,19 @@ private fun LocationCardItem(
                                 }
                                 Switch(
                                     checked = location.isPrimary,
-                                    enabled = isSwitchEnabled,
+                                    enabled = true,
                                     onCheckedChange = { newChecked ->
-                                        onTogglePrimary(newChecked)
+                                        if (isSwitchEnabled) {
+                                            onTogglePrimary(newChecked)
+                                        } else {
+                                            onDisabledSwitchClick()
+                                        }
                                     },
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = Color.White,
-                                        checkedTrackColor = Color(0xFFD97706)
+                                        checkedTrackColor = Color(0xFFD97706),
+                                        uncheckedThumbColor = Color(0xFF94A3B8),
+                                        uncheckedTrackColor = Color(0xFFE2E8F0)
                                     ),
                                     modifier = Modifier.scale(0.75f)
                                 )
@@ -1442,6 +1493,7 @@ private fun <T> MultiSelectFilterSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .padding(20.dp)
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -1764,6 +1816,7 @@ private fun LocationFilterBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .padding(20.dp)
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -2142,6 +2195,7 @@ private fun LocationItemsBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .padding(20.dp)
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)

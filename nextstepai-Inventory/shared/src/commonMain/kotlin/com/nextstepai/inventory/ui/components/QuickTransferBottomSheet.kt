@@ -240,7 +240,7 @@ fun QuickTransferBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.75f)
+                .imePadding()
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp)
                 .verticalScroll(rememberScrollState()),
@@ -985,6 +985,7 @@ private fun LocationPickerSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -1182,6 +1183,7 @@ private fun ReasonPickerSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
