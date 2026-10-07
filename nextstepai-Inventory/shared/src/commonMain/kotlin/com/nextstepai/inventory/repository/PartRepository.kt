@@ -202,10 +202,14 @@ class PartRepository(
     /**
      * جلب قطعة محددة بواسطة المعرف الفريد.
      */
-    fun getPartById(id: Long): Part? = partTable.getPartById(id)
+    fun getPartById(id: Long): Part? {
+        val sqliteParts = getParts()
+        sqliteParts.forEach { partTable.insertPart(it) }
+        return partTable.getPartById(id)
+    }
 
     /**
-     * البحث المتقدم في قائمة القطع حسب نص البحث، التصنيف، وحالات المخزون والتجميع.
+     * البحث المتقدم في قائمة القطع حسب نص البحث، التصنيف، وحالات المخزون والتجميع من SQLite.
      */
     fun searchParts(
         query: String = "",
@@ -215,6 +219,8 @@ class PartRepository(
         componentOnly: Boolean = false,
         lowStockOnly: Boolean = false
     ): List<Part> {
+        val sqliteParts = getParts()
+        sqliteParts.forEach { partTable.insertPart(it) }
         return partTable.searchParts(
             query = query,
             categoryId = categoryId,
