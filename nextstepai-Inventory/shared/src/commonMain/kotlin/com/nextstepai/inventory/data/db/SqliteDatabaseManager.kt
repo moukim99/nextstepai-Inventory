@@ -27,18 +27,6 @@ object SqliteDatabaseManager {
         val dbPath = getDatabasePath()
         val dbFile = File(dbPath)
 
-        fun createFreshConnection(): SQLiteConnection {
-            // Never delete an existing database during recovery.
-            val driver = BundledSQLiteDriver()
-            val conn = driver.open(dbPath)
-            runCatching {
-                conn.prepare("PRAGMA journal_mode = DELETE;").use { it.step() }
-                conn.prepare("PRAGMA busy_timeout = 10000;").use { it.step() }
-            }
-            createTables(conn)
-            return conn
-        }
-
         val rawConn = try {
             val driver = BundledSQLiteDriver()
             driver.open(dbPath)
@@ -55,11 +43,23 @@ object SqliteDatabaseManager {
                 rawConn.prepare("PRAGMA busy_timeout = 10000;").use { it.step() }
             }
 
-            // الترحيل التلقائي المباشر لجميع الأعمدة الإضافية في القواعد الحالية دون مسح البيانات
-            runCatching { rawConn.prepare("ALTER TABLE notifications_history ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0;").use { it.step() } }
-            runCatching { rawConn.prepare("ALTER TABLE notifications_history ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0;").use { it.step() } }
-            runCatching { rawConn.prepare("ALTER TABLE notifications_history ADD COLUMN createdAt INTEGER NOT NULL DEFAULT 0;").use { it.step() } }
-            runCatching { rawConn.prepare("ALTER TABLE app_settings ADD COLUMN uuid TEXT NOT NULL DEFAULT 'default-settings';").use { it.step() } }
+            // الترحيل التلقائي: تجاهل خطأ "العمود موجود" فقط، واعتبر أي خطأ آخر فشلًا حقيقيًا.
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE notifications_history ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE notifications_history ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE notifications_history ADD COLUMN createdAt INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE app_settings ADD COLUMN uuid TEXT NOT NULL DEFAULT 'default-settings';"
+            )
 
             createTables(rawConn)
             ThreadSafeSQLiteConnection(rawConn)
@@ -69,6 +69,16 @@ object SqliteDatabaseManager {
                 "Inventory database initialization or migration failed; existing data was preserved.",
                 e
             )
+        }
+    }
+
+    private fun addColumnIfMissing(conn: SQLiteConnection, sql: String) {
+        try {
+            conn.prepare(sql).use { it.step() }
+        } catch (e: Throwable) {
+            if (!e.message.orEmpty().contains("duplicate column name", ignoreCase = true)) {
+                throw e
+            }
         }
     }
 
