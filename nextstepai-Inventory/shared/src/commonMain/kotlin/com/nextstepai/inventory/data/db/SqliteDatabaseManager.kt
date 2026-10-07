@@ -15,7 +15,19 @@ import java.sql.Types
  * تدعم القفل المتفائل (version) وتتبع جهاز التعديل (lastModifiedByDeviceUuid) وسجلات الحركات الإلحاقية (Append-only Ledger).
  */
 object SqliteDatabaseManager {
+    private var customDatabasePath: String? = null
     private var connection: SQLiteConnection? = null
+
+    fun setCustomDatabasePath(path: String?) {
+        synchronized(this) {
+            closeDatabase()
+            customDatabasePath = path
+        }
+    }
+
+    fun getActiveDatabasePath(): String {
+        return customDatabasePath ?: getDatabasePath()
+    }
 
     fun getConnection(): SQLiteConnection {
         return connection ?: synchronized(this) {
@@ -23,8 +35,15 @@ object SqliteDatabaseManager {
         }
     }
 
+    fun closeDatabase() {
+        synchronized(this) {
+            runCatching { connection?.close() }
+            connection = null
+        }
+    }
+
     private fun openDatabase(): SQLiteConnection {
-        val dbPath = getDatabasePath()
+        val dbPath = getActiveDatabasePath()
         val dbFile = File(dbPath)
 
         val rawConn = try {
