@@ -56,33 +56,27 @@ class StockItemTrackingTest {
     @Test
     fun testAll8SchemaFieldsAndDaoPersistence() = runBlocking {
         val dao = StockItemTrackingDao()
-        val now = Clock.System.now().toEpochMilliseconds()
 
         val entity = StockItemTrackingEntity(
             uuid = "track-uuid-8-fields",
-            trackingId = 99L,
-            stockItemId = 200L,
-            date = "2025-02-15 14:30:00",
+            stockItemUuid = "stock-200",
             trackingTypeCode = StockTrackingType.MOVE.code,
-            userId = 12L,
+            userUuid = "usr-12",
             label = "نقل من المستودع الرئيسي إلى الرف A1",
             notes = "تم النقل بواسطة رافعة التخزين",
             deltas = "{\"location\":[1,2]}",
-            syncStatus = SyncStatus.PENDING,
-            updatedAt = now
+            syncStatus = SyncStatus.PENDING
         )
 
         dao.insertOrUpdate(entity)
 
-        val loadedList = dao.getTrackingForStockItem(200L)
+        val loadedList = dao.getTrackingForStockItem("stock-200")
         val loaded = loadedList.firstOrNull { it.uuid == "track-uuid-8-fields" }
 
         assertTrue(loaded != null)
-        assertEquals(99L, loaded.trackingId)
-        assertEquals(200L, loaded.stockItemId)
-        assertEquals("2025-02-15 14:30:00", loaded.date)
+        assertEquals("stock-200", loaded.stockItemUuid)
         assertEquals(StockTrackingType.MOVE.code, loaded.trackingTypeCode)
-        assertEquals(12L, loaded.userId)
+        assertEquals("usr-12", loaded.userUuid)
         assertEquals("نقل من المستودع الرئيسي إلى الرف A1", loaded.label)
         assertEquals("تم النقل بواسطة رافعة التخزين", loaded.notes)
         assertEquals("{\"location\":[1,2]}", loaded.deltas)

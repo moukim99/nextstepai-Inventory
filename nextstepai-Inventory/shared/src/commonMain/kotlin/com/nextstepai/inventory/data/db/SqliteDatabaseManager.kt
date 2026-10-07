@@ -50,10 +50,15 @@ object SqliteDatabaseManager {
             val driver = BundledSQLiteDriver()
             driver.open(dbPath)
         } catch (e: Throwable) {
-            throw IllegalStateException(
-                "Unable to open the inventory database without risking data loss.",
-                e
-            )
+            runCatching {
+                val jdbcConn = DriverManager.getConnection("jdbc:sqlite:$dbPath")
+                JdbcSqliteConnection(jdbcConn)
+            }.getOrElse {
+                throw IllegalStateException(
+                    "Unable to open the inventory database without risking data loss.",
+                    e
+                )
+            }
         }
 
         return try {
@@ -62,7 +67,10 @@ object SqliteDatabaseManager {
                 rawConn.prepare("PRAGMA busy_timeout = 10000;").use { it.step() }
             }
 
-            // الترحيل التلقائي: تجاهل خطأ "العمود موجود" فقط، واعتبر أي خطأ آخر فشلًا حقيقيًا.
+            // 1. إنشاء الجداول الأساسية إن لم تكن موجودة مسبقاً
+            createTables(rawConn)
+
+            // 2. الترحيل التلقائي: تجنب الفشل في حال كان العمود أو الجدول موجوداً مسبقاً
             addColumnIfMissing(
                 rawConn,
                 "ALTER TABLE notifications_history ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0;"
@@ -79,8 +87,15 @@ object SqliteDatabaseManager {
                 rawConn,
                 "ALTER TABLE app_settings ADD COLUMN uuid TEXT NOT NULL DEFAULT 'default-settings';"
             )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE bom_items ADD COLUMN partId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE bom_items ADD COLUMN subPartId INTEGER NOT NULL DEFAULT 0;"
+            )
 
-            createTables(rawConn)
             ThreadSafeSQLiteConnection(rawConn)
         } catch (e: Throwable) {
             try { rawConn.close() } catch (_: Throwable) {}
@@ -95,7 +110,10 @@ object SqliteDatabaseManager {
         try {
             conn.prepare(sql).use { it.step() }
         } catch (e: Throwable) {
-            if (!e.message.orEmpty().contains("duplicate column name", ignoreCase = true)) {
+            val msg = e.message.orEmpty()
+            val isDuplicate = msg.contains("duplicate column name", ignoreCase = true)
+            val isNoSuchTable = msg.contains("no such table", ignoreCase = true)
+            if (!isDuplicate && !isNoSuchTable) {
                 throw e
             }
         }
@@ -212,8 +230,10 @@ object SqliteDatabaseManager {
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS bom_items (
                 uuid TEXT PRIMARY KEY NOT NULL,
-                partUuid TEXT NOT NULL,
-                subPartUuid TEXT NOT NULL,
+                partUuid TEXT NOT NULL DEFAULT '',
+                subPartUuid TEXT NOT NULL DEFAULT '',
+                partId INTEGER NOT NULL DEFAULT 0,
+                subPartId INTEGER NOT NULL DEFAULT 0,
                 quantity REAL NOT NULL DEFAULT 1.0,
                 reference TEXT NOT NULL DEFAULT '',
                 optional INTEGER NOT NULL DEFAULT 0,
@@ -1190,6 +1210,16 @@ object SqliteDatabaseManager {
 }
 
 expect fun getDatabasePath(): String
+
+private class JdbcSqliteConnection(private val conn: java.sql.Connection) : SQLiteConnection {
+    override fun prepare(sql: String): SQLiteStatement {
+        return JdbcSqliteStatement(conn.prepareStatement(sql))
+    }
+
+    override fun close() {
+        conn.close()
+    }
+}
 
 private class JdbcSqliteStatement(private val stmt: PreparedStatement) : SQLiteStatement {
     private var resultSet: ResultSet? = null

@@ -105,14 +105,12 @@ class StockLocationTest {
 
         val entity = StockLocationEntity(
             uuid = "loc-uuid-15-fields",
-            locationId = 50L,
             name = "صندوق التخزين B12",
             description = "صندوق شفاف غير موصل للكهرباء",
-            parentId = 10L,
+            parentUuid = "loc-10",
             structural = false,
             external = true,
             locationType = "SHELF",
-            ownerId = 7L,
             icon = "box",
             customIcon = "custom_icon_b12.png",
             level = 2,
@@ -130,14 +128,13 @@ class StockLocationTest {
         val loaded = allLocations.firstOrNull { it.uuid == "loc-uuid-15-fields" }
 
         assertTrue(loaded != null)
-        assertEquals(50L, loaded.locationId)
+        assertEquals("loc-uuid-15-fields", loaded.uuid)
         assertEquals("صندوق التخزين B12", loaded.name)
         assertEquals("صندوق شفاف غير موصل للكهرباء", loaded.description)
-        assertEquals(10L, loaded.parentId)
+        assertEquals("loc-10", loaded.parentUuid)
         assertEquals(false, loaded.structural)
         assertEquals(true, loaded.external)
         assertEquals("SHELF", loaded.locationType)
-        assertEquals(7L, loaded.ownerId)
         assertEquals("box", loaded.icon)
         assertEquals("custom_icon_b12.png", loaded.customIcon)
         assertEquals(2, loaded.level)
@@ -280,7 +277,6 @@ class StockLocationTest {
 
         val siteEntity = StockLocationEntity(
             uuid = "site-primary-test-1",
-            locationId = 101L,
             name = "الموقع الأخير الرئيسي",
             locationType = "SITE",
             metadata = "{\"isPrimary\":true}",
@@ -290,11 +286,9 @@ class StockLocationTest {
 
         val whEntity = StockLocationEntity(
             uuid = "wh-primary-test-1",
-            locationId = 102L,
             name = "المستودع الأساسي الرئيسي",
             locationType = "WAREHOUSE",
             parentUuid = "site-primary-test-1",
-            parentId = 101L,
             metadata = "{\"isPrimary\":true}",
             updatedAt = now
         )

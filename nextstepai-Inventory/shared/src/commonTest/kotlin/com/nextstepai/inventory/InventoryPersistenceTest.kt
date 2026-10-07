@@ -29,13 +29,20 @@ class InventoryPersistenceTest {
     @Test
     fun testCompleteInventoryLifecyclePersistenceAcrossDatabaseReopen() = runBlocking {
         // عزل ملف قاعدة البيانات بملف مؤقت مستقل ونظيف تماماً لكل تشغيلة اختبار
-        val tempDbFile = File.createTempFile("test_inventory_persistence_isolated_", ".db")
+        val tempDbFile = File(System.getProperty("java.io.tmpdir"), "test_inventory_${Clock.System.now().toEpochMilliseconds()}.db")
+        if (tempDbFile.exists()) tempDbFile.delete()
         tempDbFile.deleteOnExit()
         SqliteDatabaseManager.setCustomDatabasePath(tempDbFile.absolutePath)
 
         try {
             // Step 0: Ensure database is initialized in isolated file
-            val initialConn = SqliteDatabaseManager.getConnection()
+            val initialConn = try {
+                SqliteDatabaseManager.getConnection()
+            } catch (e: Throwable) {
+                println(">>> EXCEPTION DURING INITIAL DB INITIALIZATION: ${e::class.simpleName}: ${e.message}")
+                e.printStackTrace()
+                throw e
+            }
             assertNotNull(initialConn, "فشل تهيئة الاتصال الأولي بقاعدة البيانات المعزولة")
 
             val runToken = Clock.System.now().toEpochMilliseconds().toString().takeLast(6)

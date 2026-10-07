@@ -64,7 +64,6 @@ class PartAllocationTest {
         partDao.insertOrUpdate(
             PartEntity(
                 uuid = "part-777",
-                id = partId,
                 name = "قطعة تجريبية للحجز",
                 ipn = "TEST-PART-777",
                 totalInStock = 50.0,
