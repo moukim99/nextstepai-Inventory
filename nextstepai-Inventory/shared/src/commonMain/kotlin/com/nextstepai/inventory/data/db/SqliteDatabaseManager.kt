@@ -28,12 +28,7 @@ object SqliteDatabaseManager {
         val dbFile = File(dbPath)
 
         fun createFreshConnection(): SQLiteConnection {
-            runCatching {
-                if (dbFile.exists()) dbFile.delete()
-                File("$dbPath-journal").let { if (it.exists()) it.delete() }
-                File("$dbPath-wal").let { if (it.exists()) it.delete() }
-                File("$dbPath-shm").let { if (it.exists()) it.delete() }
-            }
+            // Never delete an existing database during recovery.
             val driver = BundledSQLiteDriver()
             val conn = driver.open(dbPath)
             runCatching {
@@ -48,7 +43,10 @@ object SqliteDatabaseManager {
             val driver = BundledSQLiteDriver()
             driver.open(dbPath)
         } catch (e: Throwable) {
-            return ThreadSafeSQLiteConnection(createFreshConnection())
+            throw IllegalStateException(
+                "Unable to open the inventory database without risking data loss.",
+                e
+            )
         }
 
         return try {
@@ -67,7 +65,10 @@ object SqliteDatabaseManager {
             ThreadSafeSQLiteConnection(rawConn)
         } catch (e: Throwable) {
             try { rawConn.close() } catch (_: Throwable) {}
-            ThreadSafeSQLiteConnection(createFreshConnection())
+            throw IllegalStateException(
+                "Inventory database initialization or migration failed; existing data was preserved.",
+                e
+            )
         }
     }
 
