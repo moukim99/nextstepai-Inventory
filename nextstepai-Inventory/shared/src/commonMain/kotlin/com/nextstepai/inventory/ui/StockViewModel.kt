@@ -138,7 +138,11 @@ class StockViewModel(
                         supplierParts = supplierParts
                     )
                 }
-            } catch (_: Throwable) {}
+            } catch (e: Throwable) {
+                _uiState.update {
+                    it.copy(errorMessage = e.message ?: "فشل تحميل بيانات المخزون")
+                }
+            }
         }
     }
 
@@ -482,6 +486,13 @@ class StockViewModel(
                 isAddLocationDialogOpen = false,
                 errorMessage = null,
                 successMessage = if (intermediates.isNotEmpty()) "تم إنشاء الموقع والتسلسل الهرمي بنجاح" else "تم إنشاء موقع التخزين بنجاح"
+            )
+        }
+        // Update the visible list immediately from the persisted repository result.
+        _uiState.update { state ->
+            state.copy(
+                locations = (state.locations.filterNot { it.id == inserted.id } + inserted)
+                    .sortedBy { it.name }
             )
         }
         loadData()
