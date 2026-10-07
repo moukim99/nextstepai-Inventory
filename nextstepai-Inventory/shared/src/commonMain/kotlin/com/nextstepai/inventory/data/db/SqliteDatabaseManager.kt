@@ -95,6 +95,98 @@ object SqliteDatabaseManager {
                 rawConn,
                 "ALTER TABLE bom_items ADD COLUMN subPartId INTEGER NOT NULL DEFAULT 0;"
             )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE build_orders ADD COLUMN partId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE build_orders ADD COLUMN parentId INTEGER;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE build_orders ADD COLUMN salesOrderId INTEGER;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE build_orders ADD COLUMN takeFromLocationId INTEGER;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE build_orders ADD COLUMN destinationLocationId INTEGER;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE build_order_line_items ADD COLUMN id INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE build_order_line_items ADD COLUMN buildId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE build_order_line_items ADD COLUMN bomItemId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE build_order_line_items ADD COLUMN subPartId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE build_items ADD COLUMN id INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE build_items ADD COLUMN buildId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE build_items ADD COLUMN buildLineId INTEGER;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE build_items ADD COLUMN stockItemId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE build_items ADD COLUMN installIntoStockItemId INTEGER;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE purchase_orders ADD COLUMN supplierId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE purchase_order_lines ADD COLUMN supplierPartId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE stock_item_attachments ADD COLUMN attachmentId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE stock_item_attachments ADD COLUMN stockItemId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE stock_item_attachments ADD COLUMN userId INTEGER;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE stock_item_test_results ADD COLUMN resultId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE stock_item_test_results ADD COLUMN stockItemId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE stock_item_test_results ADD COLUMN templateId INTEGER;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE stock_item_test_results ADD COLUMN userId INTEGER;"
+            )
 
             ThreadSafeSQLiteConnection(rawConn)
         } catch (e: Throwable) {
@@ -368,14 +460,18 @@ object SqliteDatabaseManager {
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS stock_item_test_results (
                 uuid TEXT PRIMARY KEY NOT NULL,
-                stockItemUuid TEXT NOT NULL,
+                resultId INTEGER NOT NULL DEFAULT 0,
+                stockItemId INTEGER NOT NULL DEFAULT 0,
+                stockItemUuid TEXT NOT NULL DEFAULT '',
+                templateId INTEGER,
                 templateUuid TEXT,
-                test TEXT NOT NULL,
+                test TEXT NOT NULL DEFAULT '',
                 result INTEGER NOT NULL DEFAULT 1,
                 value TEXT NOT NULL DEFAULT 'Passed',
                 attachment TEXT NOT NULL DEFAULT '',
                 notes TEXT NOT NULL DEFAULT '',
                 date TEXT NOT NULL DEFAULT '2025-02-15',
+                userId INTEGER,
                 userUuid TEXT,
                 metadata TEXT NOT NULL DEFAULT '{}',
                 version INTEGER NOT NULL DEFAULT 1,
@@ -389,11 +485,14 @@ object SqliteDatabaseManager {
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS stock_item_attachments (
                 uuid TEXT PRIMARY KEY NOT NULL,
-                stockItemUuid TEXT NOT NULL,
+                attachmentId INTEGER NOT NULL DEFAULT 0,
+                stockItemId INTEGER NOT NULL DEFAULT 0,
+                stockItemUuid TEXT NOT NULL DEFAULT '',
                 attachment TEXT,
                 link TEXT,
                 comment TEXT NOT NULL DEFAULT '',
                 uploadDate TEXT NOT NULL DEFAULT '2025-02-15',
+                userId INTEGER,
                 userUuid TEXT,
                 metadata TEXT NOT NULL DEFAULT '{}',
                 version INTEGER NOT NULL DEFAULT 1,
@@ -623,7 +722,8 @@ object SqliteDatabaseManager {
             CREATE TABLE IF NOT EXISTS purchase_orders (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 reference TEXT NOT NULL,
-                supplierUuid TEXT NOT NULL,
+                supplierId INTEGER NOT NULL DEFAULT 0,
+                supplierUuid TEXT NOT NULL DEFAULT '',
                 supplierName TEXT NOT NULL DEFAULT '',
                 statusCode INTEGER NOT NULL DEFAULT 10,
                 description TEXT NOT NULL DEFAULT '',
@@ -645,7 +745,8 @@ object SqliteDatabaseManager {
             CREATE TABLE IF NOT EXISTS purchase_order_lines (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 orderUuid TEXT NOT NULL,
-                supplierPartUuid TEXT NOT NULL,
+                supplierPartId INTEGER NOT NULL DEFAULT 0,
+                supplierPartUuid TEXT NOT NULL DEFAULT '',
                 quantity REAL NOT NULL DEFAULT 1.0,
                 receivedQuantity REAL NOT NULL DEFAULT 0.0,
                 purchasePrice REAL NOT NULL DEFAULT 0.0,
@@ -678,7 +779,8 @@ object SqliteDatabaseManager {
                 uuid TEXT PRIMARY KEY NOT NULL,
                 reference TEXT NOT NULL,
                 title TEXT NOT NULL DEFAULT '',
-                partUuid TEXT NOT NULL,
+                partId INTEGER NOT NULL DEFAULT 0,
+                partUuid TEXT NOT NULL DEFAULT '',
                 partName TEXT NOT NULL DEFAULT '',
                 quantity REAL NOT NULL DEFAULT 1.0,
                 completedQuantity REAL NOT NULL DEFAULT 0.0,
@@ -688,9 +790,13 @@ object SqliteDatabaseManager {
                 startDate TEXT NOT NULL DEFAULT '',
                 completionDate TEXT NOT NULL DEFAULT '',
                 creationDate TEXT NOT NULL DEFAULT '',
+                parentId INTEGER,
                 parentBuildUuid TEXT,
+                salesOrderId INTEGER,
                 salesOrderUuid TEXT,
+                takeFromLocationId INTEGER,
                 takeFromLocationUuid TEXT,
+                destinationLocationId INTEGER,
                 destinationLocationUuid TEXT,
                 issuedBy TEXT NOT NULL DEFAULT '',
                 responsible TEXT NOT NULL DEFAULT '',
@@ -707,9 +813,13 @@ object SqliteDatabaseManager {
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS build_order_line_items (
                 uuid TEXT PRIMARY KEY NOT NULL,
-                buildUuid TEXT NOT NULL,
-                bomItemUuid TEXT NOT NULL,
-                subPartUuid TEXT NOT NULL,
+                id INTEGER NOT NULL DEFAULT 0,
+                buildId INTEGER NOT NULL DEFAULT 0,
+                buildUuid TEXT NOT NULL DEFAULT '',
+                bomItemId INTEGER NOT NULL DEFAULT 0,
+                bomItemUuid TEXT NOT NULL DEFAULT '',
+                subPartId INTEGER NOT NULL DEFAULT 0,
+                subPartUuid TEXT NOT NULL DEFAULT '',
                 subPartName TEXT NOT NULL DEFAULT '',
                 quantity REAL NOT NULL DEFAULT 1.0,
                 allocatedQuantity REAL NOT NULL DEFAULT 0.0,
@@ -728,11 +838,16 @@ object SqliteDatabaseManager {
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS build_items (
                 uuid TEXT PRIMARY KEY NOT NULL,
-                buildUuid TEXT NOT NULL,
+                id INTEGER NOT NULL DEFAULT 0,
+                buildId INTEGER NOT NULL DEFAULT 0,
+                buildUuid TEXT NOT NULL DEFAULT '',
+                buildLineId INTEGER,
                 buildLineUuid TEXT,
-                stockItemUuid TEXT NOT NULL,
+                stockItemId INTEGER NOT NULL DEFAULT 0,
+                stockItemUuid TEXT NOT NULL DEFAULT '',
                 stockItemName TEXT NOT NULL DEFAULT '',
                 quantity REAL NOT NULL DEFAULT 1.0,
+                installIntoStockItemId INTEGER,
                 installIntoStockItemUuid TEXT,
                 notes TEXT NOT NULL DEFAULT '',
                 version INTEGER NOT NULL DEFAULT 1,
