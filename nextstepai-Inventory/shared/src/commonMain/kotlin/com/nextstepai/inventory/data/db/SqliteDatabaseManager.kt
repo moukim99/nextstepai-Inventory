@@ -1484,7 +1484,7 @@ private class JdbcSqliteStatement(private val stmt: PreparedStatement) : SQLiteS
 
 private class ThreadSafeSQLiteConnection(
     private val delegate: SQLiteConnection
-) : SQLiteConnection by delegate {
+) : SQLiteConnection {
     private val lock = Any()
 
     override fun prepare(sql: String): SQLiteStatement {
@@ -1504,17 +1504,23 @@ private class ThreadSafeSQLiteConnection(
 private class ThreadSafeSQLiteStatement(
     private val delegate: SQLiteStatement,
     private val lock: Any
-) : SQLiteStatement by delegate {
+) : SQLiteStatement {
 
-    override fun step(): Boolean {
-        synchronized(lock) {
-            return delegate.step()
-        }
-    }
-
-    override fun close() {
-        synchronized(lock) {
-            delegate.close()
-        }
-    }
+    override fun step(): Boolean = synchronized(lock) { delegate.step() }
+    override fun bindText(index: Int, value: String) = synchronized(lock) { delegate.bindText(index, value) }
+    override fun bindLong(index: Int, value: Long) = synchronized(lock) { delegate.bindLong(index, value) }
+    override fun bindDouble(index: Int, value: Double) = synchronized(lock) { delegate.bindDouble(index, value) }
+    override fun bindNull(index: Int) = synchronized(lock) { delegate.bindNull(index) }
+    override fun bindBlob(index: Int, value: ByteArray) = synchronized(lock) { delegate.bindBlob(index, value) }
+    override fun clearBindings() = synchronized(lock) { delegate.clearBindings() }
+    override fun getText(index: Int): String = synchronized(lock) { delegate.getText(index) }
+    override fun getLong(index: Int): Long = synchronized(lock) { delegate.getLong(index) }
+    override fun getDouble(index: Int): Double = synchronized(lock) { delegate.getDouble(index) }
+    override fun getBlob(index: Int): ByteArray = synchronized(lock) { delegate.getBlob(index) }
+    override fun isNull(index: Int): Boolean = synchronized(lock) { delegate.isNull(index) }
+    override fun getColumnCount(): Int = synchronized(lock) { delegate.getColumnCount() }
+    override fun getColumnName(index: Int): String = synchronized(lock) { delegate.getColumnName(index) }
+    override fun getColumnType(index: Int): Int = synchronized(lock) { delegate.getColumnType(index) }
+    override fun reset() = synchronized(lock) { delegate.reset() }
+    override fun close() = synchronized(lock) { delegate.close() }
 }
