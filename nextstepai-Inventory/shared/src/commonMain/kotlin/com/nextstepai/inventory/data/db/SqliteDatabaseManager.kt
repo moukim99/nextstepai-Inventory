@@ -187,6 +187,46 @@ object SqliteDatabaseManager {
                 rawConn,
                 "ALTER TABLE stock_item_test_results ADD COLUMN userId INTEGER;"
             )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE company_attachments ADD COLUMN userId INTEGER;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE stock_location_types ADD COLUMN typeId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE sales_orders ADD COLUMN customerId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE sales_order_lines ADD COLUMN orderId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE sales_order_lines ADD COLUMN partId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE manufacturing_phases ADD COLUMN id INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE part_allocations ADD COLUMN id INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE part_allocations ADD COLUMN partId INTEGER NOT NULL DEFAULT 0;"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE part_allocations ADD COLUMN referenceId TEXT NOT NULL DEFAULT '';"
+            )
+            addColumnIfMissing(
+                rawConn,
+                "ALTER TABLE part_allocations ADD COLUMN createdByUserId TEXT NOT NULL DEFAULT '1';"
+            )
 
             ThreadSafeSQLiteConnection(rawConn)
         } catch (e: Throwable) {
@@ -360,6 +400,7 @@ object SqliteDatabaseManager {
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS stock_location_types (
                 uuid TEXT PRIMARY KEY NOT NULL,
+                typeId INTEGER NOT NULL DEFAULT 0,
                 name TEXT NOT NULL UNIQUE,
                 description TEXT NOT NULL DEFAULT '',
                 icon TEXT NOT NULL DEFAULT 'warehouse',
@@ -533,15 +574,15 @@ object SqliteDatabaseManager {
             CREATE TABLE IF NOT EXISTS company_attachments (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 companyUuid TEXT NOT NULL,
+                documentType TEXT NOT NULL DEFAULT 'سجل تجاري',
                 attachmentPath TEXT NOT NULL DEFAULT '',
                 link TEXT NOT NULL DEFAULT '',
                 comment TEXT NOT NULL DEFAULT '',
-                documentType TEXT NOT NULL DEFAULT 'سجل تجاري',
+                uploadDate INTEGER NOT NULL DEFAULT 0,
+                userId INTEGER,
                 expiryDate TEXT NOT NULL DEFAULT '',
                 notifyOnExpiry INTEGER NOT NULL DEFAULT 1,
                 notificationDaysBefore INTEGER NOT NULL DEFAULT 30,
-                uploadDate INTEGER NOT NULL DEFAULT 0,
-                userUuid TEXT,
                 version INTEGER NOT NULL DEFAULT 1,
                 syncStatus TEXT NOT NULL DEFAULT 'PENDING',
                 isDeleted INTEGER NOT NULL DEFAULT 0,
@@ -761,6 +802,7 @@ object SqliteDatabaseManager {
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS manufacturing_phases (
                 uuid TEXT PRIMARY KEY NOT NULL,
+                id INTEGER NOT NULL DEFAULT 0,
                 partUuid TEXT,
                 name TEXT NOT NULL,
                 sequenceOrder INTEGER NOT NULL DEFAULT 1,
@@ -862,7 +904,8 @@ object SqliteDatabaseManager {
             CREATE TABLE IF NOT EXISTS sales_orders (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 reference TEXT NOT NULL,
-                customerUuid TEXT NOT NULL,
+                customerId INTEGER NOT NULL DEFAULT 0,
+                customerUuid TEXT NOT NULL DEFAULT '',
                 customerName TEXT NOT NULL DEFAULT '',
                 statusCode INTEGER NOT NULL DEFAULT 10,
                 description TEXT NOT NULL DEFAULT '',
@@ -883,8 +926,10 @@ object SqliteDatabaseManager {
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS sales_order_lines (
                 uuid TEXT PRIMARY KEY NOT NULL,
-                orderUuid TEXT NOT NULL,
-                partUuid TEXT NOT NULL,
+                orderUuid TEXT NOT NULL DEFAULT '',
+                orderId INTEGER NOT NULL DEFAULT 0,
+                partId INTEGER NOT NULL DEFAULT 0,
+                partUuid TEXT NOT NULL DEFAULT '',
                 partName TEXT NOT NULL DEFAULT '',
                 quantity REAL NOT NULL DEFAULT 1.0,
                 unitPrice REAL NOT NULL DEFAULT 0.0,
@@ -901,16 +946,20 @@ object SqliteDatabaseManager {
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS part_allocations (
-                uuid TEXT PRIMARY KEY NOT NULL,
-                partUuid TEXT NOT NULL,
-                allocatedQuantity REAL NOT NULL,
-                allocationType TEXT NOT NULL,
-                referenceType TEXT NOT NULL,
-                referenceUuid TEXT NOT NULL,
-                referenceTitle TEXT NOT NULL,
-                status TEXT NOT NULL,
-                createdAt INTEGER NOT NULL,
-                createdByUserUuid TEXT NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid TEXT NOT NULL DEFAULT '',
+                partId INTEGER NOT NULL DEFAULT 0,
+                partUuid TEXT NOT NULL DEFAULT '',
+                allocatedQuantity REAL NOT NULL DEFAULT 0.0,
+                allocationType TEXT NOT NULL DEFAULT 'HARD',
+                referenceType TEXT NOT NULL DEFAULT 'BUILD_ORDER',
+                referenceId TEXT NOT NULL DEFAULT '',
+                referenceUuid TEXT NOT NULL DEFAULT '',
+                referenceTitle TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'ACTIVE',
+                createdAt INTEGER NOT NULL DEFAULT 0,
+                createdByUserId TEXT NOT NULL DEFAULT '1',
+                createdByUserUuid TEXT NOT NULL DEFAULT '',
                 notes TEXT,
                 version INTEGER NOT NULL DEFAULT 1,
                 syncStatus TEXT NOT NULL DEFAULT 'PENDING',
