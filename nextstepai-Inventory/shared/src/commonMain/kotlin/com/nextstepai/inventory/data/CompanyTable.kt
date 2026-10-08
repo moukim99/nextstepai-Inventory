@@ -45,6 +45,7 @@ data class Company(
 /**
  * محاكاة جدول إدارة الشركات والعلاقات التجارية (Company Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class CompanyTable {
     private val companies = mutableListOf<Company>()
     private var nextCompanyId = 1L

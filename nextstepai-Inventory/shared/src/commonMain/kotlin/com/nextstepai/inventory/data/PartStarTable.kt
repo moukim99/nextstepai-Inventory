@@ -5,6 +5,7 @@ import com.nextstepai.inventory.data.db.PartStarEntity
 /**
  * إدارة وتخزين تفضيلات ومتابعات القطع (PartStarTable) في الذاكرة مع مفتاح التبديل وقيد الفرادة المركب.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class PartStarTable(
     private val partTable: PartTable = PartTable()
 ) {

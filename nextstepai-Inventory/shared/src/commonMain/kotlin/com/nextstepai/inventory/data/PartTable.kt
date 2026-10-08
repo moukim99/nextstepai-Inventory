@@ -224,6 +224,7 @@ fun Part.withLabelSnapshot(imagePath: String, genAt: Long, snapshotData: String)
 /**
  * محاكاة إدارة جدول القطع والمكونات (Part Table) في قاعدة البيانات.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class PartTable {
     private val parts = mutableListOf<Part>()
     private val categories = mutableListOf<PartCategory>()

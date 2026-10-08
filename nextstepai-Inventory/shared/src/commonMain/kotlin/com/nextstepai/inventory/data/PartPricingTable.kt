@@ -5,6 +5,7 @@ import com.nextstepai.inventory.data.db.PartPricingEntity
 /**
  * إدارة وتخزين جدول حساب وتتبع تكاليف وأسعار القطع (PartPricingTable) في الذاكرة مع خوارزميات التلخيص وإعادة الحساب.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class PartPricingTable(
     private val partTable: PartTable = PartTable(),
     private val bomItemTable: BomItemTable = BomItemTable(),

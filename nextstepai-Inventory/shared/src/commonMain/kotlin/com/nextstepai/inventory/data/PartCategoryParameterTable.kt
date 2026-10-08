@@ -81,6 +81,7 @@ data class CategoryParameterTemplateView(
 /**
  * إدارة وتخزين جدول PartCategoryParameterTemplate وقوالب ومعاملات القطع في الذاكرة مع قواعد العمل والإلزام.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class PartCategoryParameterTable(
     private val partTable: PartTable = PartTable()
 ) {

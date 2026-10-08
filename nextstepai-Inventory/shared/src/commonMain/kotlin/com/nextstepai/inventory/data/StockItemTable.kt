@@ -141,6 +141,7 @@ fun StockItem.withWeightInfo(unitWeight: Double?, totalWeight: Double?): StockIt
 /**
  * محاكاة جدول إدارة المخزون الفعلي (StockItem Table) ومواقع التخزين وأنواعها مع القيود المنطقية.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class StockItemTable {
     private val stockItems = mutableListOf<StockItem>()
     private val locations = mutableListOf<StockLocation>()

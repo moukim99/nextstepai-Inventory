@@ -27,6 +27,7 @@ data class PartRelatedView(
 /**
  * إدارة وتخزين علاقات القطع ذات الصلة (PartRelated) في الذاكرة مع الشروط والقيود المنطقية.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class PartRelatedTable(
     private val partTable: PartTable = PartTable()
 ) {

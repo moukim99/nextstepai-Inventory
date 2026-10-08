@@ -89,6 +89,7 @@ data class PurchaseOrder(
 /**
  * محاكاة جدول أوامر الشراء وبنودها (PurchaseOrder & LineItems Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class PurchaseOrderTable {
     private val orders = mutableListOf<PurchaseOrder>()
     private val lineItems = mutableListOf<PurchaseOrderLineItem>()
