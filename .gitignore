@@ -1,0 +1,71 @@
+# ============================================
+# Gradle / Kotlin
+# ============================================
+.gradle/
+build/
+**/build/
+out/
+.kotlin/
+*.class
+*.log
+hs_err_pid*
+.attach_pid*
+
+# ============================================
+# Android
+# ============================================
+*.apk
+*.aab
+*.ap_
+*.dex
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+release/
+
+# Signing (never commit these)
+*.jks
+*.keystore
+key.properties
+
+# ============================================
+# Android Studio / IntelliJ
+# ============================================
+.idea/
+**/.idea/
+*.iml
+**/*.iml
+*.ipr
+*.iws
+
+# ============================================
+# Compose Multiplatform (Desktop target)
+# ============================================
+# Packaged binaries (dmg/msi/deb) land under build/, already ignored above.
+
+# ============================================
+# Cloudflare Workers (Wrangler)
+# ============================================
+.wrangler/
+.dev.vars
+.dev.vars.*
+wrangler.toml.bak
+node_modules/
+dist/
+
+# ============================================
+# Secrets / environment files
+# ============================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.p12
+
+# ============================================
+# OS-specific junk
+# ============================================
+.DS_Store
+Thumbs.db
+Desktop.ini
