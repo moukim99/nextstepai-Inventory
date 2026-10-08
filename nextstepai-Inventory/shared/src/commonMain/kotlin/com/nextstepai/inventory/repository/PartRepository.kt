@@ -40,6 +40,7 @@ import java.io.File
 import kotlin.time.Clock
 
 import com.nextstepai.inventory.data.db.getRoomDatabase
+import com.nextstepai.inventory.data.db.SqliteNumericIdAllocator
 import com.nextstepai.inventory.util.AppUuid
 
 /**
@@ -196,12 +197,14 @@ class PartRepository(
      * زيادة رصيد المخزون لقطعة محددة وتحديث رصيد الصنف في الذاكرة والمحرك المحلي.
      */
     fun addStockToPart(partId: Long, quantity: Double): Part? {
-        val updated = partTable.addStockToPart(partId, quantity)
-        if (updated != null) {
-            val partUuid = if (updated.effectiveUuid.isNotBlank() && updated.effectiveUuid != "part-0") updated.effectiveUuid else "part-$partId"
-            runCatching { partDao.addStockToPart(partUuid, quantity) }
+        val partUuid = "part-$partId"
+        runCatching { partDao.addStockToPart(partUuid, quantity) }
+        val updatedFromDb = getPartById(partId)
+        if (updatedFromDb != null) {
+            runCatching { partTable.updatePart(updatedFromDb) }
+            return updatedFromDb
         }
-        return updated
+        return partTable.addStockToPart(partId, quantity)
     }
 
     /**
@@ -249,47 +252,48 @@ class PartRepository(
             ?: pendingAttachments.firstOrNull { it.type == AttachmentType.DOCUMENT }?.pathOrUrl 
             ?: part.link
 
-        val partToInsert = part.copy(imageUrl = resolvedImageUrl, link = resolvedLink)
-        val inserted = partTable.insertPart(partToInsert)
-        val partUuid = if (inserted.effectiveUuid.isNotBlank() && inserted.effectiveUuid != "part-0") inserted.effectiveUuid else AppUuid.generate()
+        val allocatedId = if (part.id > 0L) part.id else SqliteNumericIdAllocator.nextId("parts", "part-")
+        val partToInsert = part.copy(id = allocatedId, imageUrl = resolvedImageUrl, link = resolvedLink)
+        val partUuid = "part-$allocatedId"
         partDao.insertOrUpdate(
             PartEntity(
                 uuid = partUuid,
-                name = inserted.name,
-                ipn = inserted.ipn,
-                description = inserted.description,
-                revision = inserted.revision,
-                keywords = inserted.keywords,
-                categoryUuid = inserted.categoryId?.let { "cat-${it.toString().padStart(3, '0')}" },
-                units = inserted.units,
-                assembly = inserted.assembly,
-                component = inserted.component,
-                isTemplate = inserted.isTemplate,
-                variantOfUuid = inserted.variantOfId?.let { "part-$it" },
-                trackable = inserted.trackable,
-                purchaseable = inserted.purchaseable,
-                salable = inserted.salable,
-                virtual = inserted.virtual,
-                active = inserted.active,
-                locked = inserted.locked,
-                minimumStock = inserted.minimumStock,
-                maximumStock = inserted.maximumStock,
-                defaultLocationUuid = inserted.defaultLocationId?.let { "loc-${it.toString().padStart(3, '0')}" },
-                defaultExpiryDays = inserted.defaultExpiryDays,
-                totalInStock = inserted.totalInStock,
-                localImagePath = inserted.imageUrl,
-                link = inserted.link,
-                metadata = inserted.metadata,
+                name = partToInsert.name,
+                ipn = partToInsert.ipn,
+                description = partToInsert.description,
+                revision = partToInsert.revision,
+                keywords = partToInsert.keywords,
+                categoryUuid = partToInsert.categoryId?.let { "cat-${it.toString().padStart(3, '0')}" },
+                units = partToInsert.units,
+                assembly = partToInsert.assembly,
+                component = partToInsert.component,
+                isTemplate = partToInsert.isTemplate,
+                variantOfUuid = partToInsert.variantOfId?.let { "part-$it" },
+                trackable = partToInsert.trackable,
+                purchaseable = partToInsert.purchaseable,
+                salable = partToInsert.salable,
+                virtual = partToInsert.virtual,
+                active = partToInsert.active,
+                locked = partToInsert.locked,
+                minimumStock = partToInsert.minimumStock,
+                maximumStock = partToInsert.maximumStock,
+                defaultLocationUuid = partToInsert.defaultLocationId?.let { "loc-${it.toString().padStart(3, '0')}" },
+                defaultExpiryDays = partToInsert.defaultExpiryDays,
+                totalInStock = partToInsert.totalInStock,
+                localImagePath = partToInsert.imageUrl,
+                link = partToInsert.link,
+                metadata = partToInsert.metadata,
                 version = 1,
                 syncStatus = SyncStatus.PENDING,
                 isDeleted = false,
                 updatedAt = Clock.System.now().toEpochMilliseconds()
             )
         )
+        runCatching { partTable.insertPart(partToInsert) }
         pendingAttachments.forEach { att ->
             addPartAttachment(
                 PartAttachment(
-                    partId = inserted.id,
+                    partId = allocatedId,
                     attachment = if (att.type == AttachmentType.IMAGE || att.type == AttachmentType.DOCUMENT) att.pathOrUrl else null,
                     link = if (att.type == AttachmentType.LINK) att.pathOrUrl else null,
                     comment = att.label
@@ -297,20 +301,20 @@ class PartRepository(
             )
         }
         // إنشاء سجلات المعاملات الفنية تلقائياً بناءً على PartCategoryParameterTemplate للتصنيف
-        categoryParameterTable.autoGenerateParametersForPart(inserted.id, inserted.categoryId)
-        return inserted
+        categoryParameterTable.autoGenerateParametersForPart(allocatedId, partToInsert.categoryId)
+        return partToInsert
     }
 
     /**
      * أرشفة وحفظ لقطة صورة ملصق القطعة المادية وتحديث بيانات الأرشفة في جدول القطع.
      */
     fun savePartLabelSnapshot(partId: Long, snapshotData: String): Part? {
-        val targetPart = partTable.getPartById(partId) ?: return null
+        val targetPart = getPartById(partId) ?: return null
         val genAt = Clock.System.now().toEpochMilliseconds()
         val imagePath = "files/labels/parts/part_${targetPart.effectiveUuid}.webp"
         val updatedPart = targetPart.withLabelSnapshot(imagePath, genAt, snapshotData)
-        partTable.updatePart(updatedPart)
-        val partUuid = if (updatedPart.effectiveUuid.isNotBlank() && updatedPart.effectiveUuid != "part-0") updatedPart.effectiveUuid else AppUuid.generate()
+        runCatching { partTable.updatePart(updatedPart) }
+        val partUuid = "part-$partId"
         partDao.insertOrUpdate(
             PartEntity(
                 uuid = partUuid,
@@ -352,11 +356,11 @@ class PartRepository(
      * حذف أمني محمي للقطعة وإزالتها من الجداول مع التنظيف الفيزيائي لملف الملصق.
      */
     fun deletePartWithValidation(partId: Long): Result<Boolean> {
-        val part = partTable.getPartById(partId)
+        val part = getPartById(partId)
             ?: return Result.failure(IllegalArgumentException("القطعة المطلوب حذفها غير موجودة بالمنظومة"))
 
         // إزالة القطعة من جدول الذاكرة الداخلي
-        partTable.deletePart(partId)
+        runCatching { partTable.deletePart(partId) }
 
         // الحذف الفيزيائي الآلي لملف صورة الملصق لمنع الملفات المهملة
         part.labelImagePath?.let { path ->
@@ -367,7 +371,7 @@ class PartRepository(
         }
 
         // أرشفة وحذف الكيان في قاعدة البيانات الدائمة (SQLite)
-        val partUuid = if (part.effectiveUuid.isNotBlank() && part.effectiveUuid != "part-0") part.effectiveUuid else AppUuid.generate()
+        val partUuid = "part-$partId"
         partDao.insertOrUpdate(
             PartEntity(
                 uuid = partUuid,
@@ -498,7 +502,7 @@ class PartRepository(
      * جلب القطع ذات الصلة لقطعة معينة بالاتجاهين المتبادلين.
      */
     fun getRelatedPartsForPart(partId: Long): List<PartRelatedView> {
-        return partRelatedTable.getRelatedPartsForPart(partId, partTable.getAllParts())
+        return partRelatedTable.getRelatedPartsForPart(partId, getParts())
     }
 
     /**
@@ -678,81 +682,82 @@ class PartRepository(
             ?: part.link
 
         val partToUpdate = part.copy(imageUrl = resolvedImageUrl, link = resolvedLink)
-        val result = partTable.updatePart(partToUpdate)
-        if (result) {
-            val existing = getPartAttachments(part.id)
-            val existingIds = existing.map { it.id }.toSet()
-            val newIds = pendingAttachments.map { it.id }.filter { it != 0L }.toSet()
+        val partUuid = "part-${part.id}"
+        val existingEntity = partDao.getPartByUuid(partUuid)
 
-            existingIds.filter { it !in newIds }.forEach { id ->
-                deletePartAttachment(id)
-            }
+        partDao.insertOrUpdate(
+            PartEntity(
+                uuid = partUuid,
+                name = partToUpdate.name,
+                ipn = partToUpdate.ipn,
+                description = partToUpdate.description,
+                revision = partToUpdate.revision,
+                keywords = partToUpdate.keywords,
+                categoryUuid = partToUpdate.categoryId?.let { "cat-${it.toString().padStart(3, '0')}" },
+                units = partToUpdate.units,
+                assembly = partToUpdate.assembly,
+                component = partToUpdate.component,
+                isTemplate = partToUpdate.isTemplate,
+                variantOfUuid = partToUpdate.variantOfId?.let { "part-$it" },
+                trackable = partToUpdate.trackable,
+                purchaseable = partToUpdate.purchaseable,
+                salable = partToUpdate.salable,
+                virtual = partToUpdate.virtual,
+                active = partToUpdate.active,
+                locked = partToUpdate.locked,
+                minimumStock = partToUpdate.minimumStock,
+                maximumStock = partToUpdate.maximumStock,
+                defaultLocationUuid = partToUpdate.defaultLocationId?.let { "loc-${it.toString().padStart(3, '0')}" },
+                defaultExpiryDays = partToUpdate.defaultExpiryDays,
+                totalInStock = partToUpdate.totalInStock,
+                localImagePath = partToUpdate.imageUrl,
+                link = partToUpdate.link,
+                metadata = partToUpdate.metadata,
+                version = (existingEntity?.version ?: 1) + 1,
+                syncStatus = SyncStatus.PENDING,
+                isDeleted = false,
+                updatedAt = Clock.System.now().toEpochMilliseconds()
+            )
+        )
+        runCatching { partTable.updatePart(partToUpdate) }
 
-            pendingAttachments.filter { it.id == 0L }.forEach { att ->
-                addPartAttachment(
-                    PartAttachment(
-                        partId = part.id,
-                        attachment = if (att.type == AttachmentType.IMAGE || att.type == AttachmentType.DOCUMENT) att.pathOrUrl else null,
-                        link = if (att.type == AttachmentType.LINK) att.pathOrUrl else null,
-                        comment = att.label
-                    )
-                )
-            }
+        val existing = getPartAttachments(part.id)
+        val existingIds = existing.map { it.id }.toSet()
+        val newIds = pendingAttachments.map { it.id }.filter { it != 0L }.toSet()
 
-            val partUuid = if (part.effectiveUuid.isNotBlank() && part.effectiveUuid != "part-0") part.effectiveUuid else AppUuid.generate()
-            partDao.insertOrUpdate(
-                PartEntity(
-                    uuid = partUuid,
-                    name = part.name,
-                    ipn = part.ipn,
-                    description = part.description,
-                    revision = part.revision,
-                    keywords = part.keywords,
-                    categoryUuid = part.categoryId?.let { "cat-${it.toString().padStart(3, '0')}" },
-                    units = part.units,
-                    assembly = part.assembly,
-                    component = part.component,
-                    isTemplate = part.isTemplate,
-                    variantOfUuid = part.variantOfId?.let { "part-$it" },
-                    trackable = part.trackable,
-                    purchaseable = part.purchaseable,
-                    salable = part.salable,
-                    virtual = part.virtual,
-                    active = part.active,
-                    locked = part.locked,
-                    minimumStock = part.minimumStock,
-                    maximumStock = part.maximumStock,
-                    defaultLocationUuid = part.defaultLocationId?.let { "loc-${it.toString().padStart(3, '0')}" },
-                    defaultExpiryDays = part.defaultExpiryDays,
-                    totalInStock = part.totalInStock,
-                    localImagePath = part.imageUrl,
-                    link = part.link,
-                    metadata = part.metadata,
-                    version = 1,
-                    syncStatus = SyncStatus.PENDING,
-                    isDeleted = false,
-                    updatedAt = Clock.System.now().toEpochMilliseconds()
+        existingIds.filter { it !in newIds }.forEach { id ->
+            deletePartAttachment(id)
+        }
+
+        pendingAttachments.filter { it.id == 0L }.forEach { att ->
+            addPartAttachment(
+                PartAttachment(
+                    partId = part.id,
+                    attachment = if (att.type == AttachmentType.IMAGE || att.type == AttachmentType.DOCUMENT) att.pathOrUrl else null,
+                    link = if (att.type == AttachmentType.LINK) att.pathOrUrl else null,
+                    comment = att.label
                 )
             )
         }
-        return result
+
+        return true
     }
 
     /**
      * جلب القوالب المتاحة لاستخدامها في خيارات التفرع (Variants).
      */
-    fun getTemplateParts(): List<Part> = partTable.getTemplateParts()
+    fun getTemplateParts(): List<Part> = getParts().filter { it.isTemplate }
 
     /**
      * جلب القطع المشتقة من قالب محدد.
      */
-    fun getVariantsOf(templateId: Long): List<Part> = partTable.getVariantsOf(templateId)
+    fun getVariantsOf(templateId: Long): List<Part> = getParts().filter { it.variantOfId == templateId }
 
     /**
      * الحصول على إحصائيات عامة عن القطع (إجمالي القطع، القطع منخفضة المخزون، القطع المجمعة).
      */
     fun getPartsSummary(): PartsSummary {
-        val all = partTable.getAllParts()
+        val all = getParts()
         return PartsSummary(
             totalParts = all.size,
             activeParts = all.count { it.active },

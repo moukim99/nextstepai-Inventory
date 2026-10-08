@@ -1,8 +1,9 @@
-﻿package com.nextstepai.inventory.data.db
+package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
 import com.nextstepai.inventory.sync.SyncStatus
+import kotlin.time.Clock
 
 /**
  * كائن الوصول لبيانات الشركات (CompanyDao) باستعلامات معلّمة صريحة (Parameterized Bind Queries).
@@ -42,6 +43,32 @@ class CompanyDao {
             }
         }
         return results
+    }
+
+    fun getCompanyByUuid(uuid: String): CompanyEntity? {
+        if (uuid.isBlank()) return null
+        val conn = SqliteDatabaseManager.getConnection()
+        val sql = """
+            SELECT uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt
+            FROM companies
+            WHERE uuid = ? AND isDeleted = 0
+        """.trimIndent()
+        conn.prepare(sql).use { stmt ->
+            stmt.bindText(1, uuid)
+            if (stmt.step()) {
+                return mapCompanyEntity(stmt)
+            }
+        }
+        return null
+    }
+
+    fun delete(uuid: String) {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("UPDATE companies SET isDeleted = 1, updatedAt = ? WHERE uuid = ?").use { stmt ->
+            stmt.bindLong(1, Clock.System.now().toEpochMilliseconds())
+            stmt.bindText(2, uuid)
+            stmt.step()
+        }
     }
 
     fun getPendingSyncCompanies(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<CompanyEntity> {
