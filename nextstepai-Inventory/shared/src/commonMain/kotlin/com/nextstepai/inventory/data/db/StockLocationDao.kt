@@ -242,7 +242,7 @@ class StockLocationDao {
             treeId = runCatching { stmt.getLong(16).toInt() }.getOrDefault(1),
             metadata = runCatching { stmt.getText(17) }.getOrDefault("{}"),
             version = runCatching { stmt.getLong(18).toInt() }.getOrDefault(1),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(19)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(19)),
             isDeleted = runCatching { stmt.getLong(20) != 0L }.getOrDefault(false),
             updatedAt = runCatching { stmt.getLong(21) }.getOrDefault(0L),
             lastModifiedByDeviceUuid = runCatching { if (stmt.isNull(22)) null else stmt.getText(22) }.getOrNull()

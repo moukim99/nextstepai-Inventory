@@ -130,7 +130,7 @@ class BuildItemDao {
             installIntoStockItemId = if (stmt.isNull(10)) null else stmt.getLong(10),
             installIntoStockItemUuid = stmt.getText(11),
             notes = stmt.getText(12),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(13)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(13)),
             isDeleted = stmt.getLong(14) != 0L,
             updatedAt = stmt.getLong(15)
         )

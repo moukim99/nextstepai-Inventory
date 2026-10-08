@@ -86,7 +86,7 @@ class StockItemTrackingDao {
             deltas = runCatching { stmt.getText(5) }.getOrDefault("{}"),
             userUuid = runCatching { if (stmt.isNull(6)) null else stmt.getText(6) }.getOrNull(),
             createdAt = runCatching { stmt.getLong(7) }.getOrDefault(0L),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(8)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(8)),
             lastModifiedByDeviceUuid = runCatching { if (stmt.isNull(9)) null else stmt.getText(9) }.getOrNull()
         )
     }

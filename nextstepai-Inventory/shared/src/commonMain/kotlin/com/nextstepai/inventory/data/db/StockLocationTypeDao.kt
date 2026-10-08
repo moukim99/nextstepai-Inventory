@@ -76,7 +76,7 @@ class StockLocationTypeDao {
             maxWeight = runCatching { stmt.getDouble(9) }.getOrDefault(0.0),
             maxVolume = runCatching { stmt.getDouble(10) }.getOrDefault(0.0),
             metadata = stmt.getText(11),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(12)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(12)),
             isDeleted = stmt.getLong(13) != 0L,
             updatedAt = stmt.getLong(14)
         )

@@ -169,7 +169,7 @@ class NotificationHistoryDao {
             isRead = stmt.getLong(8) != 0L,
             isTriggered = stmt.getLong(9) != 0L,
             createdAt = stmt.getLong(10),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(11)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(11)),
             isDeleted = stmt.getLong(12) != 0L,
             updatedAt = stmt.getLong(13)
         )

@@ -142,7 +142,7 @@ class BuildOrderDao {
             responsible = stmt.getText(18),
             notes = stmt.getText(19),
             link = stmt.getText(20),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(21)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(21)),
             isDeleted = stmt.getLong(22) != 0L,
             updatedAt = stmt.getLong(23)
         )

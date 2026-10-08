@@ -136,7 +136,7 @@ class SalesOrderDao {
             sourceType = runCatching { stmt.getText(10) }.getOrDefault("MANUAL"),
             sourceReferenceUuid = if (stmt.isNull(11)) null else stmt.getText(11),
             notes = stmt.getText(12),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(13)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(13)),
             isDeleted = stmt.getLong(14) != 0L,
             updatedAt = stmt.getLong(15)
         )
@@ -155,7 +155,7 @@ class SalesOrderDao {
             allocatedQuantity = stmt.getDouble(8),
             shippedQuantity = stmt.getDouble(9),
             notes = stmt.getText(10),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(11)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(11)),
             isDeleted = stmt.getLong(12) != 0L,
             updatedAt = stmt.getLong(13)
         )

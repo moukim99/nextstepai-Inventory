@@ -30,7 +30,7 @@ class ContactDao {
                         email = stmt.getText(4),
                         role = stmt.getText(5),
                         isPrimary = stmt.getLong(6) != 0L,
-                        syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(7)) }.getOrDefault(SyncStatus.PENDING),
+                        syncStatus = SyncStatus.fromString(stmt.getText(7)),
                         isDeleted = stmt.getLong(8) != 0L,
                         updatedAt = stmt.getLong(9)
                     )
@@ -107,7 +107,7 @@ class CompanyAttachmentDao {
                             expiryDate = runCatching { stmt.getText(8) }.getOrDefault(""),
                             notifyOnExpiry = runCatching { stmt.getLong(9) != 0L }.getOrDefault(true),
                             notificationDaysBefore = runCatching { stmt.getLong(10).toInt() }.getOrDefault(30),
-                            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(11)) }.getOrDefault(SyncStatus.PENDING),
+                            syncStatus = SyncStatus.fromString(stmt.getText(11)),
                             isDeleted = stmt.getLong(12) != 0L,
                             updatedAt = stmt.getLong(13)
                         )
@@ -184,7 +184,7 @@ class AddressDao {
                         province = stmt.getText(8),
                         country = stmt.getText(9),
                         shippingNotes = stmt.getText(10),
-                        syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(11)) }.getOrDefault(SyncStatus.PENDING),
+                        syncStatus = SyncStatus.fromString(stmt.getText(11)),
                         isDeleted = stmt.getLong(12) != 0L,
                         updatedAt = stmt.getLong(13)
                     )
@@ -309,7 +309,7 @@ class CompanyBankAccountDao {
             currency = stmt.getText(7),
             branchName = stmt.getText(8),
             isPrimary = stmt.getLong(9) == 1L,
-            syncStatus = SyncStatus.valueOf(stmt.getText(10)),
+            syncStatus = SyncStatus.fromString(stmt.getText(10)),
             isDeleted = stmt.getLong(11) == 1L,
             updatedAt = stmt.getLong(12)
         )
@@ -385,7 +385,7 @@ class CompanyLegalRecordDao {
             issuingAuthority = stmt.getText(8),
             issueDate = stmt.getText(9),
             expiryDate = stmt.getText(10),
-            syncStatus = SyncStatus.valueOf(stmt.getText(11)),
+            syncStatus = SyncStatus.fromString(stmt.getText(11)),
             isDeleted = stmt.getLong(12) == 1L,
             updatedAt = stmt.getLong(13)
         )
@@ -470,7 +470,7 @@ class ManufacturerPartDao {
             description = stmt.getText(4),
             link = stmt.getText(5),
             metadata = stmt.getText(6),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(7)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(7)),
             isDeleted = stmt.getLong(8) != 0L,
             updatedAt = stmt.getLong(9)
         )
@@ -500,7 +500,7 @@ class ManufacturerPartParameterDao {
                         name = stmt.getText(2),
                         value = stmt.getText(3),
                         units = stmt.getText(4),
-                        syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(5)) }.getOrDefault(SyncStatus.PENDING),
+                        syncStatus = SyncStatus.fromString(stmt.getText(5)),
                         isDeleted = stmt.getLong(6) != 0L,
                         updatedAt = stmt.getLong(7)
                     )
@@ -564,7 +564,7 @@ class ManufacturerPartAttachmentDao {
                         comment = stmt.getText(4),
                         uploadDate = stmt.getLong(5),
                         userId = if (stmt.isNull(6)) null else stmt.getLong(6),
-                        syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(7)) }.getOrDefault(SyncStatus.PENDING),
+                        syncStatus = SyncStatus.fromString(stmt.getText(7)),
                         isDeleted = stmt.getLong(8) != 0L,
                         updatedAt = stmt.getLong(9)
                     )
@@ -695,7 +695,7 @@ class SupplierPartDao {
             availableForPurchase = stmt.getLong(10) != 0L,
             active = stmt.getLong(11) != 0L,
             metadata = stmt.getText(12),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(13)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(13)),
             isDeleted = stmt.getLong(14) != 0L,
             updatedAt = stmt.getLong(15)
         )
@@ -726,7 +726,7 @@ class SupplierPriceBreakDao {
                         price = stmt.getDouble(3),
                         priceCurrency = stmt.getText(4),
                         packQuantity = stmt.getText(5),
-                        syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(6)) }.getOrDefault(SyncStatus.PENDING),
+                        syncStatus = SyncStatus.fromString(stmt.getText(6)),
                         isDeleted = stmt.getLong(7) != 0L,
                         updatedAt = stmt.getLong(8)
                     )

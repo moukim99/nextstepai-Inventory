@@ -4,6 +4,8 @@ import com.nextstepai.inventory.data.Company
 import com.nextstepai.inventory.data.CompanyTable
 import com.nextstepai.inventory.data.db.CompanyDao
 import com.nextstepai.inventory.data.db.CompanyEntity
+import com.nextstepai.inventory.auth.AuthTokens
+import com.nextstepai.inventory.auth.SecureTokenStorage
 import com.nextstepai.inventory.repository.CompanyRepository
 import com.nextstepai.inventory.sync.SyncStatus
 import kotlinx.coroutines.runBlocking
@@ -73,6 +75,7 @@ class CompanyTest {
 
     @Test
     fun testCompanyBatchSyncWithCloudflare() = runBlocking {
+        SecureTokenStorage().saveTokens(AuthTokens("test-access-token", "test-refresh-token"))
         val repository = CompanyRepository()
         repository.addCompany(
             Company(

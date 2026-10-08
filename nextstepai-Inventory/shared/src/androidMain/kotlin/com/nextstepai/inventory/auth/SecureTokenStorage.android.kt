@@ -13,6 +13,18 @@ import com.nextstepai.inventory.data.db.AppContextHolder
 import kotlinx.coroutines.flow.firstOrNull
 import java.io.File
 
+private object SecureDataStoreSingleton {
+    private var instance: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>? = null
+
+    fun get(ctx: Context): androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> {
+        return instance ?: synchronized(this) {
+            instance ?: PreferenceDataStoreFactory.create(
+                produceFile = { File(ctx.filesDir, "datastore/secure_tokens.preferences_pb") }
+            ).also { instance = it }
+        }
+    }
+}
+
 actual class SecureTokenStorage actual constructor() {
 
     private val inMemoryTokens = mutableMapOf<String, String>()
@@ -39,9 +51,7 @@ actual class SecureTokenStorage actual constructor() {
             return
         }
 
-        val dataStore = PreferenceDataStoreFactory.create(
-            produceFile = { File(ctx.filesDir, "datastore/secure_tokens.preferences_pb") }
-        )
+        val dataStore = SecureDataStoreSingleton.get(ctx)
         val accessTokenKey = stringPreferencesKey("encrypted_access_token")
         val refreshTokenKey = stringPreferencesKey("encrypted_refresh_token")
 
@@ -63,9 +73,7 @@ actual class SecureTokenStorage actual constructor() {
             return AuthTokens(accessToken = access, refreshToken = refresh)
         }
 
-        val dataStore = PreferenceDataStoreFactory.create(
-            produceFile = { File(ctx.filesDir, "datastore/secure_tokens.preferences_pb") }
-        )
+        val dataStore = SecureDataStoreSingleton.get(ctx)
         val accessTokenKey = stringPreferencesKey("encrypted_access_token")
         val refreshTokenKey = stringPreferencesKey("encrypted_refresh_token")
 
@@ -90,9 +98,7 @@ actual class SecureTokenStorage actual constructor() {
             return
         }
 
-        val dataStore = PreferenceDataStoreFactory.create(
-            produceFile = { File(ctx.filesDir, "datastore/secure_tokens.preferences_pb") }
-        )
+        val dataStore = SecureDataStoreSingleton.get(ctx)
         val accessTokenKey = stringPreferencesKey("encrypted_access_token")
         val refreshTokenKey = stringPreferencesKey("encrypted_refresh_token")
 

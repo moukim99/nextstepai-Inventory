@@ -159,7 +159,7 @@ class PurchaseOrderDao {
             sourceType = runCatching { stmt.getText(9) }.getOrDefault("MANUAL"),
             sourceReferenceUuid = if (stmt.isNull(10)) null else stmt.getText(10),
             destinationLocationUuid = if (stmt.isNull(11)) null else stmt.getText(11),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(12)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(12)),
             isDeleted = stmt.getLong(13) != 0L,
             updatedAt = stmt.getLong(14)
         )
@@ -173,7 +173,7 @@ class PurchaseOrderDao {
             quantity = stmt.getDouble(3),
             receivedQuantity = stmt.getDouble(4),
             purchasePrice = stmt.getDouble(5),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(6)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(6)),
             isDeleted = stmt.getLong(7) != 0L,
             updatedAt = stmt.getLong(8)
         )

@@ -283,7 +283,7 @@ class PartDao {
             localImagePath = runCatching { if (stmt.isNull(24)) null else stmt.getText(24) }.getOrNull(),
             metadata = runCatching { stmt.getText(25) }.getOrDefault("{}"),
             version = runCatching { stmt.getLong(26).toInt() }.getOrDefault(1),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(27)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(27)),
             isDeleted = runCatching { stmt.getLong(28) != 0L }.getOrDefault(false),
             updatedAt = runCatching { stmt.getLong(29) }.getOrDefault(0L),
             lastModifiedByDeviceUuid = runCatching { if (stmt.isNull(30)) null else stmt.getText(30) }.getOrNull()

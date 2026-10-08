@@ -128,7 +128,7 @@ class BomItemDao {
             note = stmt.getText(9),
             checksum = stmt.getText(10),
             phaseUuid = if (stmt.isNull(11)) null else stmt.getText(11),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(12)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(12)),
             isDeleted = stmt.getLong(13) != 0L,
             updatedAt = stmt.getLong(14)
         )

@@ -91,7 +91,7 @@ class StockInflowRepository(
                         localImagePath = if (stmt.isNull(24)) null else stmt.getText(24),
                         metadata = stmt.getText(25),
                         version = stmt.getLong(26).toInt(),
-                        syncStatus = SyncStatus.valueOf(stmt.getText(27)),
+                        syncStatus = SyncStatus.fromString(stmt.getText(27)),
                         isDeleted = stmt.getLong(28) != 0L,
                         updatedAt = stmt.getLong(29),
                         lastModifiedByDeviceUuid = if (stmt.isNull(30)) null else stmt.getText(30)

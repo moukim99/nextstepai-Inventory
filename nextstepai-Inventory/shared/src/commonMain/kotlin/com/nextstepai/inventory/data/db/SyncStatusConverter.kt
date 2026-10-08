@@ -11,7 +11,5 @@ class SyncStatusConverter {
     fun fromSyncStatus(status: SyncStatus): String = status.name
 
     @TypeConverter
-    fun toSyncStatus(value: String): SyncStatus = runCatching {
-        SyncStatus.valueOf(value)
-    }.getOrDefault(SyncStatus.PENDING)
+    fun toSyncStatus(value: String): SyncStatus = SyncStatus.fromString(value)
 }

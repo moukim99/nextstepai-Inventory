@@ -16,6 +16,8 @@ import com.nextstepai.inventory.data.labelSnapshotData
 import com.nextstepai.inventory.data.getLabelDiffDetails
 import com.nextstepai.inventory.data.db.StockItemDao
 import com.nextstepai.inventory.data.db.StockItemEntity
+import com.nextstepai.inventory.auth.AuthTokens
+import com.nextstepai.inventory.auth.SecureTokenStorage
 import com.nextstepai.inventory.repository.StockRepository
 import com.nextstepai.inventory.sync.SyncStatus
 import kotlinx.coroutines.runBlocking
@@ -470,6 +472,7 @@ class StockItemTest {
 
     @Test
     fun testStockBatchSyncWithCloudflare() = runBlocking {
+        SecureTokenStorage().saveTokens(AuthTokens("test-access-token", "test-refresh-token"))
         val repository = StockRepository()
         repository.addStockItem(
             StockItem(

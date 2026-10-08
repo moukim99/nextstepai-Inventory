@@ -100,7 +100,7 @@ class ManufacturingPhaseDao {
             sequenceOrder = stmt.getLong(4).toInt(),
             description = stmt.getText(5),
             isSystemDefault = stmt.getLong(6) != 0L,
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(7)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(7)),
             isDeleted = stmt.getLong(8) != 0L,
             updatedAt = stmt.getLong(9)
         )

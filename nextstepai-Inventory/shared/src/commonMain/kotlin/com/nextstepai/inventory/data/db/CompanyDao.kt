@@ -121,7 +121,7 @@ class CompanyDao {
             notes = stmt.getText(12),
             metadata = stmt.getText(13),
             parentUuid = if (stmt.isNull(14)) null else stmt.getText(14),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(15)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(15)),
             isDeleted = stmt.getLong(16) != 0L,
             updatedAt = stmt.getLong(17)
         )

@@ -81,7 +81,7 @@ class StockItemAttachmentDao {
             uploadDate = runCatching { stmt.getText(7) }.getOrDefault(""),
             userId = runCatching { if (stmt.isNull(8)) null else stmt.getLong(8) }.getOrNull(),
             metadata = runCatching { stmt.getText(9) }.getOrDefault("{}"),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(10)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(10)),
             isDeleted = runCatching { stmt.getLong(11) != 0L }.getOrDefault(false),
             updatedAt = runCatching { stmt.getLong(12) }.getOrDefault(0L)
         )

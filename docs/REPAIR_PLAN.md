@@ -11,18 +11,18 @@
 
 | ID | Priority | Area | Problem | Recommended Fix | Status |
 |---|---|---|---|---|---|
-| R-001 | P0 | Database | Room uses `fallbackToDestructiveMigration(dropAllTables = true)`, allowing schema changes to destroy local data. | Remove destructive fallback and introduce explicit Room migrations. | Planned |
-| R-002 | P0 | Database | `SqliteDatabaseManager` can delete/recreate database files when database creation/migration fails. | Fail safely, preserve the existing DB, report the migration error, and recover only through explicit migration/recovery logic. | Planned |
-| R-003 | P0 | Data architecture | The project has multiple data sources: Room/DAO, custom SQLite management, and legacy `*Table` classes. | Define one source of truth and migrate/remove the legacy data layer. | Planned |
-| R-004 | P0 | Synchronization | `BatchSyncService` currently uses a mocked cloud endpoint and returns no real remote changes. | Implement the real sync API and end-to-end synchronization flow. | Planned |
-| R-005 | P1 | Database | No committed Room migration files were found despite database versioning. | Add versioned migration classes and migration tests for every schema change. | Planned |
-| R-006 | P1 | Authentication | Login flow appears to mark the user logged in after the repository call without sufficiently enforcing authentication success. | Implement explicit authentication states and reject failed/invalid credentials. | Planned |
-| R-007 | P1 | Synchronization | Sync status definitions/handling are not consistently unified. | Define one sync-state model and use it across repositories, ViewModels, and sync services. | Planned |
-| R-008 | P1 | Token storage | Android secure-token storage creates the DataStore repeatedly instead of using a shared lifecycle-managed instance. | Provide one application-scoped DataStore instance and inject it into the storage layer. | Planned |
-| R-009 | P1 | Authentication | Missing sync/auth tokens can fall back to dummy tokens. | Remove fake-token fallbacks and fail explicitly when credentials are unavailable or expired. | Planned |
-| R-010 | P1 | Synchronization | Retry, backoff, idempotency, conflict handling, and offline recovery need stronger guarantees. | Add bounded exponential backoff, idempotency keys, deterministic conflict resolution, and offline retry handling. | Planned |
-| R-011 | P1 | Testing | Sync edge cases such as conflicts, duplicates, deletes, and offline recovery need dedicated coverage. | Add integration/unit tests for sync correctness and failure recovery. | Planned |
-| R-012 | P1 | CI/CD | No GitHub Actions workflow was found. | Add CI for build, unit tests, lint/static checks, and relevant verification tasks. | Planned |
+| R-001 | P0 | Database | Room uses `fallbackToDestructiveMigration(dropAllTables = true)`, allowing schema changes to destroy local data. | Remove destructive fallback and introduce explicit Room migrations. | Resolved |
+| R-002 | P0 | Database | `SqliteDatabaseManager` can delete/recreate database files when database creation/migration fails. | Fail safely, preserve the existing DB, report the migration error, and recover only through explicit migration/recovery logic. | Resolved |
+| R-003 | P0 | Data architecture | The project has multiple data sources: Room/DAO, custom SQLite management, and legacy `*Table` classes. | Define one source of truth and migrate/remove the legacy data layer. | Resolved |
+| R-004 | P0 | Synchronization | `BatchSyncService` currently uses a mocked cloud endpoint and returns no real remote changes. | Implement the real sync API and end-to-end synchronization flow. | Resolved |
+| R-005 | P1 | Database | No committed Room migration files were found despite database versioning. | Add versioned migration classes and migration tests for every schema change. | Resolved |
+| R-006 | P1 | Authentication | Login flow appears to mark the user logged in after the repository call without sufficiently enforcing authentication success. | Implement explicit authentication states and reject failed/invalid credentials. | Resolved |
+| R-007 | P1 | Synchronization | Sync status definitions/handling are not consistently unified. | Define one sync-state model and use it across repositories, ViewModels, and sync services. | Resolved |
+| R-008 | P1 | Token storage | Android secure-token storage creates the DataStore repeatedly instead of using a shared lifecycle-managed instance. | Provide one application-scoped DataStore instance and inject it into the storage layer. | Resolved |
+| R-009 | P1 | Authentication | Missing sync/auth tokens can fall back to dummy tokens. | Remove fake-token fallbacks and fail explicitly when credentials are unavailable or expired. | Resolved |
+| R-010 | P1 | Synchronization | Retry, backoff, idempotency, conflict handling, and offline recovery need stronger guarantees. | Add bounded exponential backoff, idempotency keys, deterministic conflict resolution, and offline retry handling. | Resolved |
+| R-011 | P1 | Testing | Sync edge cases such as conflicts, duplicates, deletes, and offline recovery need dedicated coverage. | Add integration/unit tests for sync correctness and failure recovery. | Resolved |
+| R-012 | P1 | CI/CD | No GitHub Actions workflow was found. | Add CI for build, unit tests, lint/static checks, and relevant verification tasks. | Resolved |
 | R-013 | P2 | UI architecture | Large screens such as `StockScreen.kt`, `PartManagementScreen.kt`, and `CompanyScreen.kt` are excessively large. | Split screens into feature-focused composables, state holders, and reusable UI components. | Planned |
 | R-014 | P2 | Database architecture | `SqliteDatabaseManager` contains too many responsibilities. | Separate connection management, schema/migration logic, query execution, and recovery concerns. | Planned |
 | R-015 | P2 | Repository layer | `PartRepository` and `StockRepository` are large and contain mixed responsibilities. | Split repositories by domain responsibility/use case and isolate persistence details. | Planned |

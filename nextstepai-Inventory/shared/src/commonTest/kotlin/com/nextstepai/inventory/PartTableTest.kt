@@ -7,6 +7,8 @@ import com.nextstepai.inventory.data.db.PartEntity
 import com.nextstepai.inventory.data.db.getRoomDatabase
 import com.nextstepai.inventory.media.ImageProcessor
 import com.nextstepai.inventory.repository.PartRepository
+import com.nextstepai.inventory.auth.AuthTokens
+import com.nextstepai.inventory.auth.SecureTokenStorage
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
@@ -162,7 +164,9 @@ class PartTableTest {
 
     @Test
     fun testBatchSyncSingleNetworkRequest() = runBlocking {
-        val batchSyncService = BatchSyncService()
+        val storage = SecureTokenStorage()
+        storage.saveTokens(AuthTokens("valid-access-token", "valid-refresh-token"))
+        val batchSyncService = BatchSyncService(tokenStorage = storage)
         val pendingPayloads = listOf(
             SyncPayload("uuid-1", "Part", "{}", false, 1000L),
             SyncPayload("uuid-2", "Part", "{}", false, 1001L)

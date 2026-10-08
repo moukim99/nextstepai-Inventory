@@ -132,7 +132,7 @@ class BuildOrderLineItemDao {
             notes = stmt.getText(11),
             phaseUuid = if (stmt.isNull(12)) null else stmt.getText(12),
             unitCost = runCatching { stmt.getDouble(13) }.getOrDefault(0.0),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(14)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(14)),
             isDeleted = stmt.getLong(15) != 0L,
             updatedAt = stmt.getLong(16)
         )

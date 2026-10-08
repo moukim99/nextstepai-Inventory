@@ -79,7 +79,7 @@ class StockItemTestResultDao {
             date = runCatching { stmt.getText(10) }.getOrDefault(""),
             userId = runCatching { if (stmt.isNull(11)) null else stmt.getLong(11) }.getOrNull(),
             metadata = runCatching { stmt.getText(12) }.getOrDefault("{}"),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(13)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(13)),
             isDeleted = runCatching { stmt.getLong(14) != 0L }.getOrDefault(false),
             updatedAt = runCatching { stmt.getLong(15) }.getOrDefault(0L)
         )

@@ -1,6 +1,11 @@
 package com.nextstepai.inventory.auth
 
 /**
+ * استثناء فشل المصادقة عند غياب أو انتهاء صلاحية الرموز المميزة.
+ */
+class AuthenticationException(message: String) : IllegalStateException(message)
+
+/**
  * نموذج رموز المصادقة (JWT Tokens).
  */
 data class AuthTokens(

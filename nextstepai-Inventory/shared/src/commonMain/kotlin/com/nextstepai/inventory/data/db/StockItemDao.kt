@@ -202,7 +202,7 @@ class StockItemDao {
             link = runCatching { stmt.getText(23) }.getOrDefault(""),
             metadata = runCatching { stmt.getText(24) }.getOrDefault("{}"),
             version = runCatching { stmt.getLong(25).toInt() }.getOrDefault(1),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(26)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(26)),
             isDeleted = runCatching { stmt.getLong(27) != 0L }.getOrDefault(false),
             updatedAt = runCatching { stmt.getLong(28) }.getOrDefault(0L),
             lastModifiedByDeviceUuid = runCatching { if (stmt.isNull(29)) null else stmt.getText(29) }.getOrNull()
