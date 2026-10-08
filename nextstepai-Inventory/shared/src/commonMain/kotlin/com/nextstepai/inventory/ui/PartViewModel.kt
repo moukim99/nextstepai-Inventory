@@ -41,7 +41,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
@@ -317,11 +316,9 @@ class PartViewModel(
 
             // 2. تحديد المعرف الخاص بالمستخدم المسؤول عن العمليات وتاريخ الاستلام
             val effectiveDate = receiptDate.ifBlank { DateTimeUtils.getCurrentDateTime() }
-            val activeUserId = receivedByUserId ?: runBlocking {
-                runCatching {
-                    userRepository.getActiveUsers().firstOrNull()?.uuid?.removePrefix("usr-")?.toLongOrNull()
-                }.getOrNull() ?: 1L
-            }
+            val activeUserId = receivedByUserId ?: runCatching {
+                userRepository.getActiveUsers().firstOrNull()?.uuid?.removePrefix("usr-")?.toLongOrNull()
+            }.getOrNull() ?: 1L
 
             // 3. إدراج عنصر المخزون في جدول stock_items
             val stockItem = StockItem(
@@ -927,8 +924,8 @@ class PartViewModel(
         }
 
         val enrichedParts = filtered.map { part ->
-            val hard = runBlocking { allocationRepository.getCommittedQuantity(part.id) }
-            val soft = runBlocking { allocationRepository.getSoftQuantity(part.id) }
+            val hard = allocationRepository.getCommittedQuantity(part.id)
+            val soft = allocationRepository.getSoftQuantity(part.id)
             if (hard > 0 || soft > 0) {
                 part.copy(totalHardAllocated = hard, totalSoftAllocated = soft)
             } else {

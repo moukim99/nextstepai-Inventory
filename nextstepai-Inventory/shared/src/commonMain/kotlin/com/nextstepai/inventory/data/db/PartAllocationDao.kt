@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -12,7 +12,7 @@ class PartAllocationDao {
     /**
      * جلب كافة الحجوزات النشطة لقطعة محددة مرتبة من الأحدث إلى الأقدم.
      */
-    suspend fun getActiveAllocationsForPart(partId: Long): List<PartAllocationEntity> {
+    fun getActiveAllocationsForPart(partId: Long): List<PartAllocationEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<PartAllocationEntity>()
         conn.prepare("""
@@ -33,7 +33,7 @@ class PartAllocationDao {
     /**
      * جلب كافة الحجوزات (النشطة والمحررة والمستهلكة) لقطعة محددة.
      */
-    suspend fun getAllAllocationsForPart(partId: Long): List<PartAllocationEntity> {
+    fun getAllAllocationsForPart(partId: Long): List<PartAllocationEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<PartAllocationEntity>()
         conn.prepare("""
@@ -54,7 +54,7 @@ class PartAllocationDao {
     /**
      * حساب إجمالي الكمية المحجوزة حجزاً مؤكداً (HARD Committed) لقطعة محددة.
      */
-    suspend fun getTotalCommittedQuantity(partId: Long): Double {
+    fun getTotalCommittedQuantity(partId: Long): Double {
         val conn = SqliteDatabaseManager.getConnection()
         var total = 0.0
         conn.prepare("""
@@ -73,7 +73,7 @@ class PartAllocationDao {
     /**
      * حساب إجمالي الكمية المحجوزة حجزاً مبدئياً (SOFT Reserved) لقطعة محددة.
      */
-    suspend fun getTotalSoftQuantity(partId: Long): Double {
+    fun getTotalSoftQuantity(partId: Long): Double {
         val conn = SqliteDatabaseManager.getConnection()
         var total = 0.0
         conn.prepare("""
@@ -92,7 +92,7 @@ class PartAllocationDao {
     /**
      * إدراج سجل حجز جديد في القاعدة وتوليد معرف فريد.
      */
-    suspend fun insertAllocation(entity: PartAllocationEntity): Long {
+    fun insertAllocation(entity: PartAllocationEntity): Long {
         val conn = SqliteDatabaseManager.getConnection()
         var generatedId = 0L
         conn.prepare("""
@@ -122,7 +122,7 @@ class PartAllocationDao {
     /**
      * تحديث حالة الحجز إلى RELEASED عند فك الحجز.
      */
-    suspend fun releaseAllocation(id: Long): Boolean {
+    fun releaseAllocation(id: Long): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             UPDATE part_allocations
@@ -138,7 +138,7 @@ class PartAllocationDao {
     /**
      * تحويل حالة الحجز آلياً إلى CONSUMED عند الصرف الفعلي للمخزون.
      */
-    suspend fun consumeAllocation(id: Long): Boolean {
+    fun consumeAllocation(id: Long): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             UPDATE part_allocations
@@ -154,7 +154,7 @@ class PartAllocationDao {
     /**
      * جلب سجل حجز فريد حسب معرّفه.
      */
-    suspend fun getAllocationById(id: Long): PartAllocationEntity? {
+    fun getAllocationById(id: Long): PartAllocationEntity? {
         val conn = SqliteDatabaseManager.getConnection()
         var entity: PartAllocationEntity? = null
         conn.prepare("""

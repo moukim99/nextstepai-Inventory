@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -14,7 +14,7 @@ class StockLocationTypeDao {
         uuid, typeId, name, description, icon, customIcon, length, width, height, maxWeight, maxVolume, metadata, syncStatus, isDeleted, updatedAt
     """.trimIndent()
 
-    suspend fun getAllLocationTypes(): List<StockLocationTypeEntity> {
+    fun getAllLocationTypes(): List<StockLocationTypeEntity> {
         return runCatching {
             val conn = SqliteDatabaseManager.getConnection()
             val results = mutableListOf<StockLocationTypeEntity>()
@@ -35,7 +35,7 @@ class StockLocationTypeDao {
         }.getOrDefault(emptyList())
     }
 
-    suspend fun insertOrUpdate(entity: StockLocationTypeEntity) {
+    fun insertOrUpdate(entity: StockLocationTypeEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO stock_location_types (

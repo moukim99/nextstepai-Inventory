@@ -7,7 +7,6 @@ import com.nextstepai.inventory.media.ProcessedImage
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
-import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 
 /**
@@ -69,15 +68,13 @@ class CompanyRepository(
         customerOnly: Boolean = false,
         activeOnly: Boolean = true
     ): List<Company> {
-        val entities = runBlocking {
-            companyDao.getCompaniesPaged(
-                supplierOnly = supplierOnly,
-                manufacturerOnly = manufacturerOnly,
-                customerOnly = customerOnly,
-                limit = 500,
-                offset = 0
-            )
-        }
+        val entities = companyDao.getCompaniesPaged(
+            supplierOnly = supplierOnly,
+            manufacturerOnly = manufacturerOnly,
+            customerOnly = customerOnly,
+            limit = 500,
+            offset = 0
+        )
         if (entities.isNotEmpty()) {
             var result = entities.mapIndexed { index, entity ->
                 val parsedId = entity.uuid.removePrefix("company-").toLongOrNull() ?: (index + 1L)
@@ -127,8 +124,7 @@ class CompanyRepository(
      */
     fun addCompany(company: Company): Company {
         val inserted = companyTable.insertCompany(company)
-        runBlocking {
-            companyDao.insertOrUpdate(
+        companyDao.insertOrUpdate(
                 CompanyEntity(
                     uuid = "company-${inserted.id}",
                     name = inserted.name,
@@ -148,7 +144,6 @@ class CompanyRepository(
                     syncStatus = SyncStatus.PENDING
                 )
             )
-        }
         return inserted
     }
 
@@ -157,8 +152,7 @@ class CompanyRepository(
      */
     fun updateCompany(company: Company): Company {
         val updated = companyTable.updateCompany(company)
-        runBlocking {
-            companyDao.insertOrUpdate(
+        companyDao.insertOrUpdate(
                 CompanyEntity(
                     uuid = "company-${updated.id}",
                     name = updated.name,
@@ -178,7 +172,6 @@ class CompanyRepository(
                     syncStatus = SyncStatus.PENDING
                 )
             )
-        }
         return updated
     }
 
@@ -199,8 +192,7 @@ class CompanyRepository(
 
     fun addCompanyAttachment(attachment: CompanyAttachment): CompanyAttachment {
         val inserted = companyAttachmentTable.insertAttachment(attachment)
-        runBlocking {
-            companyAttachmentDao.insertOrUpdate(
+        companyAttachmentDao.insertOrUpdate(
                 CompanyAttachmentEntity(
                     uuid = "company-att-${inserted.id}",
                     companyUuid = "company-${inserted.companyId}",
@@ -216,14 +208,13 @@ class CompanyRepository(
                     syncStatus = SyncStatus.PENDING
                 )
             )
-        }
         return inserted
     }
 
     fun deleteCompanyAttachment(id: Long): Boolean {
         val deleted = companyAttachmentTable.deleteAttachment(id)
         if (deleted) {
-            runBlocking { companyAttachmentDao.delete("company-att-$id") }
+            companyAttachmentDao.delete("company-att-$id")
         }
         return deleted
     }
@@ -234,8 +225,7 @@ class CompanyRepository(
 
     fun addContact(contact: Contact): Contact {
         val inserted = contactTable.insertContact(contact)
-        runBlocking {
-            contactDao.insertOrUpdate(
+        contactDao.insertOrUpdate(
                 ContactEntity(
                     uuid = "contact-${inserted.id}",
                     companyUuid = "company-${inserted.companyId}",
@@ -247,14 +237,13 @@ class CompanyRepository(
                     syncStatus = SyncStatus.PENDING
                 )
             )
-        }
         return inserted
     }
 
     fun deleteContact(contactId: Long): Boolean {
         val deleted = contactTable.deleteContact(contactId)
         if (deleted) {
-            runBlocking { contactDao.delete("contact-$contactId") }
+            contactDao.delete("contact-$contactId")
         }
         return deleted
     }
@@ -265,8 +254,7 @@ class CompanyRepository(
 
     fun addAddress(address: Address): Address {
         val inserted = addressTable.insertAddress(address)
-        runBlocking {
-            addressDao.insertOrUpdate(
+        addressDao.insertOrUpdate(
                 AddressEntity(
                     uuid = "address-${inserted.id}",
                     companyUuid = "company-${inserted.companyId}",
@@ -282,14 +270,13 @@ class CompanyRepository(
                     syncStatus = SyncStatus.PENDING
                 )
             )
-        }
         return inserted
     }
 
     fun deleteAddress(addressId: Long): Boolean {
         val deleted = addressTable.deleteAddress(addressId)
         if (deleted) {
-            runBlocking { addressDao.delete("address-$addressId") }
+            addressDao.delete("address-$addressId")
         }
         return deleted
     }
@@ -301,8 +288,7 @@ class CompanyRepository(
 
     fun addBankAccount(account: CompanyBankAccount): CompanyBankAccount {
         val inserted = companyBankAccountTable.insertBankAccount(account)
-        runBlocking {
-            companyBankAccountDao.insertOrUpdate(
+        companyBankAccountDao.insertOrUpdate(
                 CompanyBankAccountEntity(
                     uuid = "bank-${inserted.id}",
                     companyUuid = "company-${inserted.companyId}",
@@ -317,14 +303,13 @@ class CompanyRepository(
                     syncStatus = SyncStatus.PENDING
                 )
             )
-        }
         return inserted
     }
 
     fun deleteBankAccount(accountId: Long): Boolean {
         val deleted = companyBankAccountTable.deleteBankAccount(accountId)
         if (deleted) {
-            runBlocking { companyBankAccountDao.delete("bank-$accountId") }
+            companyBankAccountDao.delete("bank-$accountId")
         }
         return deleted
     }
@@ -336,8 +321,7 @@ class CompanyRepository(
 
     fun saveOrUpdateLegalRecord(record: CompanyLegalRecord): CompanyLegalRecord {
         val inserted = companyLegalRecordTable.saveOrUpdateLegalRecord(record)
-        runBlocking {
-            companyLegalRecordDao.insertOrUpdate(
+        companyLegalRecordDao.insertOrUpdate(
                 CompanyLegalRecordEntity(
                     uuid = "legal-${inserted.id}",
                     companyUuid = "company-${inserted.companyId}",
@@ -353,7 +337,6 @@ class CompanyRepository(
                     syncStatus = SyncStatus.PENDING
                 )
             )
-        }
         return inserted
     }
 
@@ -361,7 +344,7 @@ class CompanyRepository(
         val record = getLegalRecordForCompany(companyId) ?: return false
         val deleted = companyLegalRecordTable.deleteLegalRecord(record.id)
         if (deleted) {
-            runBlocking { companyLegalRecordDao.delete("legal-${record.id}") }
+            companyLegalRecordDao.delete("legal-${record.id}")
         }
         return deleted
     }
@@ -378,8 +361,7 @@ class CompanyRepository(
         val company = getCompanyById(part.manufacturerId)
         val isMfg = company?.isManufacturer ?: true
         val inserted = manufacturerPartTable.insertManufacturerPart(part, isManufacturerCompany = isMfg)
-        runBlocking {
-            manufacturerPartDao.insertOrUpdate(
+        manufacturerPartDao.insertOrUpdate(
                 ManufacturerPartEntity(
                     uuid = "mfg-part-${inserted.id}",
                     partUuid = "part-${inserted.partId}",
@@ -391,14 +373,13 @@ class CompanyRepository(
                     syncStatus = SyncStatus.PENDING
                 )
             )
-        }
         return inserted
     }
 
     fun deleteManufacturerPart(id: Long): Boolean {
         val deleted = manufacturerPartTable.deleteManufacturerPart(id)
         if (deleted) {
-            runBlocking { manufacturerPartDao.delete("mfg-part-$id") }
+            manufacturerPartDao.delete("mfg-part-$id")
         }
         return deleted
     }
@@ -410,8 +391,7 @@ class CompanyRepository(
 
     fun addManufacturerPartParameter(parameter: ManufacturerPartParameter): ManufacturerPartParameter {
         val inserted = manufacturerPartParameterTable.insertParameter(parameter)
-        runBlocking {
-            manufacturerPartParameterDao.insertOrUpdate(
+        manufacturerPartParameterDao.insertOrUpdate(
                 ManufacturerPartParameterEntity(
                     uuid = "mfg-param-${inserted.id}",
                     manufacturerPartUuid = "mfg-part-${inserted.manufacturerPartId}",
@@ -421,14 +401,13 @@ class CompanyRepository(
                     syncStatus = SyncStatus.PENDING
                 )
             )
-        }
         return inserted
     }
 
     fun deleteManufacturerPartParameter(id: Long): Boolean {
         val deleted = manufacturerPartParameterTable.deleteParameter(id)
         if (deleted) {
-            runBlocking { manufacturerPartParameterDao.delete("mfg-param-$id") }
+            manufacturerPartParameterDao.delete("mfg-param-$id")
         }
         return deleted
     }
@@ -440,8 +419,7 @@ class CompanyRepository(
 
     fun addManufacturerPartAttachment(attachment: ManufacturerPartAttachment): ManufacturerPartAttachment {
         val inserted = manufacturerPartAttachmentTable.insertAttachment(attachment)
-        runBlocking {
-            manufacturerPartAttachmentDao.insertOrUpdate(
+        manufacturerPartAttachmentDao.insertOrUpdate(
                 ManufacturerPartAttachmentEntity(
                     uuid = "mfg-part-att-${inserted.id}",
                     manufacturerPartUuid = "mfg-part-${inserted.manufacturerPartId}",
@@ -453,14 +431,13 @@ class CompanyRepository(
                     syncStatus = SyncStatus.PENDING
                 )
             )
-        }
         return inserted
     }
 
     fun deleteManufacturerPartAttachment(id: Long): Boolean {
         val deleted = manufacturerPartAttachmentTable.deleteAttachment(id)
         if (deleted) {
-            runBlocking { manufacturerPartAttachmentDao.delete("mfg-part-att-$id") }
+            manufacturerPartAttachmentDao.delete("mfg-part-att-$id")
         }
         return deleted
     }
@@ -477,8 +454,7 @@ class CompanyRepository(
         val company = getCompanyById(part.supplierId)
         val isSup = company?.isSupplier ?: true
         val inserted = supplierPartTable.insertSupplierPart(part, isSupplierCompany = isSup)
-        runBlocking {
-            supplierPartDao.insertOrUpdate(
+        supplierPartDao.insertOrUpdate(
                 SupplierPartEntity(
                     uuid = "sup-part-${inserted.id}",
                     partUuid = "part-${inserted.partId}",
@@ -496,14 +472,13 @@ class CompanyRepository(
                     syncStatus = SyncStatus.PENDING
                 )
             )
-        }
         return inserted
     }
 
     fun deleteSupplierPart(id: Long): Boolean {
         val deleted = supplierPartTable.deleteSupplierPart(id)
         if (deleted) {
-            runBlocking { supplierPartDao.delete("sup-part-$id") }
+            supplierPartDao.delete("sup-part-$id")
         }
         return deleted
     }
@@ -515,8 +490,7 @@ class CompanyRepository(
 
     fun addPriceBreak(priceBreak: SupplierPriceBreak, defaultCompanyCurrency: String = "USD"): SupplierPriceBreak {
         val inserted = supplierPriceBreakTable.insertPriceBreak(priceBreak, defaultCompanyCurrency)
-        runBlocking {
-            supplierPriceBreakDao.insertOrUpdate(
+        supplierPriceBreakDao.insertOrUpdate(
                 SupplierPriceBreakEntity(
                     uuid = "price-break-${inserted.id}",
                     supplierPartUuid = "sup-part-${inserted.supplierPartId}",
@@ -527,14 +501,13 @@ class CompanyRepository(
                     syncStatus = SyncStatus.PENDING
                 )
             )
-        }
         return inserted
     }
 
     fun deletePriceBreak(id: Long): Boolean {
         val deleted = supplierPriceBreakTable.deletePriceBreak(id)
         if (deleted) {
-            runBlocking { supplierPriceBreakDao.delete("price-break-$id") }
+            supplierPriceBreakDao.delete("price-break-$id")
         }
         return deleted
     }

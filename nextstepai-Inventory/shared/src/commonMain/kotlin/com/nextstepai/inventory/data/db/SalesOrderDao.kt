@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -18,7 +18,7 @@ class SalesOrderDao {
         uuid, orderUuid, orderId, partId, partUuid, partName, quantity, unitPrice, allocatedQuantity, shippedQuantity, notes, syncStatus, isDeleted, updatedAt
     """.trimIndent()
 
-    suspend fun getOrdersPaged(
+    fun getOrdersPaged(
         customerId: Long? = null,
         statusCode: Int? = null,
         limit: Int = 20,
@@ -51,7 +51,7 @@ class SalesOrderDao {
         return results
     }
 
-    suspend fun getLinesForOrderUuid(orderUuid: String): List<SalesOrderLineEntity> {
+    fun getLinesForOrderUuid(orderUuid: String): List<SalesOrderLineEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<SalesOrderLineEntity>()
 
@@ -69,7 +69,7 @@ class SalesOrderDao {
         return results
     }
 
-    suspend fun insertOrUpdateOrder(entity: SalesOrderEntity) {
+    fun insertOrUpdateOrder(entity: SalesOrderEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO sales_orders (
@@ -96,7 +96,7 @@ class SalesOrderDao {
         }
     }
 
-    suspend fun insertOrUpdateLine(entity: SalesOrderLineEntity) {
+    fun insertOrUpdateLine(entity: SalesOrderLineEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO sales_order_lines (

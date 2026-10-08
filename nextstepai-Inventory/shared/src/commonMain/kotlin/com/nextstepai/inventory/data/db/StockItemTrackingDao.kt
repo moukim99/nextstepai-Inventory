@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -15,7 +15,7 @@ class StockItemTrackingDao {
         syncStatus, lastModifiedByDeviceUuid
     """.trimIndent()
 
-    suspend fun getTrackingForStockItem(stockItemUuid: String): List<StockItemTrackingEntity> {
+    fun getTrackingForStockItem(stockItemUuid: String): List<StockItemTrackingEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<StockItemTrackingEntity>()
 
@@ -35,7 +35,7 @@ class StockItemTrackingDao {
         return results
     }
 
-    suspend fun getAllTrackingLogs(): List<StockItemTrackingEntity> {
+    fun getAllTrackingLogs(): List<StockItemTrackingEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<StockItemTrackingEntity>()
 
@@ -53,7 +53,7 @@ class StockItemTrackingDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: StockItemTrackingEntity) {
+    fun insertOrUpdate(entity: StockItemTrackingEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO stock_item_tracking (

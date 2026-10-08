@@ -18,7 +18,8 @@ class AppContainer(
     val userRepository: UserRepository = UserRepository(),
     val allocationRepository: PartAllocationRepository = PartAllocationRepository(),
     val settingsRepository: AppSettingsRepository = AppSettingsRepository(),
-    val loginRepository: LoginRepository = LoginRepository()
+    val loginRepository: LoginRepository = LoginRepository(),
+    val salesRepository: SalesOrderRepository = SalesOrderRepository()
 ) {
     fun createSettingsViewModel() = SettingsViewModel(
         repository = settingsRepository
@@ -60,14 +61,14 @@ class AppContainer(
         poRepository = poRepository,
         companyRepository = companyRepository,
         partRepository = partRepository,
-        stockRepository = stockRepository
+        buildRepository = buildRepository,
+        salesRepository = salesRepository
     )
 
     fun createBuildOrderViewModel() = BuildOrderViewModel(
-        buildRepository = buildRepository,
+        repository = buildRepository,
         partRepository = partRepository,
-        stockRepository = stockRepository,
-        bomRepository = bomRepository
+        userRepository = userRepository
     )
 }
 

@@ -35,7 +35,6 @@ import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
 import com.nextstepai.inventory.util.AppUuid
 import com.nextstepai.inventory.util.DateTimeUtils
-import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.time.Clock
 
@@ -80,7 +79,7 @@ class StockRepository(
      * جلب كافة السجلات المخزنية الفعلية من قاعدة البيانات الدائمة (SQLite).
      */
     fun getStockItems(): List<StockItem> {
-        val entities = runCatching { runBlocking { stockDao.getStockItemsPaged(limit = 1000, offset = 0) } }.getOrDefault(emptyList())
+        val entities = runCatching { stockDao.getStockItemsPaged(limit = 1000, offset = 0) }.getOrDefault(emptyList())
         if (entities.isNotEmpty()) {
             return entities.mapIndexed { index, entity ->
                 val parsedId = entity.uuid.removePrefix("stock-").toLongOrNull() ?: (index + 1L)
@@ -120,7 +119,7 @@ class StockRepository(
      * جلب كافة مواقع التخزين المتاحة من SQLite مع السقوط الآمن على الجدول المحلي.
      */
     fun getLocations(): List<StockLocation> {
-        val entities = runCatching { runBlocking { locationDao.getAllLocations() } }.getOrDefault(emptyList())
+        val entities = runCatching { locationDao.getAllLocations() }.getOrDefault(emptyList())
         if (entities.isNotEmpty()) {
             return entities.map { entity ->
                 val parsedId = entity.uuid.removePrefix("location-").removePrefix("loc-").toLongOrNull() ?: 1L
@@ -155,7 +154,7 @@ class StockRepository(
      */
     fun getLocationTypes(): List<StockLocationType> {
         val locationTypeDao = StockLocationTypeDao()
-        val entities = runCatching { runBlocking { locationTypeDao.getAllLocationTypes() } }.getOrDefault(emptyList())
+        val entities = runCatching { locationTypeDao.getAllLocationTypes() }.getOrDefault(emptyList())
         return entities.map { entity ->
             StockLocationType(
                 id = entity.typeId,
@@ -208,9 +207,7 @@ class StockRepository(
      */
     fun addStockItemAttachment(attachmentItem: StockItemAttachment): StockItemAttachment {
         val inserted = stockTable.addStockItemAttachment(attachmentItem)
-        runBlocking {
-            attachmentDao.insertOrUpdate(inserted.toEntity())
-        }
+        attachmentDao.insertOrUpdate(inserted.toEntity())
         return inserted
     }
 
@@ -220,9 +217,7 @@ class StockRepository(
     fun deleteStockItemAttachment(id: Long): Boolean {
         val deleted = stockTable.deleteStockItemAttachment(id)
         if (deleted) {
-            runBlocking {
-                attachmentDao.deleteAttachment("attachment-$id")
-            }
+            attachmentDao.deleteAttachment("attachment-$id")
         }
         return deleted
     }
@@ -232,9 +227,7 @@ class StockRepository(
      */
     fun addTestResult(testResult: StockItemTestResult): StockItemTestResult {
         val inserted = stockTable.addTestResult(testResult)
-        runBlocking {
-            testResultDao.insertOrUpdate(inserted.toEntity())
-        }
+        testResultDao.insertOrUpdate(inserted.toEntity())
         return inserted
     }
 
@@ -311,7 +304,7 @@ class StockRepository(
 
             if (existingPrimary != null) {
                 // سياسة حسم التعارضات عند التزامن (Conflict Resolution based on updatedAt)
-                val allEntities = runCatching { runBlocking { locationDao.getAllLocations() } }.getOrDefault(emptyList())
+                val allEntities = runCatching { locationDao.getAllLocations() }.getOrDefault(emptyList())
                 val locUpdatedAt = allEntities.find { it.uuid == location.uuid || it.uuid == "loc-${location.id}" }?.updatedAt ?: Clock.System.now().toEpochMilliseconds()
                 val existingUpdatedAt = allEntities.find { it.uuid == existingPrimary.uuid || it.uuid == "loc-${existingPrimary.id}" }?.updatedAt ?: 0L
 
@@ -319,9 +312,7 @@ class StockRepository(
                     // الكائن الجديد أحدث: إغلاق الصفة الأساسية عن الموقع القديم
                     val demoted = existingPrimary.withPrimary(false)
                     stockTable.insertLocation(demoted)
-                    runBlocking {
-                        locationDao.insertOrUpdate(demoted.toEntity())
-                    }
+                    locationDao.insertOrUpdate(demoted.toEntity())
                 } else {
                     // الموقع القديم أحدث: تجريد الكائن الجديد من الصفة الأساسية
                     finalLocation = location.withPrimary(false)
@@ -330,9 +321,7 @@ class StockRepository(
         }
 
         val inserted = stockTable.insertLocation(finalLocation)
-        runBlocking {
-            locationDao.insertOrUpdate(inserted.toEntity())
-        }
+        locationDao.insertOrUpdate(inserted.toEntity())
         return inserted
     }
 
@@ -417,13 +406,11 @@ class StockRepository(
         val targetType = targetLoc?.locationType ?: ""
 
         val removedFromTable = stockTable.deleteLocation(locationId)
-        runBlocking {
-            locationDao.softDeleteLocation(targetLoc?.uuid ?: "loc-$locationId")
-            targetLoc?.labelImagePath?.let { path ->
-                runCatching {
-                    val file = File(path)
-                    if (file.exists()) file.delete()
-                }
+        locationDao.softDeleteLocation(targetLoc?.uuid ?: "loc-$locationId")
+        targetLoc?.labelImagePath?.let { path ->
+            runCatching {
+                val file = File(path)
+                if (file.exists()) file.delete()
             }
         }
 
@@ -464,9 +451,7 @@ class StockRepository(
      */
     fun addBatchLocations(locations: List<StockLocation>): List<StockLocation> {
         val insertedList = stockTable.insertBatchLocations(locations)
-        runBlocking {
-            locationDao.insertBatchLocations(insertedList.map { it.toEntity() })
-        }
+        locationDao.insertBatchLocations(insertedList.map { it.toEntity() })
         return insertedList
     }
 
@@ -475,16 +460,14 @@ class StockRepository(
      */
     fun addStockItem(item: StockItem): StockItem {
         val inserted = stockTable.insertStockItem(item)
-        runBlocking {
-            stockDao.insertOrUpdate(inserted.toEntity())
-            val trackings = stockTable.getTrackingForStockItem(inserted.id)
-            trackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
-            checkAndInsertLowStockNotification(inserted.partId)
-        }
+        stockDao.insertOrUpdate(inserted.toEntity())
+        val trackings = stockTable.getTrackingForStockItem(inserted.id)
+        trackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
+        checkAndInsertLowStockNotification(inserted.partId)
         return inserted
     }
 
-    private suspend fun checkAndInsertLowStockNotification(partId: Long) {
+    private fun checkAndInsertLowStockNotification(partId: Long) {
         runCatching {
             val allStock = stockTable.getAllStockItems().filter { it.partId == partId }
             val currentTotalStock = allStock.sumOf { it.quantity }
@@ -511,12 +494,10 @@ class StockRepository(
      */
     fun splitStockItem(parentId: Long, splitQuantity: Double): StockItem {
         val child = stockTable.splitStockItem(parentId, splitQuantity)
-        runBlocking {
-            stockDao.insertOrUpdate(child.toEntity())
-            val parentTrackings = stockTable.getTrackingForStockItem(parentId)
-            val childTrackings = stockTable.getTrackingForStockItem(child.id)
-            (parentTrackings + childTrackings).forEach { trackingDao.insertOrUpdate(it.toEntity()) }
-        }
+        stockDao.insertOrUpdate(child.toEntity())
+        val parentTrackings = stockTable.getTrackingForStockItem(parentId)
+        val childTrackings = stockTable.getTrackingForStockItem(child.id)
+        (parentTrackings + childTrackings).forEach { trackingDao.insertOrUpdate(it.toEntity()) }
         return child
     }
 
@@ -533,26 +514,24 @@ class StockRepository(
     ): Boolean {
         // التأكد من تحميل/مزامنة السجل في جدول الذاكرة إذا أُمُر بالنقل مباشرة
         if (stockTable.getAllStockItems().none { it.id == itemId }) {
-            runBlocking {
-                val entities = stockDao.getStockItemsPaged(limit = 1000, offset = 0)
-                val entity = entities.find { it.uuid == "stock-$itemId" || it.uuid.removePrefix("stock-").toLongOrNull() == itemId }
-                if (entity != null) {
-                    val stockItem = StockItem(
-                        id = itemId,
-                        partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
-                        locationId = entity.locationUuid?.removePrefix("loc-")?.toLongOrNull() ?: 1L,
-                        quantity = entity.quantity,
-                        serial = entity.serial,
-                        batch = entity.batch,
-                        status = StockStatus.fromCode(entity.statusCode),
-                        packaging = entity.packaging,
-                        purchasePrice = entity.purchasePrice,
-                        expiryDate = entity.expiryDate,
-                        stocktakeDate = entity.stocktakeDate,
-                        notes = entity.notes
-                    )
-                    stockTable.insertStockItem(stockItem)
-                }
+            val entities = stockDao.getStockItemsPaged(limit = 1000, offset = 0)
+            val entity = entities.find { it.uuid == "stock-$itemId" || it.uuid.removePrefix("stock-").toLongOrNull() == itemId }
+            if (entity != null) {
+                val stockItem = StockItem(
+                    id = itemId,
+                    partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
+                    locationId = entity.locationUuid?.removePrefix("loc-")?.toLongOrNull() ?: 1L,
+                    quantity = entity.quantity,
+                    serial = entity.serial,
+                    batch = entity.batch,
+                    status = StockStatus.fromCode(entity.statusCode),
+                    packaging = entity.packaging,
+                    purchasePrice = entity.purchasePrice,
+                    expiryDate = entity.expiryDate,
+                    stocktakeDate = entity.stocktakeDate,
+                    notes = entity.notes
+                )
+                stockTable.insertStockItem(stockItem)
             }
         }
 
@@ -565,16 +544,14 @@ class StockRepository(
             notes = notes
         )
 
-        runBlocking {
-            stockDao.insertOrUpdate(sourceItem.toEntity())
-            val sourceTrackings = stockTable.getTrackingForStockItem(sourceItem.id)
-            sourceTrackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
+        stockDao.insertOrUpdate(sourceItem.toEntity())
+        val sourceTrackings = stockTable.getTrackingForStockItem(sourceItem.id)
+        sourceTrackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
 
-            if (targetItem != null) {
-                stockDao.insertOrUpdate(targetItem.toEntity())
-                val targetTrackings = stockTable.getTrackingForStockItem(targetItem.id)
-                targetTrackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
-            }
+        if (targetItem != null) {
+            stockDao.insertOrUpdate(targetItem.toEntity())
+            val targetTrackings = stockTable.getTrackingForStockItem(targetItem.id)
+            targetTrackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
         }
         return true
     }
@@ -584,11 +561,9 @@ class StockRepository(
      */
     fun performStocktake(stockId: Long, userId: Long, stocktakeDate: String = DateTimeUtils.getCurrentDate()): StockItem {
         val updated = stockTable.performStocktake(stockId, userId, stocktakeDate)
-        runBlocking {
-            stockDao.insertOrUpdate(updated.toEntity())
-            val trackings = stockTable.getTrackingForStockItem(stockId)
-            trackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
-        }
+        stockDao.insertOrUpdate(updated.toEntity())
+        val trackings = stockTable.getTrackingForStockItem(stockId)
+        trackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
         return updated
     }
 
@@ -604,9 +579,7 @@ class StockRepository(
         deltas: String = "{}"
     ): StockItemTracking {
         val tracking = stockTable.recordTracking(stockItemId, trackingType, userId, label, notes, deltas)
-        runBlocking {
-            trackingDao.insertOrUpdate(tracking.toEntity())
-        }
+        trackingDao.insertOrUpdate(tracking.toEntity())
         return tracking
     }
 

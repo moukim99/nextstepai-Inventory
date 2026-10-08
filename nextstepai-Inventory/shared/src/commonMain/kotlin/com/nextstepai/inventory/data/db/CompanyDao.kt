@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -10,7 +10,7 @@ import com.nextstepai.inventory.sync.SyncStatus
 @Dao
 class CompanyDao {
 
-    suspend fun getCompaniesPaged(
+    fun getCompaniesPaged(
         supplierOnly: Boolean = false,
         manufacturerOnly: Boolean = false,
         customerOnly: Boolean = false,
@@ -44,7 +44,7 @@ class CompanyDao {
         return results
     }
 
-    suspend fun getPendingSyncCompanies(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<CompanyEntity> {
+    fun getPendingSyncCompanies(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<CompanyEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<CompanyEntity>()
         conn.prepare("""
@@ -64,7 +64,7 @@ class CompanyDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: CompanyEntity) {
+    fun insertOrUpdate(entity: CompanyEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO companies (uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt)
@@ -92,7 +92,7 @@ class CompanyDao {
         }
     }
 
-    suspend fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
+    fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
         if (uuids.isEmpty()) return
         val conn = SqliteDatabaseManager.getConnection()
         for (uuid in uuids) {

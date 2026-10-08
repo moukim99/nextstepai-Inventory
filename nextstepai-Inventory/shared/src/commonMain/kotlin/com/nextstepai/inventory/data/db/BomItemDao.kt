@@ -10,7 +10,7 @@ import com.nextstepai.inventory.sync.SyncStatus
 @Dao
 class BomItemDao {
 
-    suspend fun getBomItemsPaged(partId: Long? = null, limit: Int = 20, offset: Int = 0): List<BomItemEntity> {
+    fun getBomItemsPaged(partId: Long? = null, limit: Int = 20, offset: Int = 0): List<BomItemEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<BomItemEntity>()
         val sql = if (partId != null) {
@@ -47,7 +47,7 @@ class BomItemDao {
         return results
     }
 
-    suspend fun getPendingSyncBomItems(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<BomItemEntity> {
+    fun getPendingSyncBomItems(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<BomItemEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<BomItemEntity>()
         conn.prepare("""
@@ -67,7 +67,7 @@ class BomItemDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: BomItemEntity) {
+    fun insertOrUpdate(entity: BomItemEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO bom_items (uuid, partId, subPartId, quantity, reference, optional, consumable, allowVariants, inherited, note, checksum, phaseUuid, syncStatus, isDeleted, updatedAt)
@@ -92,7 +92,7 @@ class BomItemDao {
         }
     }
 
-    suspend fun softDeleteByIdOrUuid(id: Long, uuid: String, updatedAt: Long) {
+    fun softDeleteByIdOrUuid(id: Long, uuid: String, updatedAt: Long) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("UPDATE bom_items SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ? OR rowid = ?").use { stmt ->
             stmt.bindLong(1, updatedAt)
@@ -102,7 +102,7 @@ class BomItemDao {
         }
     }
 
-    suspend fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
+    fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
         if (uuids.isEmpty()) return
         val conn = SqliteDatabaseManager.getConnection()
         for (uuid in uuids) {

@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -10,7 +10,7 @@ import com.nextstepai.inventory.sync.SyncStatus
 @Dao
 class PurchaseOrderDao {
 
-    suspend fun getOrdersPaged(
+    fun getOrdersPaged(
         supplierId: Long? = null,
         statusCode: Int? = null,
         limit: Int = 20,
@@ -43,7 +43,7 @@ class PurchaseOrderDao {
         return results
     }
 
-    suspend fun getLinesForOrderPaged(
+    fun getLinesForOrderPaged(
         orderUuid: String,
         limit: Int = 50,
         offset: Int = 0
@@ -68,7 +68,7 @@ class PurchaseOrderDao {
         return results
     }
 
-    suspend fun getPendingSyncOrders(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<PurchaseOrderEntity> {
+    fun getPendingSyncOrders(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<PurchaseOrderEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<PurchaseOrderEntity>()
 
@@ -89,7 +89,7 @@ class PurchaseOrderDao {
         return results
     }
 
-    suspend fun insertOrUpdateOrder(entity: PurchaseOrderEntity) {
+    fun insertOrUpdateOrder(entity: PurchaseOrderEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO purchase_orders (uuid, reference, supplierId, supplierName, statusCode, description, orderCurrency, targetDate, totalCost, sourceType, sourceReferenceUuid, destinationLocationUuid, syncStatus, isDeleted, updatedAt)
@@ -114,7 +114,7 @@ class PurchaseOrderDao {
         }
     }
 
-    suspend fun insertOrUpdateLine(entity: PurchaseOrderLineEntity) {
+    fun insertOrUpdateLine(entity: PurchaseOrderLineEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO purchase_order_lines (uuid, orderUuid, supplierPartId, quantity, receivedQuantity, purchasePrice, syncStatus, isDeleted, updatedAt)
@@ -133,7 +133,7 @@ class PurchaseOrderDao {
         }
     }
 
-    suspend fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
+    fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
         if (uuids.isEmpty()) return
         val conn = SqliteDatabaseManager.getConnection()
         for (uuid in uuids) {

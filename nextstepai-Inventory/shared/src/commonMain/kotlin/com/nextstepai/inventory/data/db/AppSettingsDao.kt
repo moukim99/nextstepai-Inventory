@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -6,7 +6,7 @@ import androidx.sqlite.SQLiteStatement
 @Dao
 class AppSettingsDao {
 
-    suspend fun getSettings(): AppSettingsEntity {
+    fun getSettings(): AppSettingsEntity {
         val conn = SqliteDatabaseManager.getConnection()
         var entity: AppSettingsEntity? = null
 
@@ -32,7 +32,7 @@ class AppSettingsDao {
         return entity!!
     }
 
-    suspend fun saveSettings(settings: AppSettingsEntity) {
+    fun saveSettings(settings: AppSettingsEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         val sql = """
             INSERT INTO app_settings (

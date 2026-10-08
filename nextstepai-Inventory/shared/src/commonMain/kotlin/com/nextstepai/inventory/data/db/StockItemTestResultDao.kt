@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -15,7 +15,7 @@ class StockItemTestResultDao {
         notes, date, userId, metadata, syncStatus, isDeleted, updatedAt
     """.trimIndent()
 
-    suspend fun getTestResultsForStockItem(stockItemId: Long): List<StockItemTestResultEntity> {
+    fun getTestResultsForStockItem(stockItemId: Long): List<StockItemTestResultEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<StockItemTestResultEntity>()
 
@@ -35,7 +35,7 @@ class StockItemTestResultDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: StockItemTestResultEntity) {
+    fun insertOrUpdate(entity: StockItemTestResultEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO stock_item_test_results (

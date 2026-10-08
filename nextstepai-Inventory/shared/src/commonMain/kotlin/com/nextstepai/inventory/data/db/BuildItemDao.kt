@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -14,7 +14,7 @@ class BuildItemDao {
         uuid, id, buildId, buildUuid, buildLineId, buildLineUuid, stockItemId, stockItemUuid, stockItemName, quantity, installIntoStockItemId, installIntoStockItemUuid, notes, syncStatus, isDeleted, updatedAt
     """.trimIndent()
 
-    suspend fun getBuildItemsForBuild(buildId: Long): List<BuildItemEntity> {
+    fun getBuildItemsForBuild(buildId: Long): List<BuildItemEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<BuildItemEntity>()
 
@@ -34,7 +34,7 @@ class BuildItemDao {
         return results
     }
 
-    suspend fun getBuildItemsForBuildUuid(buildUuid: String): List<BuildItemEntity> {
+    fun getBuildItemsForBuildUuid(buildUuid: String): List<BuildItemEntity> {
         if (buildUuid.isBlank()) return emptyList()
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<BuildItemEntity>()
@@ -55,7 +55,7 @@ class BuildItemDao {
         return results
     }
 
-    suspend fun getPendingSyncBuildItems(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<BuildItemEntity> {
+    fun getPendingSyncBuildItems(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<BuildItemEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<BuildItemEntity>()
 
@@ -76,7 +76,7 @@ class BuildItemDao {
         return results
     }
 
-    suspend fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
+    fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
         if (uuids.isEmpty()) return
         val conn = SqliteDatabaseManager.getConnection()
         for (uuid in uuids) {
@@ -88,7 +88,7 @@ class BuildItemDao {
         }
     }
 
-    suspend fun insertOrUpdate(entity: BuildItemEntity) {
+    fun insertOrUpdate(entity: BuildItemEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO build_items (

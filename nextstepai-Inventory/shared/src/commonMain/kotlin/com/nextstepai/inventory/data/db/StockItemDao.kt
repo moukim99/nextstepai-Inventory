@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -20,7 +20,7 @@ class StockItemDao {
         updatedAt, lastModifiedByDeviceUuid
     """.trimIndent()
 
-    suspend fun getStockItemsPaged(
+    fun getStockItemsPaged(
         partUuid: String? = null,
         locationUuid: String? = null,
         limit: Int = 20,
@@ -53,7 +53,7 @@ class StockItemDao {
         return results
     }
 
-    suspend fun getStockItemByUuid(uuid: String): StockItemEntity? {
+    fun getStockItemByUuid(uuid: String): StockItemEntity? {
         if (uuid.isBlank()) return null
         val conn = SqliteDatabaseManager.getConnection()
         var result: StockItemEntity? = null
@@ -67,7 +67,7 @@ class StockItemDao {
         return result
     }
 
-    suspend fun getPendingSyncStockItems(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<StockItemEntity> {
+    fun getPendingSyncStockItems(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<StockItemEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<StockItemEntity>()
         conn.prepare("""
@@ -87,7 +87,7 @@ class StockItemDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: StockItemEntity) {
+    fun insertOrUpdate(entity: StockItemEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT INTO stock_items (
@@ -162,7 +162,7 @@ class StockItemDao {
         }
     }
 
-    suspend fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
+    fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
         if (uuids.isEmpty()) return
         val conn = SqliteDatabaseManager.getConnection()
         for (uuid in uuids) {

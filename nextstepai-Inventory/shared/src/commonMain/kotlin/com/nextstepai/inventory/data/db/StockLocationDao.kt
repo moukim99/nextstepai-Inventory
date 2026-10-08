@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -17,7 +17,7 @@ class StockLocationDao {
         lft, rght, treeId, metadata, version, syncStatus, isDeleted, updatedAt, lastModifiedByDeviceUuid
     """.trimIndent()
 
-    suspend fun getAllLocations(): List<StockLocationEntity> {
+    fun getAllLocations(): List<StockLocationEntity> {
         return runCatching {
             val conn = SqliteDatabaseManager.getConnection()
             val results = mutableListOf<StockLocationEntity>()
@@ -38,7 +38,7 @@ class StockLocationDao {
         }.getOrDefault(emptyList())
     }
 
-    suspend fun getLocationByUuid(uuid: String): StockLocationEntity? {
+    fun getLocationByUuid(uuid: String): StockLocationEntity? {
         if (uuid.isBlank()) return null
         return runCatching {
             val conn = SqliteDatabaseManager.getConnection()
@@ -50,7 +50,7 @@ class StockLocationDao {
         }.getOrNull()
     }
 
-    suspend fun insertOrUpdate(entity: StockLocationEntity) {
+    fun insertOrUpdate(entity: StockLocationEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT INTO stock_locations (
@@ -87,7 +87,7 @@ class StockLocationDao {
         }
     }
 
-    suspend fun insertBatchLocations(entities: List<StockLocationEntity>): Int {
+    fun insertBatchLocations(entities: List<StockLocationEntity>): Int {
         val conn = SqliteDatabaseManager.getConnection()
         var insertedCount = 0
         conn.prepare("""
@@ -130,7 +130,7 @@ class StockLocationDao {
         return insertedCount
     }
 
-    suspend fun softDeleteLocation(uuid: String, updatedAt: Long = Clock.System.now().toEpochMilliseconds()) {
+    fun softDeleteLocation(uuid: String, updatedAt: Long = Clock.System.now().toEpochMilliseconds()) {
         runCatching {
             val conn = SqliteDatabaseManager.getConnection()
             val sql = """
@@ -146,7 +146,7 @@ class StockLocationDao {
         }
     }
 
-    suspend fun getRootSitesCount(): Int {
+    fun getRootSitesCount(): Int {
         return runCatching {
             val conn = SqliteDatabaseManager.getConnection()
             val sql = "SELECT COUNT(*) FROM stock_locations WHERE parentUuid IS NULL AND isDeleted = 0"
@@ -156,7 +156,7 @@ class StockLocationDao {
         }.getOrDefault(0)
     }
 
-    suspend fun getWarehouseCount(parentUuid: String? = null): Int {
+    fun getWarehouseCount(parentUuid: String? = null): Int {
         return runCatching {
             val conn = SqliteDatabaseManager.getConnection()
             val sql = if (parentUuid != null) {
@@ -171,7 +171,7 @@ class StockLocationDao {
         }.getOrDefault(0)
     }
 
-    suspend fun findPrimaryLocation(type: String): StockLocationEntity? {
+    fun findPrimaryLocation(type: String): StockLocationEntity? {
         return runCatching {
             val conn = SqliteDatabaseManager.getConnection()
             val isExternal = type.equals("EXTERNAL", ignoreCase = true)

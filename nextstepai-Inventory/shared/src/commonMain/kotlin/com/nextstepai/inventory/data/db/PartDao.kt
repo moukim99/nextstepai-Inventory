@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -20,7 +20,7 @@ class PartDao {
         updatedAt, lastModifiedByDeviceUuid
     """.trimIndent()
 
-    suspend fun getPartsPaged(limit: Int = 20, offset: Int = 0): List<PartEntity> {
+    fun getPartsPaged(limit: Int = 20, offset: Int = 0): List<PartEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<PartEntity>()
         conn.prepare("""
@@ -39,7 +39,7 @@ class PartDao {
         return results
     }
 
-    suspend fun getPartByUuid(uuid: String): PartEntity? {
+    fun getPartByUuid(uuid: String): PartEntity? {
         if (uuid.isBlank()) return null
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
@@ -55,7 +55,7 @@ class PartDao {
         return null
     }
 
-    suspend fun getPartsByCategoryUuid(categoryUuid: String?): List<PartEntity> {
+    fun getPartsByCategoryUuid(categoryUuid: String?): List<PartEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<PartEntity>()
         val sql = if (categoryUuid == null) {
@@ -74,7 +74,7 @@ class PartDao {
         return results
     }
 
-    suspend fun getParentAssemblies(): List<PartEntity> {
+    fun getParentAssemblies(): List<PartEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<PartEntity>()
         conn.prepare("""
@@ -90,7 +90,7 @@ class PartDao {
         return results
     }
 
-    suspend fun getEligibleSubParts(parentPartUuid: String): List<PartEntity> {
+    fun getEligibleSubParts(parentPartUuid: String): List<PartEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<PartEntity>()
         conn.prepare("""
@@ -112,7 +112,7 @@ class PartDao {
         return results
     }
 
-    suspend fun getPendingSyncParts(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<PartEntity> {
+    fun getPendingSyncParts(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<PartEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<PartEntity>()
         conn.prepare("""
@@ -135,7 +135,7 @@ class PartDao {
     /**
      * إدراج أو تحديث قطعة مادية مع تطبيق زيادة الـ version تلقائياً عند التعديل المحلي.
      */
-    suspend fun insertOrUpdate(entity: PartEntity) {
+    fun insertOrUpdate(entity: PartEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT INTO parts (
@@ -212,7 +212,7 @@ class PartDao {
         }
     }
 
-    suspend fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
+    fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
         if (uuids.isEmpty()) return
         val conn = SqliteDatabaseManager.getConnection()
         for (uuid in uuids) {
@@ -224,7 +224,7 @@ class PartDao {
         }
     }
 
-    suspend fun addStockToPart(partUuid: String, qty: Double) {
+    fun addStockToPart(partUuid: String, qty: Double) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("UPDATE parts SET totalInStock = totalInStock + ?, version = version + 1, updatedAt = ? WHERE uuid = ?").use { stmt ->
             stmt.bindDouble(1, qty)
@@ -234,7 +234,7 @@ class PartDao {
         }
     }
 
-    suspend fun softDeleteByUuid(uuid: String, updatedAtMs: Long = Clock.System.now().toEpochMilliseconds()) {
+    fun softDeleteByUuid(uuid: String, updatedAtMs: Long = Clock.System.now().toEpochMilliseconds()) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("UPDATE parts SET isDeleted = 1, syncStatus = 'PENDING', version = version + 1, updatedAt = ? WHERE uuid = ?").use { stmt ->
             stmt.bindLong(1, updatedAtMs)
@@ -243,7 +243,7 @@ class PartDao {
         }
     }
 
-    suspend fun getActiveCount(): Int {
+    fun getActiveCount(): Int {
         val conn = SqliteDatabaseManager.getConnection()
         var count = 0
         conn.prepare("SELECT COUNT(*) FROM parts WHERE isDeleted = 0").use { stmt ->

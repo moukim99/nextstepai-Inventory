@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -14,7 +14,7 @@ class BuildOrderLineItemDao {
         uuid, id, buildId, buildUuid, bomItemId, bomItemUuid, subPartId, subPartName, quantity, allocatedQuantity, consumedQuantity, notes, phaseUuid, unitCost, syncStatus, isDeleted, updatedAt
     """.trimIndent()
 
-    suspend fun getLineItemsForBuild(buildId: Long): List<BuildOrderLineItemEntity> {
+    fun getLineItemsForBuild(buildId: Long): List<BuildOrderLineItemEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<BuildOrderLineItemEntity>()
 
@@ -34,7 +34,7 @@ class BuildOrderLineItemDao {
         return results
     }
 
-    suspend fun getLineItemsForBuildUuid(buildUuid: String): List<BuildOrderLineItemEntity> {
+    fun getLineItemsForBuildUuid(buildUuid: String): List<BuildOrderLineItemEntity> {
         if (buildUuid.isBlank()) return emptyList()
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<BuildOrderLineItemEntity>()
@@ -55,7 +55,7 @@ class BuildOrderLineItemDao {
         return results
     }
 
-    suspend fun getPendingSyncLineItems(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<BuildOrderLineItemEntity> {
+    fun getPendingSyncLineItems(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<BuildOrderLineItemEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<BuildOrderLineItemEntity>()
 
@@ -76,7 +76,7 @@ class BuildOrderLineItemDao {
         return results
     }
 
-    suspend fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
+    fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
         if (uuids.isEmpty()) return
         val conn = SqliteDatabaseManager.getConnection()
         for (uuid in uuids) {
@@ -88,7 +88,7 @@ class BuildOrderLineItemDao {
         }
     }
 
-    suspend fun insertOrUpdate(entity: BuildOrderLineItemEntity) {
+    fun insertOrUpdate(entity: BuildOrderLineItemEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO build_order_line_items (
