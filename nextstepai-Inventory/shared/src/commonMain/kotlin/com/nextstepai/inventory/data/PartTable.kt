@@ -230,12 +230,13 @@ class PartTable {
     private val categories = mutableListOf<PartCategory>()
     private var nextPartId = 1L
     private var nextCategoryId = 1L
+    private val lock = Any()
 
     init {
         seedSampleData()
     }
 
-    fun clearAll() {
+    fun clearAll() = synchronized(lock) {
         parts.clear()
         categories.clear()
         nextPartId = 1L
@@ -332,7 +333,7 @@ class PartTable {
     /**
      * إدراج تصنيف جديد في الجدول.
      */
-    fun insertCategory(name: String, parentId: Long? = null, description: String = ""): PartCategory {
+    fun insertCategory(name: String, parentId: Long? = null, description: String = ""): PartCategory = synchronized(lock) {
         val category = PartCategory(
             id = nextCategoryId++,
             name = name,
@@ -340,18 +341,18 @@ class PartTable {
             description = description
         )
         categories.add(category)
-        return category
+        category
     }
 
     /**
      * جلب جميع التصنيفات المتاحة.
      */
-    fun getAllCategories(): List<PartCategory> = categories.toList()
+    fun getAllCategories(): List<PartCategory> = synchronized(lock) { categories.toList() }
 
     /**
      * حذف تصنيف محدد من القائمة وتحديث القطع المرتبطة به.
      */
-    fun deleteCategory(categoryId: Long): Boolean {
+    fun deleteCategory(categoryId: Long): Boolean = synchronized(lock) {
         val removed = categories.removeAll { it.id == categoryId }
         if (removed) {
             parts.forEachIndexed { index, part ->
@@ -360,13 +361,13 @@ class PartTable {
                 }
             }
         }
-        return removed
+        removed
     }
 
     /**
      * إدراج قطعة جديدة مع التحقق من شروط التبعية الشجرية وتوليد لقطة أرشفة ملصق القطعة المبدئية تلقائياً.
      */
-    fun insertPart(part: Part): Part {
+    fun insertPart(part: Part): Part = synchronized(lock) {
         // التحقق منطقياً من تبعية القالب: لا يمكن ربط variantOfId إلا لقطعة معرّفة كـ isTemplate = true
         if (part.id == 0L && part.variantOfId != null) {
             val parentTemplate = parts.find { it.id == part.variantOfId }
@@ -391,32 +392,33 @@ class PartTable {
 
         parts.removeAll { it.id == finalPart.id }
         parts.add(finalPart)
-        return finalPart
+        finalPart
     }
 
     /**
      * تحديث بيانات قطعة موجودة.
      */
-    fun updatePart(part: Part): Boolean {
+    fun updatePart(part: Part): Boolean = synchronized(lock) {
         val index = parts.indexOfFirst { it.id == part.id }
         if (index != -1) {
             parts[index] = part
-            return true
+            true
+        } else {
+            false
         }
-        return false
     }
 
     /**
      * حذف قطعة من القائمة المباشرة بالذاكرة.
      */
-    fun deletePart(partId: Long): Boolean {
-        return parts.removeAll { it.id == partId }
+    fun deletePart(partId: Long): Boolean = synchronized(lock) {
+        parts.removeAll { it.id == partId }
     }
 
     /**
      * زيادة رصيد المخزون لقطعة محددة وتحديث إجمالي المخزون.
      */
-    fun addStockToPart(partId: Long, quantity: Double): Part? {
+    fun addStockToPart(partId: Long, quantity: Double): Part? = synchronized(lock) {
         val index = parts.indexOfFirst { it.id == partId }
         if (index != -1) {
             val current = parts[index]
@@ -424,20 +426,21 @@ class PartTable {
                 totalInStock = current.totalInStock + quantity
             )
             parts[index] = updated
-            return updated
+            updated
+        } else {
+            null
         }
-        return null
     }
 
     /**
      * جلب قطعة بالمعرف الفريد (ID).
      */
-    fun getPartById(id: Long): Part? = parts.find { it.id == id }
+    fun getPartById(id: Long): Part? = synchronized(lock) { parts.find { it.id == id } }
 
     /**
      * جلب جميع القطع المتاحة.
      */
-    fun getAllParts(): List<Part> = parts.toList()
+    fun getAllParts(): List<Part> = synchronized(lock) { parts.toList() }
 
     /**
      * البحث والفلترة المتقدمة للقطع حسب الكلمات المفتاحية، التصنيف، وحالة النشاط.
@@ -450,7 +453,8 @@ class PartTable {
         componentOnly: Boolean = false,
         lowStockOnly: Boolean = false
     ): List<Part> {
-        return parts.filter { part ->
+        val snapshot = synchronized(lock) { parts.toList() }
+        return snapshot.filter { part ->
             val matchesActive = !activeOnly || part.active
             val matchesCategory = categoryId == null || part.categoryId == categoryId
             val matchesAssembly = !assemblyOnly || part.assembly
@@ -471,10 +475,10 @@ class PartTable {
     /**
      * الحصول على جميع القطع المعرفة كقوالب (Templates) لاستخدامها في القوائم المنسدلة للقطع المشتقة.
      */
-    fun getTemplateParts(): List<Part> = parts.filter { it.isTemplate && it.active }
+    fun getTemplateParts(): List<Part> = synchronized(lock) { parts.filter { it.isTemplate && it.active } }
 
     /**
      * جلب القطع المشتقة (Variants) لقطعة قالب معينة.
      */
-    fun getVariantsOf(templateId: Long): List<Part> = parts.filter { it.variantOfId == templateId }
+    fun getVariantsOf(templateId: Long): List<Part> = synchronized(lock) { parts.filter { it.variantOfId == templateId } }
 }

@@ -116,7 +116,11 @@ class CompanyRepository(
         val companyInTable = companyTable.getCompanyById(id)
         if (companyInTable != null) return companyInTable
         val companies = searchCompanies()
-        return companies.find { it.id == id }
+        val found = companies.find { it.id == id }
+        if (found != null) {
+            companyTable.insertCompany(found)
+        }
+        return found
     }
 
     /**
@@ -187,8 +191,36 @@ class CompanyRepository(
 
     // --- مرفقات الشركات العامة (Company Attachments) ---
 
-    fun getAttachmentsForCompany(companyId: Long): List<CompanyAttachment> =
-        companyAttachmentTable.getAttachmentsForCompany(companyId)
+    fun getAttachmentsForCompany(companyId: Long): List<CompanyAttachment> {
+        val cached = companyAttachmentTable.getAttachmentsForCompany(companyId)
+        val entities = companyAttachmentDao.getForCompany("company-$companyId")
+        if (entities.isNotEmpty()) {
+            val cachedUuids = cached.map { "company-att-${it.id}" }.toSet()
+            val missing = entities.filter { it.uuid !in cachedUuids }
+            if (missing.isNotEmpty()) {
+                missing.forEach { entity ->
+                    val parsedId = entity.uuid.removePrefix("company-att-").toLongOrNull() ?: 0L
+                    companyAttachmentTable.insertAttachment(
+                        CompanyAttachment(
+                            id = parsedId,
+                            companyId = companyId,
+                            documentType = entity.documentType,
+                            attachmentPath = entity.attachmentPath,
+                            link = entity.link,
+                            comment = entity.comment,
+                            uploadDate = entity.uploadDate,
+                            userId = entity.userId,
+                            expiryDate = entity.expiryDate,
+                            notifyOnExpiry = entity.notifyOnExpiry,
+                            notificationDaysBefore = entity.notificationDaysBefore
+                        )
+                    )
+                }
+                return companyAttachmentTable.getAttachmentsForCompany(companyId)
+            }
+        }
+        return cached
+    }
 
     fun addCompanyAttachment(attachment: CompanyAttachment): CompanyAttachment {
         val inserted = companyAttachmentTable.insertAttachment(attachment)
@@ -221,7 +253,32 @@ class CompanyRepository(
 
     // --- جهات الاتصال (Contacts) ---
 
-    fun getContactsForCompany(companyId: Long): List<Contact> = contactTable.getContactsForCompany(companyId)
+    fun getContactsForCompany(companyId: Long): List<Contact> {
+        val cached = contactTable.getContactsForCompany(companyId)
+        val entities = contactDao.getContactsForCompany("company-$companyId")
+        if (entities.isNotEmpty()) {
+            val cachedUuids = cached.map { "contact-${it.id}" }.toSet()
+            val missing = entities.filter { it.uuid !in cachedUuids }
+            if (missing.isNotEmpty()) {
+                missing.forEach { entity ->
+                    val parsedId = entity.uuid.removePrefix("contact-").toLongOrNull() ?: 0L
+                    contactTable.insertContact(
+                        Contact(
+                            id = parsedId,
+                            companyId = companyId,
+                            name = entity.name,
+                            phone = entity.phone,
+                            email = entity.email,
+                            role = entity.role,
+                            isPrimary = entity.isPrimary
+                        )
+                    )
+                }
+                return contactTable.getContactsForCompany(companyId)
+            }
+        }
+        return cached
+    }
 
     fun addContact(contact: Contact): Contact {
         val inserted = contactTable.insertContact(contact)
@@ -250,7 +307,36 @@ class CompanyRepository(
 
     // --- العناوين (Addresses) ---
 
-    fun getAddressesForCompany(companyId: Long): List<Address> = addressTable.getAddressesForCompany(companyId)
+    fun getAddressesForCompany(companyId: Long): List<Address> {
+        val cached = addressTable.getAddressesForCompany(companyId)
+        val entities = addressDao.getAddressesForCompany("company-$companyId")
+        if (entities.isNotEmpty()) {
+            val cachedUuids = cached.map { "address-${it.id}" }.toSet()
+            val missing = entities.filter { it.uuid !in cachedUuids }
+            if (missing.isNotEmpty()) {
+                missing.forEach { entity ->
+                    val parsedId = entity.uuid.removePrefix("address-").toLongOrNull() ?: 0L
+                    addressTable.insertAddress(
+                        Address(
+                            id = parsedId,
+                            companyId = companyId,
+                            title = entity.title,
+                            isPrimary = entity.isPrimary,
+                            line1 = entity.line1,
+                            line2 = entity.line2,
+                            postalCode = entity.postalCode,
+                            city = entity.city,
+                            province = entity.province,
+                            country = entity.country,
+                            shippingNotes = entity.shippingNotes
+                        )
+                    )
+                }
+                return addressTable.getAddressesForCompany(companyId)
+            }
+        }
+        return cached
+    }
 
     fun addAddress(address: Address): Address {
         val inserted = addressTable.insertAddress(address)
@@ -283,8 +369,36 @@ class CompanyRepository(
 
     // --- الحسابات البنكية للشركة (Company Bank Accounts) ---
 
-    fun getBankAccountsForCompany(companyId: Long): List<CompanyBankAccount> =
-        companyBankAccountTable.getBankAccountsForCompany(companyId)
+    fun getBankAccountsForCompany(companyId: Long): List<CompanyBankAccount> {
+        val cached = companyBankAccountTable.getBankAccountsForCompany(companyId)
+        val entities = companyBankAccountDao.getForCompany("company-$companyId")
+        if (entities.isNotEmpty()) {
+            val cachedUuids = cached.map { "bank-${it.id}" }.toSet()
+            val missing = entities.filter { it.uuid !in cachedUuids }
+            if (missing.isNotEmpty()) {
+                missing.forEach { entity ->
+                    val parsedId = entity.uuid.removePrefix("bank-").toLongOrNull() ?: 0L
+                    companyBankAccountTable.insertBankAccount(
+                        CompanyBankAccount(
+                            id = parsedId,
+                            companyId = companyId,
+                            bankName = entity.bankName,
+                            accountName = entity.accountName,
+                            accountNumber = entity.accountNumber,
+                            iban = entity.iban,
+                            swiftBic = entity.swiftBic,
+                            currency = entity.currency,
+                            branchName = entity.branchName,
+                            isPrimary = entity.isPrimary,
+                            updatedAt = entity.updatedAt
+                        )
+                    )
+                }
+                return companyBankAccountTable.getBankAccountsForCompany(companyId)
+            }
+        }
+        return cached
+    }
 
     fun addBankAccount(account: CompanyBankAccount): CompanyBankAccount {
         val inserted = companyBankAccountTable.insertBankAccount(account)
@@ -316,8 +430,27 @@ class CompanyRepository(
 
     // --- السجلات القانونية والتراخيص (Company Legal Records) ---
 
-    fun getLegalRecordForCompany(companyId: Long): CompanyLegalRecord? =
-        companyLegalRecordTable.getLegalRecordForCompany(companyId)
+    fun getLegalRecordForCompany(companyId: Long): CompanyLegalRecord? {
+        val cached = companyLegalRecordTable.getLegalRecordForCompany(companyId)
+        if (cached != null) return cached
+        val entity = companyLegalRecordDao.getForCompany("company-$companyId") ?: return null
+        val parsedId = entity.uuid.removePrefix("legal-").toLongOrNull() ?: 0L
+        val record = CompanyLegalRecord(
+            id = parsedId,
+            companyId = companyId,
+            commercialRegisterNumber = entity.commercialRegisterNumber,
+            taxId = entity.taxId,
+            nationalIdNumber = entity.nationalIdNumber,
+            importLicenseNumber = entity.importLicenseNumber,
+            manufacturingLicenseNumber = entity.manufacturingLicenseNumber,
+            activityCodes = entity.activityCodes,
+            issuingAuthority = entity.issuingAuthority,
+            issueDate = entity.issueDate,
+            expiryDate = entity.expiryDate,
+            updatedAt = entity.updatedAt
+        )
+        return companyLegalRecordTable.saveOrUpdateLegalRecord(record)
+    }
 
     fun saveOrUpdateLegalRecord(record: CompanyLegalRecord): CompanyLegalRecord {
         val inserted = companyLegalRecordTable.saveOrUpdateLegalRecord(record)
@@ -351,11 +484,65 @@ class CompanyRepository(
 
     // --- قطع المصنّع (Manufacturer Parts) ---
 
-    fun getManufacturerPartsForCompany(companyId: Long): List<ManufacturerPart> =
-        manufacturerPartTable.getManufacturerPartsForCompany(companyId)
+    fun getManufacturerPartsForCompany(companyId: Long): List<ManufacturerPart> {
+        val cached = manufacturerPartTable.getManufacturerPartsForCompany(companyId)
+        val entities = manufacturerPartDao.getForCompany("company-$companyId")
+        if (entities.isNotEmpty()) {
+            val cachedUuids = cached.map { "mfg-part-${it.id}" }.toSet()
+            val missing = entities.filter { it.uuid !in cachedUuids }
+            if (missing.isNotEmpty()) {
+                missing.forEach { entity ->
+                    val parsedId = entity.uuid.removePrefix("mfg-part-").toLongOrNull() ?: 0L
+                    val partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 0L
+                    manufacturerPartTable.insertManufacturerPart(
+                        ManufacturerPart(
+                            id = parsedId,
+                            partId = partId,
+                            manufacturerId = companyId,
+                            mpn = entity.mpn,
+                            description = entity.description,
+                            link = entity.link,
+                            metadata = entity.metadata,
+                            updatedAt = entity.updatedAt
+                        ),
+                        isManufacturerCompany = true
+                    )
+                }
+                return manufacturerPartTable.getManufacturerPartsForCompany(companyId)
+            }
+        }
+        return cached
+    }
 
-    fun getManufacturerPartsForPart(partId: Long): List<ManufacturerPart> =
-        manufacturerPartTable.getManufacturerPartsForPart(partId)
+    fun getManufacturerPartsForPart(partId: Long): List<ManufacturerPart> {
+        val cached = manufacturerPartTable.getManufacturerPartsForPart(partId)
+        val entities = manufacturerPartDao.getForPart("part-$partId")
+        if (entities.isNotEmpty()) {
+            val cachedUuids = cached.map { "mfg-part-${it.id}" }.toSet()
+            val missing = entities.filter { it.uuid !in cachedUuids }
+            if (missing.isNotEmpty()) {
+                missing.forEach { entity ->
+                    val parsedId = entity.uuid.removePrefix("mfg-part-").toLongOrNull() ?: 0L
+                    val mfgId = entity.manufacturerUuid.removePrefix("company-").toLongOrNull() ?: 0L
+                    manufacturerPartTable.insertManufacturerPart(
+                        ManufacturerPart(
+                            id = parsedId,
+                            partId = partId,
+                            manufacturerId = mfgId,
+                            mpn = entity.mpn,
+                            description = entity.description,
+                            link = entity.link,
+                            metadata = entity.metadata,
+                            updatedAt = entity.updatedAt
+                        ),
+                        isManufacturerCompany = true
+                    )
+                }
+                return manufacturerPartTable.getManufacturerPartsForPart(partId)
+            }
+        }
+        return cached
+    }
 
     fun addManufacturerPart(part: ManufacturerPart): ManufacturerPart {
         val company = getCompanyById(part.manufacturerId)
@@ -386,8 +573,30 @@ class CompanyRepository(
 
     // --- الخصائص الفنية لقطع المصنّع (Manufacturer Part Parameters) ---
 
-    fun getParametersForManufacturerPart(manufacturerPartId: Long): List<ManufacturerPartParameter> =
-        manufacturerPartParameterTable.getParametersForManufacturerPart(manufacturerPartId)
+    fun getParametersForManufacturerPart(manufacturerPartId: Long): List<ManufacturerPartParameter> {
+        val cached = manufacturerPartParameterTable.getParametersForManufacturerPart(manufacturerPartId)
+        val entities = manufacturerPartParameterDao.getForManufacturerPart("mfg-part-$manufacturerPartId")
+        if (entities.isNotEmpty()) {
+            val cachedUuids = cached.map { "mfg-param-${it.id}" }.toSet()
+            val missing = entities.filter { it.uuid !in cachedUuids }
+            if (missing.isNotEmpty()) {
+                missing.forEach { entity ->
+                    val parsedId = entity.uuid.removePrefix("mfg-param-").toLongOrNull() ?: 0L
+                    manufacturerPartParameterTable.insertParameter(
+                        ManufacturerPartParameter(
+                            id = parsedId,
+                            manufacturerPartId = manufacturerPartId,
+                            name = entity.name,
+                            value = entity.value,
+                            units = entity.units
+                        )
+                    )
+                }
+                return manufacturerPartParameterTable.getParametersForManufacturerPart(manufacturerPartId)
+            }
+        }
+        return cached
+    }
 
     fun addManufacturerPartParameter(parameter: ManufacturerPartParameter): ManufacturerPartParameter {
         val inserted = manufacturerPartParameterTable.insertParameter(parameter)
@@ -414,8 +623,32 @@ class CompanyRepository(
 
     // --- مرفقات قطع المصنّع (Manufacturer Part Attachments) ---
 
-    fun getAttachmentsForManufacturerPart(manufacturerPartId: Long): List<ManufacturerPartAttachment> =
-        manufacturerPartAttachmentTable.getAttachmentsForManufacturerPart(manufacturerPartId)
+    fun getAttachmentsForManufacturerPart(manufacturerPartId: Long): List<ManufacturerPartAttachment> {
+        val cached = manufacturerPartAttachmentTable.getAttachmentsForManufacturerPart(manufacturerPartId)
+        val entities = manufacturerPartAttachmentDao.getForManufacturerPart("mfg-part-$manufacturerPartId")
+        if (entities.isNotEmpty()) {
+            val cachedUuids = cached.map { "mfg-part-att-${it.id}" }.toSet()
+            val missing = entities.filter { it.uuid !in cachedUuids }
+            if (missing.isNotEmpty()) {
+                missing.forEach { entity ->
+                    val parsedId = entity.uuid.removePrefix("mfg-part-att-").toLongOrNull() ?: 0L
+                    manufacturerPartAttachmentTable.insertAttachment(
+                        ManufacturerPartAttachment(
+                            id = parsedId,
+                            manufacturerPartId = manufacturerPartId,
+                            attachmentPath = entity.attachmentPath,
+                            link = entity.link,
+                            comment = entity.comment,
+                            uploadDate = entity.uploadDate,
+                            userId = entity.userId
+                        )
+                    )
+                }
+                return manufacturerPartAttachmentTable.getAttachmentsForManufacturerPart(manufacturerPartId)
+            }
+        }
+        return cached
+    }
 
     fun addManufacturerPartAttachment(attachment: ManufacturerPartAttachment): ManufacturerPartAttachment {
         val inserted = manufacturerPartAttachmentTable.insertAttachment(attachment)
@@ -444,11 +677,79 @@ class CompanyRepository(
 
     // --- قطع الموردين (Supplier Parts) ---
 
-    fun getSupplierPartsForCompany(companyId: Long): List<SupplierPart> =
-        supplierPartTable.getSupplierPartsForCompany(companyId)
+    fun getSupplierPartsForCompany(companyId: Long): List<SupplierPart> {
+        val cached = supplierPartTable.getSupplierPartsForCompany(companyId)
+        val entities = supplierPartDao.getForCompany("company-$companyId")
+        if (entities.isNotEmpty()) {
+            val cachedUuids = cached.map { "sup-part-${it.id}" }.toSet()
+            val missing = entities.filter { it.uuid !in cachedUuids }
+            if (missing.isNotEmpty()) {
+                missing.forEach { entity ->
+                    val parsedId = entity.uuid.removePrefix("sup-part-").toLongOrNull() ?: 0L
+                    val partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 0L
+                    val mfgPartId = entity.manufacturerPartUuid?.removePrefix("mfg-part-")?.toLongOrNull()
+                    supplierPartTable.insertSupplierPart(
+                        SupplierPart(
+                            id = parsedId,
+                            partId = partId,
+                            supplierId = companyId,
+                            sku = entity.sku,
+                            manufacturerPartId = mfgPartId,
+                            description = entity.description,
+                            link = entity.link,
+                            note = entity.note,
+                            packaging = entity.packaging,
+                            packQuantity = entity.packQuantity,
+                            availableForPurchase = entity.availableForPurchase,
+                            active = entity.active,
+                            metadata = entity.metadata,
+                            updatedAt = entity.updatedAt
+                        ),
+                        isSupplierCompany = true
+                    )
+                }
+                return supplierPartTable.getSupplierPartsForCompany(companyId)
+            }
+        }
+        return cached
+    }
 
-    fun getSupplierPartsForPart(partId: Long): List<SupplierPart> =
-        supplierPartTable.getSupplierPartsForPart(partId)
+    fun getSupplierPartsForPart(partId: Long): List<SupplierPart> {
+        val cached = supplierPartTable.getSupplierPartsForPart(partId)
+        val entities = supplierPartDao.getForPart("part-$partId")
+        if (entities.isNotEmpty()) {
+            val cachedUuids = cached.map { "sup-part-${it.id}" }.toSet()
+            val missing = entities.filter { it.uuid !in cachedUuids }
+            if (missing.isNotEmpty()) {
+                missing.forEach { entity ->
+                    val parsedId = entity.uuid.removePrefix("sup-part-").toLongOrNull() ?: 0L
+                    val supplierId = entity.supplierUuid.removePrefix("company-").toLongOrNull() ?: 0L
+                    val mfgPartId = entity.manufacturerPartUuid?.removePrefix("mfg-part-")?.toLongOrNull()
+                    supplierPartTable.insertSupplierPart(
+                        SupplierPart(
+                            id = parsedId,
+                            partId = partId,
+                            supplierId = supplierId,
+                            sku = entity.sku,
+                            manufacturerPartId = mfgPartId,
+                            description = entity.description,
+                            link = entity.link,
+                            note = entity.note,
+                            packaging = entity.packaging,
+                            packQuantity = entity.packQuantity,
+                            availableForPurchase = entity.availableForPurchase,
+                            active = entity.active,
+                            metadata = entity.metadata,
+                            updatedAt = entity.updatedAt
+                        ),
+                        isSupplierCompany = true
+                    )
+                }
+                return supplierPartTable.getSupplierPartsForPart(partId)
+            }
+        }
+        return cached
+    }
 
     fun addSupplierPart(part: SupplierPart): SupplierPart {
         val company = getCompanyById(part.supplierId)
@@ -485,8 +786,31 @@ class CompanyRepository(
 
     // --- شرائح الأسعار (Supplier Price Breaks) ---
 
-    fun getPriceBreaksForSupplierPart(supplierPartId: Long): List<SupplierPriceBreak> =
-        supplierPriceBreakTable.getPriceBreaksForSupplierPart(supplierPartId)
+    fun getPriceBreaksForSupplierPart(supplierPartId: Long): List<SupplierPriceBreak> {
+        val cached = supplierPriceBreakTable.getPriceBreaksForSupplierPart(supplierPartId)
+        val entities = supplierPriceBreakDao.getForSupplierPart("sup-part-$supplierPartId")
+        if (entities.isNotEmpty()) {
+            val cachedUuids = cached.map { "price-break-${it.id}" }.toSet()
+            val missing = entities.filter { it.uuid !in cachedUuids }
+            if (missing.isNotEmpty()) {
+                missing.forEach { entity ->
+                    val parsedId = entity.uuid.removePrefix("price-break-").toLongOrNull() ?: 0L
+                    supplierPriceBreakTable.insertPriceBreak(
+                        SupplierPriceBreak(
+                            id = parsedId,
+                            supplierPartId = supplierPartId,
+                            quantity = entity.quantity,
+                            price = entity.price,
+                            priceCurrency = entity.priceCurrency,
+                            packQuantity = entity.packQuantity
+                        )
+                    )
+                }
+                return supplierPriceBreakTable.getPriceBreaksForSupplierPart(supplierPartId)
+            }
+        }
+        return cached
+    }
 
     fun addPriceBreak(priceBreak: SupplierPriceBreak, defaultCompanyCurrency: String = "USD"): SupplierPriceBreak {
         val inserted = supplierPriceBreakTable.insertPriceBreak(priceBreak, defaultCompanyCurrency)
@@ -540,5 +864,12 @@ class CompanyRepository(
         return response.acceptedUuids.size
     }
 
-    fun getCompanies(): List<Company> = companyTable.getAllCompanies()
+    fun getCompanies(): List<Company> {
+        val cached = companyTable.getAllCompanies()
+        val persisted = searchCompanies()
+        if (persisted.isEmpty()) return cached
+        val persistedMap = persisted.associateBy { it.id }
+        val cachedMap = cached.associateBy { it.id }
+        return (persistedMap + (cachedMap - persistedMap.keys)).values.toList()
+    }
 }
