@@ -19,7 +19,9 @@ class AppContainer(
     val allocationRepository: PartAllocationRepository = PartAllocationRepository(),
     val settingsRepository: AppSettingsRepository = AppSettingsRepository(),
     val loginRepository: LoginRepository = LoginRepository(),
-    val salesRepository: SalesOrderRepository = SalesOrderRepository()
+    val salesRepository: SalesOrderRepository = SalesOrderRepository(),
+    val partCategoryRepository: PartCategoryRepository = partRepository.categoryRepository,
+    val stockLocationRepository: StockLocationRepository = stockRepository.locationRepository
 ) {
     fun createSettingsViewModel() = SettingsViewModel(
         repository = settingsRepository

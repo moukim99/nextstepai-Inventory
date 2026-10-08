@@ -58,6 +58,7 @@ class PartRepository(
     private val partStarTable: PartStarTable = PartStarTable(partTable),
     private val bomItemTable: BomItemTable = BomItemTable(),
     private val partPricingTable: PartPricingTable = PartPricingTable(partTable, bomItemTable = bomItemTable, internalPriceTable = partInternalPriceTable),
+    val categoryRepository: PartCategoryRepository = PartCategoryRepository(partTable = partTable, categoryParameterTable = categoryParameterTable),
     private val batchSyncService: BatchSyncService = BatchSyncService(),
     private val imageProcessor: ImageProcessor = ImageProcessor(maxDimension = 1024, compressionQuality = 85)
 ) {
@@ -168,21 +169,19 @@ class PartRepository(
     /**
      * جلب جميع التصنيفات المتاحة.
      */
-    fun getCategories(): List<PartCategory> = partTable.getAllCategories()
+    fun getCategories(): List<PartCategory> = categoryRepository.getCategories()
 
     /**
      * إنشاء تصنيف جديد وإضافته لجدول التصنيفات.
      */
-    fun addCategory(name: String, description: String = ""): PartCategory {
-        return partTable.insertCategory(name = name, description = description)
-    }
+    fun addCategory(name: String, description: String = ""): PartCategory =
+        categoryRepository.addCategory(name, description)
 
     /**
      * حذف تصنيف محدد بواسطة المعرف الفريد.
      */
-    fun deleteCategory(categoryId: Long): Boolean {
-        return partTable.deleteCategory(categoryId)
-    }
+    fun deleteCategory(categoryId: Long): Boolean =
+        categoryRepository.deleteCategory(categoryId)
 
     /**
      * زيادة رصيد المخزون لقطعة محددة وتحديث رصيد الصنف في الذاكرة والمحرك المحلي.

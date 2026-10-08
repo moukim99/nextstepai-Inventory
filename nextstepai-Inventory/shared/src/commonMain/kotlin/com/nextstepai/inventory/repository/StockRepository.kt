@@ -51,6 +51,7 @@ class StockRepository(
     private val attachmentDao: StockItemAttachmentDao = StockItemAttachmentDao(),
     private val notificationDao: NotificationHistoryDao = NotificationHistoryDao(),
     private val partDao: PartDao = PartDao(),
+    val locationRepository: StockLocationRepository = StockLocationRepository(locationDao = locationDao, stockTable = stockTable),
     private val batchSyncService: BatchSyncService = BatchSyncService(),
     private val imageProcessor: ImageProcessor = ImageProcessor(maxDimension = 1024, compressionQuality = 85)
 ) {
@@ -118,66 +119,18 @@ class StockRepository(
     /**
      * جلب كافة مواقع التخزين المتاحة من SQLite مع السقوط الآمن على الجدول المحلي.
      */
-    fun getLocations(): List<StockLocation> {
-        val entities = runCatching { locationDao.getAllLocations() }.getOrDefault(emptyList())
-        if (entities.isNotEmpty()) {
-            return entities.map { entity ->
-                val parsedId = entity.uuid.removePrefix("location-").removePrefix("loc-").toLongOrNull() ?: 1L
-                StockLocation(
-                    id = parsedId,
-                    uuid = entity.uuid,
-                    name = entity.name,
-                    description = entity.description,
-                    parentId = entity.parentUuid?.removePrefix("location-")?.removePrefix("loc-")?.toLongOrNull(),
-                    structural = entity.structural,
-                    external = entity.external,
-                    locationType = entity.locationType,
-                    ownerId = null,
-                    icon = entity.icon,
-                    customIcon = entity.customIcon,
-                    address = entity.address,
-                    customCapacity = entity.customCapacity,
-                    isBulkGenerated = entity.isBulkGenerated,
-                    level = entity.level,
-                    lft = entity.lft,
-                    rght = entity.rght,
-                    treeId = entity.treeId,
-                    metadata = entity.metadata
-                )
-            }
-        }
-        return stockTable.getAllLocations()
-    }
+    fun getLocations(): List<StockLocation> = locationRepository.getLocations()
 
     /**
      * جلب كافة أنواع وقوالب مواقع التخزين المتاحة مع مواصفاتها الهندسية.
      */
-    fun getLocationTypes(): List<StockLocationType> {
-        val locationTypeDao = StockLocationTypeDao()
-        val entities = runCatching { locationTypeDao.getAllLocationTypes() }.getOrDefault(emptyList())
-        return entities.map { entity ->
-            StockLocationType(
-                id = entity.typeId,
-                name = entity.name,
-                description = entity.description,
-                icon = entity.icon,
-                customIcon = entity.customIcon,
-                length = entity.length,
-                width = entity.width,
-                height = entity.height,
-                maxWeight = entity.maxWeight,
-                maxVolume = entity.maxVolume,
-                metadata = entity.metadata
-            )
-        }
-    }
+    fun getLocationTypes(): List<StockLocationType> = locationRepository.getLocationTypes()
 
     /**
      * حساب توليد المسار الهرمي الكامل التراكمي للموقع من الجذر حتى النهاية.
      */
-    fun getFullPathForLocation(locationId: Long?, separator: String = " / "): String {
-        return stockTable.getFullPathForLocation(locationId, separator)
-    }
+    fun getFullPathForLocation(locationId: Long?, separator: String = " / "): String =
+        locationRepository.getFullPathForLocation(locationId, separator)
 
 
 
@@ -233,97 +186,24 @@ class StockRepository(
 
     /**
      * كاشف التكرار الميداني للهرمية (Auto-Collision & Duplicate Guard):
-     * التحقق مما إذا كان ينتج عن حفظ موقع جديد/معدل نفس الاسم أو نفس العنوان تحت نفس الأب المباشر ونفس المسار.
      */
     fun isLocationDuplicateUnderSameParent(
         name: String,
         parentId: Long?,
         excludeId: Long? = null,
         address: String? = null
-    ): Boolean {
-        val trimmedName = name.trim()
-        if (trimmedName.isBlank()) return false
-        val trimmedAddress = address?.trim() ?: ""
-
-        val allLocations = getLocations()
-        return allLocations.any { loc ->
-            if (loc.id == excludeId) return@any false
-            if (loc.parentId != parentId) return@any false
-
-            val nameMatch = loc.name.trim().equals(trimmedName, ignoreCase = true)
-            val addressMatch = trimmedAddress.isNotBlank() && loc.address.trim().isNotBlank() &&
-                    loc.address.trim().equals(trimmedAddress, ignoreCase = true)
-
-            nameMatch || addressMatch
-        }
-    }
+    ): Boolean = locationRepository.isLocationDuplicateUnderSameParent(name, parentId, excludeId, address)
 
     /**
      * خوارزمية منع التكرار البرمجي آلياً (Auto-Collision Prevention Algorithm):
-     * توليد اسم فريد بإضافة ترقيم تسلسلي تلقائي عند وجود اسم مكرر تحت نفس الأب.
      */
-    fun generateUniqueLocationName(baseName: String, parentId: Long?, excludeId: Long? = null): String {
-        val trimmed = baseName.trim().ifBlank { "موقع" }
-        var candidate = trimmed
-        var counter = 1
-        val allLocations = getLocations()
-
-        while (allLocations.any { loc ->
-            loc.id != excludeId && loc.parentId == parentId && loc.name.trim().equals(candidate, ignoreCase = true)
-        }) {
-            candidate = "$trimmed-${counter.toString().padStart(2, '0')}"
-            counter++
-        }
-        return candidate
-    }
+    fun generateUniqueLocationName(baseName: String, parentId: Long?, excludeId: Long? = null): String =
+        locationRepository.generateUniqueLocationName(baseName, parentId, excludeId)
 
     /**
-     * إضافة أو تحديث موقع تخزيني جديد في الشجرة الهرمية لمواقع التخزين (StockLocation) مع حسم التعارضات المزامنة وحماية الموقع الأساسي.
+     * إضافة أو تحديث موقع تخزيني جديد في الشجرة الهرمية لمواقع التخزين (StockLocation).
      */
-    fun addLocation(location: StockLocation): StockLocation {
-        val existingLocs = getLocations()
-        val maxExistingId = maxOf(stockTable.getAllLocations().maxOfOrNull { it.id } ?: 0L, existingLocs.maxOfOrNull { it.id } ?: 0L)
-        val locationWithId = if (location.id == 0L) {
-            location.copy(id = maxExistingId + 1L)
-        } else {
-            location
-        }
-        var finalLocation = locationWithId
-
-        if (location.isPrimary) {
-            // البحث عن الموقع الأساسي القائم حالياً من نفس الفئة المعزولة (موقع خارجي vs موقع داخلي vs مستودع داخلي)
-            val existingPrimary = getLocations().find { existing ->
-                existing.id != location.id && existing.isPrimary &&
-                        when {
-                            location.external -> existing.external
-                            location.locationType.equals("SITE", ignoreCase = true) -> existing.locationType.equals("SITE", ignoreCase = true) && !existing.external
-                            location.locationType.equals("WAREHOUSE", ignoreCase = true) -> existing.locationType.equals("WAREHOUSE", ignoreCase = true) && !existing.external
-                            else -> false
-                        }
-            }
-
-            if (existingPrimary != null) {
-                // سياسة حسم التعارضات عند التزامن (Conflict Resolution based on updatedAt)
-                val allEntities = runCatching { locationDao.getAllLocations() }.getOrDefault(emptyList())
-                val locUpdatedAt = allEntities.find { it.uuid == location.uuid || it.uuid == "loc-${location.id}" }?.updatedAt ?: Clock.System.now().toEpochMilliseconds()
-                val existingUpdatedAt = allEntities.find { it.uuid == existingPrimary.uuid || it.uuid == "loc-${existingPrimary.id}" }?.updatedAt ?: 0L
-
-                if (locUpdatedAt >= existingUpdatedAt) {
-                    // الكائن الجديد أحدث: إغلاق الصفة الأساسية عن الموقع القديم
-                    val demoted = existingPrimary.withPrimary(false)
-                    stockTable.insertLocation(demoted)
-                    locationDao.insertOrUpdate(demoted.toEntity())
-                } else {
-                    // الموقع القديم أحدث: تجريد الكائن الجديد من الصفة الأساسية
-                    finalLocation = location.withPrimary(false)
-                }
-            }
-        }
-
-        val inserted = stockTable.insertLocation(finalLocation)
-        locationDao.insertOrUpdate(inserted.toEntity())
-        return inserted
-    }
+    fun addLocation(location: StockLocation): StockLocation = locationRepository.addLocation(location)
 
     /**
      * إنشاء سلسلة هرمية ذرية للموقع المستهدف مع كافة طبقاته الوسيطة المفقودة (Atomic Transaction).
@@ -331,43 +211,15 @@ class StockRepository(
     fun addLocationWithIntermediates(
         targetLocation: StockLocation,
         intermediates: List<IntermediateNodeSpec>
-    ): StockLocation {
-        var currentParentId = targetLocation.parentId
-
-        for (spec in intermediates) {
-            if (spec.existingId != null && spec.existingId > 0L) {
-                currentParentId = spec.existingId
-            } else if (spec.name.isNotBlank()) {
-                val newIntermediate = StockLocation(
-                    name = spec.name.trim(),
-                    description = "طبقة وسيطة مضافة آلياً لحشو فجوة الهرمية",
-                    parentId = currentParentId,
-                    structural = true,
-                    locationType = spec.locationType
-                )
-                val inserted = addLocation(newIntermediate)
-                currentParentId = inserted.id
-            }
-        }
-
-        val finalTarget = targetLocation.copy(parentId = currentParentId)
-        return addLocation(finalTarget)
-    }
+    ): StockLocation = locationRepository.addLocationWithIntermediates(targetLocation, intermediates)
 
     /**
      * تحديث بيانات موقع تخزيني قائم في الشجرة الهرمية لمواقع التخزين (StockLocation).
      */
-    fun updateLocation(location: StockLocation): StockLocation {
-        return addLocation(location)
-    }
+    fun updateLocation(location: StockLocation): StockLocation = locationRepository.updateLocation(location)
 
     /**
      * حذف موقع تخزيني حذفاً مرناً (Soft Delete) بعد إجراء الفحوصات الأمنية الثلاثية
-     * مع حماية عدم الوقوع في حالة انعدام الأساسي (Soft Delete Guard):
-     * 1. التأكد من عدم وجود عناصر ومواد مخزنة داخل الموقع.
-     * 2. التأكد من عدم وجود مواقع وأرفف فرعية (Child Locations) تابعة له.
-     * 3. التأكد من عدم ارتباطه بأوامر إنتاج وتصنيع نشطة أو أوامر شراء معلقة.
-     * 4. تعيين أقدم موقع نشط كبديل أساسي آلياً عند حذف الكيان الأساسي الحالي.
      */
     fun deleteLocation(locationId: Long): Boolean {
         // الفحص الأول: خلو الموقع من العناصر المخزنة
@@ -401,59 +253,20 @@ class StockRepository(
             throw IllegalArgumentException("لا يمكن حذف الموقع لارتباطه بـ ${purchaseOrdersReferenced.size} أمر شراء معلق كوجهة تسليم.")
         }
 
-        val targetLoc = getLocations().find { it.id == locationId }
-        val wasPrimary = targetLoc?.isPrimary == true
-        val targetType = targetLoc?.locationType ?: ""
-
-        val removedFromTable = stockTable.deleteLocation(locationId)
-        locationDao.softDeleteLocation(targetLoc?.uuid ?: "loc-$locationId")
-        targetLoc?.labelImagePath?.let { path ->
-            runCatching {
-                val file = File(path)
-                if (file.exists()) file.delete()
-            }
-        }
-
-        // حماية انعدام الأساسي (Soft Delete Guard): إذا كان الموقع المحذوف هو الأساسي، يُعيّن أقدم موقع نشط قائم من نفس الفئة المعزولة كبديل
-        if (wasPrimary && targetLoc != null) {
-            val remainingOfSameType = getLocations().filter { loc ->
-                loc.id != locationId &&
-                        when {
-                            targetLoc.external -> loc.external
-                            targetType.equals("SITE", ignoreCase = true) -> loc.locationType.equals("SITE", ignoreCase = true) && !loc.external
-                            targetType.equals("WAREHOUSE", ignoreCase = true) -> loc.locationType.equals("WAREHOUSE", ignoreCase = true) && !loc.external
-                            else -> false
-                        }
-            }
-
-            if (remainingOfSameType.isNotEmpty()) {
-                val oldestRemaining = remainingOfSameType.minByOrNull { it.id } ?: remainingOfSameType.first()
-                updateLocation(oldestRemaining.withPrimary(true))
-            }
-        }
-
-        return removedFromTable
+        return locationRepository.deleteLocationInternal(locationId)
     }
 
     /**
      * أرشفة وحفظ لقطة صورة الملصق المادية وتحديث بيانات الأرشفة لجدول الموقع.
      */
-    fun saveLocationLabelSnapshot(locationId: Long, snapshotData: String): StockLocation? {
-        val targetLoc = getLocations().find { it.id == locationId } ?: return null
-        val genAt = Clock.System.now().toEpochMilliseconds()
-        val imagePath = "files/labels/locations/loc_${targetLoc.effectiveUuid}.webp"
-        val updatedLoc = targetLoc.withLabelSnapshot(imagePath, genAt, snapshotData)
-        return updateLocation(updatedLoc)
-    }
+    fun saveLocationLabelSnapshot(locationId: Long, snapshotData: String): StockLocation? =
+        locationRepository.saveLocationLabelSnapshot(locationId, snapshotData)
 
     /**
      * إضافة دفعة مواقع تخزينية متسلسلة جديدة (Bulk Location Generator).
      */
-    fun addBatchLocations(locations: List<StockLocation>): List<StockLocation> {
-        val insertedList = stockTable.insertBatchLocations(locations)
-        locationDao.insertBatchLocations(insertedList.map { it.toEntity() })
-        return insertedList
-    }
+    fun addBatchLocations(locations: List<StockLocation>): List<StockLocation> =
+        locationRepository.addBatchLocations(locations)
 
     /**
      * إضافة وحدة مخزنية جديدة وتسجيل حركة الإنشاء آلياً.
@@ -661,29 +474,6 @@ class StockRepository(
         )
     }
 
-    private fun StockLocation.toEntity(): StockLocationEntity {
-        return StockLocationEntity(
-            uuid = if (uuid.isNotBlank() && !uuid.startsWith("location-")) uuid else "loc-$id",
-            name = name,
-            description = description,
-            parentUuid = parentId?.let { "loc-$it" },
-            structural = structural,
-            external = external,
-            locationType = locationType,
-            icon = icon,
-            customIcon = customIcon,
-            address = address,
-            customCapacity = customCapacity,
-            isBulkGenerated = isBulkGenerated,
-            level = level,
-            lft = lft,
-            rght = rght,
-            treeId = treeId,
-            metadata = metadata,
-            syncStatus = SyncStatus.PENDING
-        )
-    }
-
     private fun StockItem.toEntity(): StockItemEntity {
         return StockItemEntity(
             uuid = "stock-$id",
@@ -715,3 +505,27 @@ class StockRepository(
         )
     }
 }
+
+internal fun StockLocation.toEntity(): StockLocationEntity {
+    return StockLocationEntity(
+        uuid = if (uuid.isNotBlank() && !uuid.startsWith("location-")) uuid else "loc-$id",
+        name = name,
+        description = description,
+        parentUuid = parentId?.let { "loc-$it" },
+        structural = structural,
+        external = external,
+        locationType = locationType,
+        icon = icon,
+        customIcon = customIcon,
+        address = address,
+        customCapacity = customCapacity,
+        isBulkGenerated = isBulkGenerated,
+        level = level,
+        lft = lft,
+        rght = rght,
+        treeId = treeId,
+        metadata = metadata,
+        syncStatus = SyncStatus.PENDING
+    )
+}
+
