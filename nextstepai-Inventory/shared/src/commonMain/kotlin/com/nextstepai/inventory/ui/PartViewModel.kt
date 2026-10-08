@@ -105,7 +105,14 @@ class PartViewModel(
     private val allocationRepository: PartAllocationRepository = com.nextstepai.inventory.repository.PartAllocationRepository()
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(PartUiState())
+    private val _uiState = MutableStateFlow(
+        PartUiState(
+            stockItems = runCatching { stockRepository.getStockItems() }.getOrDefault(emptyList()),
+            stockLocations = runCatching { stockRepository.getLocations() }.getOrDefault(emptyList()),
+            parts = runCatching { repository.getParts() }.getOrDefault(emptyList()),
+            categories = runCatching { repository.getCategories() }.getOrDefault(emptyList())
+        )
+    )
     val uiState: StateFlow<PartUiState> = _uiState.asStateFlow()
 
     init {
@@ -359,8 +366,10 @@ class PartViewModel(
             // 6. تحديث إجمالي الرصيد التراكمي للقطعة عبر كافة المواقع
             repository.addStockToPart(partId, quantity)
 
+            val currentStockItems = stockRepository.getStockItems()
             _uiState.update { state ->
                 state.copy(
+                    stockItems = currentStockItems,
                     message = "تم استلام الشحنة (${insertedStock.quantity} ${part.units}) بتاريخ ($effectiveDate) وتوثيقها برقم الدفعة ($generatedBatch) بنجاح"
                 )
             }
@@ -420,7 +429,8 @@ class PartViewModel(
                 notes = notes
             )
             if (success) {
-                _uiState.update { it.copy(message = "تم نقل المخزون بنجاح") }
+                val currentStockItems = stockRepository.getStockItems()
+                _uiState.update { it.copy(stockItems = currentStockItems, message = "تم نقل المخزون بنجاح") }
                 loadData()
             }
         } catch (e: Exception) {

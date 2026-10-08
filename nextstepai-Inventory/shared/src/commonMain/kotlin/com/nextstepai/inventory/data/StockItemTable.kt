@@ -269,11 +269,15 @@ class StockItemTable {
         val calculatedLevel = parentLoc?.let { it.level + 1 } ?: 0
         val calculatedTreeId = parentLoc?.treeId ?: (locations.maxOfOrNull { it.treeId } ?: 0) + 1
 
+        val maxExisting = locations.maxOfOrNull { it.id } ?: 0L
+        if (nextLocationId <= maxExisting) {
+            nextLocationId = maxExisting + 1L
+        }
         val assignedId = if (location.id == 0L) nextLocationId++ else location.id
         val isNewLoc = location.id == 0L || location.labelGeneratedAt == null
         val locWithBaseInfo = location.copy(
             id = assignedId,
-            uuid = location.uuid.ifBlank { "location-$assignedId" },
+            uuid = location.uuid.ifBlank { "loc-$assignedId" },
             name = trimmedName,
             level = calculatedLevel,
             treeId = calculatedTreeId
@@ -375,11 +379,17 @@ class StockItemTable {
             newItem.notes
         }
 
+        val trackingLabel = if (newItem.batch.startsWith("BATCH-") || newItem.link.isNotBlank()) {
+            "استلام شحنة مخزنية (Stock In)"
+        } else {
+            "إنشاء وحدة مخزنية جديدة"
+        }
+
         recordTracking(
             stockItemId = newItem.id,
             trackingType = StockTrackingType.CREATED,
             userId = newItem.stocktakeUserId,
-            label = "استلام شحنة مخزنية (Stock In)",
+            label = trackingLabel,
             notes = trackingNotes,
             deltas = "{\"quantity\":[0.0,${newItem.quantity}],\"batch\":\"${newItem.batch}\",\"status\":[0,${newItem.status.code}],\"locationId\":${newItem.locationId}}"
         )

@@ -80,24 +80,40 @@ class StockRepository(
      * جلب كافة السجلات المخزنية الفعلية من قاعدة البيانات الدائمة (SQLite).
      */
     fun getStockItems(): List<StockItem> {
-        val entities = runBlocking { stockDao.getStockItemsPaged(limit = 1000, offset = 0) }
-        return entities.mapIndexed { index, entity ->
-            val parsedId = entity.uuid.removePrefix("stock-").toLongOrNull() ?: (index + 1L)
-            StockItem(
-                id = parsedId,
-                partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
-                locationId = entity.locationUuid?.removePrefix("loc-")?.toLongOrNull() ?: 1L,
-                quantity = entity.quantity,
-                serial = entity.serial,
-                batch = entity.batch,
-                status = StockStatus.fromCode(entity.statusCode),
-                packaging = entity.packaging,
-                purchasePrice = entity.purchasePrice,
-                expiryDate = entity.expiryDate,
-                stocktakeDate = entity.stocktakeDate,
-                notes = entity.notes
-            )
+        val entities = runCatching { runBlocking { stockDao.getStockItemsPaged(limit = 1000, offset = 0) } }.getOrDefault(emptyList())
+        if (entities.isNotEmpty()) {
+            return entities.mapIndexed { index, entity ->
+                val parsedId = entity.uuid.removePrefix("stock-").toLongOrNull() ?: (index + 1L)
+                StockItem(
+                    id = parsedId,
+                    partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
+                    locationId = entity.locationUuid?.takeIf { it.isNotBlank() }?.removePrefix("location-")?.removePrefix("loc-")?.toLongOrNull(),
+                    quantity = entity.quantity,
+                    serial = entity.serial,
+                    batch = entity.batch,
+                    status = StockStatus.fromCode(entity.statusCode),
+                    packaging = entity.packaging,
+                    purchasePrice = entity.purchasePrice,
+                    purchasePriceCurrency = entity.purchasePriceCurrency,
+                    purchaseOrderId = entity.purchaseOrderUuid?.removePrefix("po-")?.toLongOrNull(),
+                    supplierPartId = entity.supplierPartUuid.takeIf { it.isNotBlank() }?.removePrefix("sup-p-")?.toLongOrNull(),
+                    salesOrderId = entity.salesOrderUuid?.removePrefix("so-")?.toLongOrNull(),
+                    customerId = entity.customerUuid.takeIf { it.isNotBlank() }?.removePrefix("comp-")?.toLongOrNull(),
+                    buildId = entity.buildUuid?.removePrefix("bo-")?.toLongOrNull(),
+                    isBuilding = entity.isBuilding,
+                    parentId = entity.parentStockItemUuid?.removePrefix("stock-")?.toLongOrNull(),
+                    expiryDate = entity.expiryDate,
+                    stocktakeDate = entity.stocktakeDate,
+                    stocktakeUserId = entity.stocktakeUserUuid?.removePrefix("usr-")?.toLongOrNull(),
+                    reviewNeeded = entity.reviewNeeded,
+                    deleteOnDeplete = entity.deleteOnDeplete,
+                    link = entity.link,
+                    notes = entity.notes,
+                    metadata = entity.metadata
+                )
+            }
         }
+        return stockTable.getAllStockItems()
     }
 
     /**
@@ -107,13 +123,13 @@ class StockRepository(
         val entities = runCatching { runBlocking { locationDao.getAllLocations() } }.getOrDefault(emptyList())
         if (entities.isNotEmpty()) {
             return entities.map { entity ->
-                val parsedId = entity.uuid.removePrefix("loc-").toLongOrNull() ?: 1L
+                val parsedId = entity.uuid.removePrefix("location-").removePrefix("loc-").toLongOrNull() ?: 1L
                 StockLocation(
                     id = parsedId,
                     uuid = entity.uuid,
                     name = entity.name,
                     description = entity.description,
-                    parentId = entity.parentUuid?.removePrefix("loc-")?.toLongOrNull(),
+                    parentId = entity.parentUuid?.removePrefix("location-")?.removePrefix("loc-")?.toLongOrNull(),
                     structural = entity.structural,
                     external = entity.external,
                     locationType = entity.locationType,
@@ -272,7 +288,14 @@ class StockRepository(
      * إضافة أو تحديث موقع تخزيني جديد في الشجرة الهرمية لمواقع التخزين (StockLocation) مع حسم التعارضات المزامنة وحماية الموقع الأساسي.
      */
     fun addLocation(location: StockLocation): StockLocation {
-        var finalLocation = location
+        val existingLocs = getLocations()
+        val maxExistingId = maxOf(stockTable.getAllLocations().maxOfOrNull { it.id } ?: 0L, existingLocs.maxOfOrNull { it.id } ?: 0L)
+        val locationWithId = if (location.id == 0L) {
+            location.copy(id = maxExistingId + 1L)
+        } else {
+            location
+        }
+        var finalLocation = locationWithId
 
         if (location.isPrimary) {
             // البحث عن الموقع الأساسي القائم حالياً من نفس الفئة المعزولة (موقع خارجي vs موقع داخلي vs مستودع داخلي)
@@ -667,7 +690,7 @@ class StockRepository(
 
     private fun StockLocation.toEntity(): StockLocationEntity {
         return StockLocationEntity(
-            uuid = if (uuid.isNotBlank()) uuid else "loc-$id",
+            uuid = if (uuid.isNotBlank() && !uuid.startsWith("location-")) uuid else "loc-$id",
             name = name,
             description = description,
             parentUuid = parentId?.let { "loc-$it" },

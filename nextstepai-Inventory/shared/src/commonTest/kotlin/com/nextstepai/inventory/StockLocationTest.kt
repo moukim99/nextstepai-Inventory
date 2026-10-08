@@ -307,6 +307,9 @@ class StockLocationTest {
         val primaryWh = dao.findPrimaryLocation("WAREHOUSE")
         assertTrue(primaryWh != null)
         assertEquals("wh-primary-test-1", primaryWh.uuid)
+
+        dao.softDeleteLocation("site-primary-test-1")
+        dao.softDeleteLocation("wh-primary-test-1")
     }
 
     @Test
@@ -323,6 +326,9 @@ class StockLocationTest {
     @Test
     fun testSoftDeleteGuardReassignsPrimaryToOldestRemainingLocation() {
         val repo = StockRepository()
+        repo.getLocations().filter { it.locationType.equals("SITE", ignoreCase = true) }.forEach {
+            runCatching { repo.deleteLocation(it.id) }
+        }
 
         val site1 = repo.addLocation(
             StockLocation(name = "الموقع الأول الأساسي", locationType = "SITE").withPrimary(true)
@@ -338,11 +344,16 @@ class StockLocationTest {
         val updatedSite2 = repo.getLocations().find { it.id == site2.id }
         assertTrue(updatedSite2 != null)
         assertTrue(updatedSite2.isPrimary, "يجب أن يصبح الموقع الثاني النشط هو الأساسي تلقائياً لمنع حالة Zero Primary State")
+
+        runCatching { repo.deleteLocation(site2.id) }
     }
 
     @Test
     fun testSyncConflictResolutionByTimestamp() {
         val repo = StockRepository()
+        repo.getLocations().filter { it.locationType.equals("SITE", ignoreCase = true) }.forEach {
+            runCatching { repo.deleteLocation(it.id) }
+        }
 
         val site1 = repo.addLocation(
             StockLocation(name = "موقع 1 قديم", locationType = "SITE").withPrimary(true)
@@ -357,6 +368,9 @@ class StockLocationTest {
 
         assertTrue(refreshed2?.isPrimary == true, "الموقع الأحدث يحافظ على صفة الأساسي")
         assertTrue(refreshed1?.isPrimary == false, "الموقع الأقدم يُسحب منه صفة الأساسي لتجنب التعيين المزدوج")
+
+        runCatching { repo.deleteLocation(site1.id) }
+        runCatching { repo.deleteLocation(site2.id) }
     }
 
     @Test

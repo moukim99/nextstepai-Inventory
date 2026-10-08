@@ -387,9 +387,10 @@ class CompanyViewModel(
                 active = active,
                 notes = notes
             )
-            repository.addCompany(c)
+            val created = repository.addCompany(c)
             _uiState.update {
                 it.copy(
+                    companies = if (it.companies.any { comp -> comp.id == created.id }) it.companies else it.companies + created,
                     isAddCompanyDialogOpen = false,
                     companyToEdit = null,
                     errorMessage = null,

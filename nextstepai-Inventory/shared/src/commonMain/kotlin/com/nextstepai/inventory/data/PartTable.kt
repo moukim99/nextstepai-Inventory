@@ -71,7 +71,7 @@ data class Part(
      * حساب إجمالي المخصصات المحجوزة المؤكدة (Committed Allocated = HARD)
      */
     val committedAllocated: Double
-        get() = totalHardAllocated
+        get() = maxOf(totalHardAllocated, allocatedToBuildOrders + allocatedToSalesOrders)
 
     /**
      * حساب الكمية المتاحة الصافية للاستخدام (Live Balances Formula: Net Available = Total On-Hand - Committed Allocated)
@@ -367,7 +367,7 @@ class PartTable {
      */
     fun insertPart(part: Part): Part {
         // التحقق منطقياً من تبعية القالب: لا يمكن ربط variantOfId إلا لقطعة معرّفة كـ isTemplate = true
-        if (part.variantOfId != null) {
+        if (part.id == 0L && part.variantOfId != null) {
             val parentTemplate = parts.find { it.id == part.variantOfId }
             require(parentTemplate == null || parentTemplate.isTemplate) {
                 "لا يمكن إنشاء قطعة مشتقة (Variant) إلا من قطعة معرفة كقالب (is_template = true)"
