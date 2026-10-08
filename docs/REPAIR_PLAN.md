@@ -23,16 +23,16 @@
 | R-010 | P1 | Synchronization | Retry, backoff, idempotency, conflict handling, and offline recovery need stronger guarantees. | Add bounded exponential backoff, idempotency keys, deterministic conflict resolution, and offline retry handling. | Resolved |
 | R-011 | P1 | Testing | Sync edge cases such as conflicts, duplicates, deletes, and offline recovery need dedicated coverage. | Add integration/unit tests for sync correctness and failure recovery. | Resolved |
 | R-012 | P1 | CI/CD | No GitHub Actions workflow was found. | Add CI for build, unit tests, lint/static checks, and relevant verification tasks. | Resolved |
-| R-013 | P2 | UI architecture | Large screens such as `StockScreen.kt`, `PartManagementScreen.kt`, and `CompanyScreen.kt` are excessively large. | Split screens into feature-focused composables, state holders, and reusable UI components. | Planned |
-| R-014 | P2 | Database architecture | `SqliteDatabaseManager` contains too many responsibilities. | Separate connection management, schema/migration logic, query execution, and recovery concerns. | Planned |
-| R-015 | P2 | Repository layer | `PartRepository` and `StockRepository` are large and contain mixed responsibilities. | Split repositories by domain responsibility/use case and isolate persistence details. | Planned |
-| R-016 | P2 | Legacy layer | Legacy `*Table` classes duplicate persistence responsibilities and include in-memory/sample data. | Remove them after migrating their required behavior to the canonical data source. | Planned |
-| R-017 | P2 | Coroutines | Repository code uses `runBlocking`, which can block callers and complicate structured concurrency. | Replace blocking calls with suspend APIs/Flows and let coroutine scopes own lifecycle. | Planned |
-| R-018 | P2 | ViewModels | `App.kt` creates many ViewModels directly, increasing lifecycle/composition coupling. | Use lifecycle-aware ViewModel creation and dependency injection/factories where appropriate. | Planned |
-| R-019 | P2 | Database lifecycle | Global/singleton database connection handling needs clearer ownership and shutdown/reuse semantics. | Establish application-scoped DB lifecycle and deterministic connection/resource management. | Planned |
-| R-020 | P3 | Git hygiene | IDE files such as `.idea` content appear to be tracked despite ignore rules. | Remove unwanted IDE files from version control and keep only intentional project metadata. | Planned |
-| R-021 | P3 | Build configuration | `settings.gradle.kts` uses fragile environment manipulation/reflection. | Replace reflection-based environment changes with supported Gradle configuration mechanisms. | Planned |
-| R-022 | P3 | Documentation | Project architecture, data flow, sync behavior, and development workflow need clearer documentation. | Add concise architecture and development documentation after the core architecture is stabilized. | Planned |
+| R-013 | P2 | UI architecture | Large screens such as `StockScreen.kt`, `PartManagementScreen.kt`, and `CompanyScreen.kt` are excessively large. | Split screens into feature-focused composables, state holders, and reusable UI components. | In Progress |
+| R-014 | P2 | Database architecture | `SqliteDatabaseManager` contains too many responsibilities. | Separate connection management, schema/migration logic, query execution, and recovery concerns. | Resolved |
+| R-015 | P2 | Repository layer | `PartRepository` and `StockRepository` are large and contain mixed responsibilities. | Split repositories by domain responsibility/use case and isolate persistence details. | Resolved |
+| R-016 | P2 | Legacy layer | Legacy `*Table` classes duplicate persistence responsibilities and include in-memory/sample data. | Remove them after migrating their required behavior to the canonical data source. | Resolved |
+| R-017 | P2 | Coroutines | Repository code uses `runBlocking`, which can block callers and complicate structured concurrency. | Replace blocking calls with suspend APIs/Flows and let coroutine scopes own lifecycle. | Resolved |
+| R-018 | P2 | ViewModels | `App.kt` creates many ViewModels directly, increasing lifecycle/composition coupling. | Use lifecycle-aware ViewModel creation and dependency injection/factories where appropriate. | Resolved |
+| R-019 | P2 | Database lifecycle | Global/singleton database connection handling needs clearer ownership and shutdown/reuse semantics. | Establish application-scoped DB lifecycle and deterministic connection/resource management. | Resolved |
+| R-020 | P3 | Git hygiene | IDE files such as `.idea` content appear to be tracked despite ignore rules. | Remove unwanted IDE files from version control and keep only intentional project metadata. | Resolved |
+| R-021 | P3 | Build configuration | `settings.gradle.kts` uses fragile environment manipulation/reflection. | Replace reflection-based environment changes with supported Gradle configuration mechanisms. | Resolved |
+| R-022 | P3 | Documentation | Project architecture, data flow, sync behavior, and development workflow need clearer documentation. | Add concise architecture and development documentation after the core architecture is stabilized. | Resolved |
 
 ## Recommended Execution Order
 
