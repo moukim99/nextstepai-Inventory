@@ -145,8 +145,17 @@ class PartRepository(
      * جلب قائمة جميع القطع المتاحة من قاعدة البيانات الدائمة (SQLite).
      */
     fun getParts(): List<Part> {
-        val entities = partDao.getPartsPaged(limit = 1000, offset = 0)
-        return entities.map { it.toPart() }
+        // Read every page from SQLite. Do not silently truncate inventories at 1,000 rows.
+        val pageSize = 250
+        val result = mutableListOf<Part>()
+        var offset = 0
+        while (true) {
+            val page = partDao.getPartsPaged(limit = pageSize, offset = offset)
+            result += page.map { it.toPart() }
+            if (page.size < pageSize) break
+            offset += page.size
+        }
+        return result
     }
 
     /**
@@ -199,9 +208,8 @@ class PartRepository(
      * جلب قطعة محددة بواسطة المعرف الفريد.
      */
     fun getPartById(id: Long): Part? {
-        val sqliteParts = getParts()
-        sqliteParts.forEach { partTable.insertPart(it) }
-        return partTable.getPartById(id)
+        // SQLite is authoritative: never repopulate and query the legacy in-memory table.
+        return getParts().firstOrNull { it.id == id }
     }
 
     /**
@@ -215,16 +223,21 @@ class PartRepository(
         componentOnly: Boolean = false,
         lowStockOnly: Boolean = false
     ): List<Part> {
-        val sqliteParts = getParts()
-        sqliteParts.forEach { partTable.insertPart(it) }
-        return partTable.searchParts(
-            query = query,
-            categoryId = categoryId,
-            activeOnly = activeOnly,
-            assemblyOnly = assemblyOnly,
-            componentOnly = componentOnly,
-            lowStockOnly = lowStockOnly
-        )
+        val normalizedQuery = query.trim().lowercase()
+        return getParts().filter { part ->
+            val matchesActive = !activeOnly || part.active
+            val matchesCategory = categoryId == null || part.categoryId == categoryId
+            val matchesAssembly = !assemblyOnly || part.assembly
+            val matchesComponent = !componentOnly || part.component
+            val matchesLowStock = !lowStockOnly || part.isLowStock
+            val matchesQuery = normalizedQuery.isEmpty() ||
+                part.name.lowercase().contains(normalizedQuery) ||
+                part.ipn.lowercase().contains(normalizedQuery) ||
+                part.description.lowercase().contains(normalizedQuery) ||
+                part.keywords.lowercase().contains(normalizedQuery)
+            matchesActive && matchesCategory && matchesAssembly &&
+                matchesComponent && matchesLowStock && matchesQuery
+        }
     }
 
     /**
