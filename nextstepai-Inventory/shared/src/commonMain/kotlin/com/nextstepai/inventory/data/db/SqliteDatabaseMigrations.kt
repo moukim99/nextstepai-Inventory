@@ -308,6 +308,17 @@ internal object SqliteDatabaseMigrations {
         addColumnIfMissing(conn, "ALTER TABLE part_pricing ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE part_pricing ADD COLUMN partId INTEGER NOT NULL DEFAULT 0;")
 
+        // Explicitly backfill legacy part_pricing references from parts table
+        runCatching {
+            conn.prepare("""
+                UPDATE part_pricing 
+                SET partId = (SELECT parts.id FROM parts WHERE parts.uuid = part_pricing.partUuid)
+                WHERE (partId = 0 OR partId IS NULL)
+                  AND EXISTS (SELECT 1 FROM parts WHERE parts.uuid = part_pricing.partUuid AND parts.id > 0);
+            """.trimIndent()).use { it.step() }
+            conn.prepare("UPDATE part_pricing SET id = rowid WHERE id = 0;").use { it.step() }
+        }
+
         addColumnIfMissing(conn, "ALTER TABLE bom_item_substitutes ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE bom_item_substitutes ADD COLUMN bomItemId INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE bom_item_substitutes ADD COLUMN partId INTEGER NOT NULL DEFAULT 0;")

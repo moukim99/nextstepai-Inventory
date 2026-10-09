@@ -940,6 +940,24 @@ internal object SqliteDatabaseSchema {
             );
         """.trimIndent()).use { it.step() }
 
+        // Upgrade existing databases where part_pricing compatibility columns are absent.
+        val partPricingColumns = mutableSetOf<String>()
+        conn.prepare("PRAGMA table_info(part_pricing)").use { stmt ->
+            while (stmt.step()) partPricingColumns.add(stmt.getText(1))
+        }
+        if ("id" !in partPricingColumns) {
+            conn.prepare("ALTER TABLE part_pricing ADD COLUMN id INTEGER NOT NULL DEFAULT 0").use { it.step() }
+        }
+        if ("partId" !in partPricingColumns) {
+            conn.prepare("ALTER TABLE part_pricing ADD COLUMN partId INTEGER NOT NULL DEFAULT 0").use { it.step() }
+        }
+        conn.prepare("""
+            UPDATE part_pricing 
+            SET partId = (SELECT parts.id FROM parts WHERE parts.uuid = part_pricing.partUuid) 
+            WHERE (partId = 0 OR partId IS NULL) 
+              AND EXISTS (SELECT 1 FROM parts WHERE parts.uuid = part_pricing.partUuid AND parts.id > 0)
+        """.trimIndent()).use { it.step() }
+
         // Ø³Ø¬Ù„ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª (Append-only Log / Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª Ù…Ù‚Ø±ÙˆØ¡Ø© Ù…Ø­Ù„ÙŠØ§Ù‹ ÙÙ‚Ø·)
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS notifications_history (
@@ -1220,28 +1238,38 @@ internal object SqliteDatabaseSchema {
                 }
 
                 if (table == "parts") {
-                    if (hasColumn(conn, "bom_items", "partId")) {
+                    if (tableExists(conn, "bom_items")) {
+                        if (!hasColumn(conn, "bom_items", "partId")) {
+                            conn.prepare("ALTER TABLE bom_items ADD COLUMN partId INTEGER NOT NULL DEFAULT 0").use { it.step() }
+                        }
+                        if (!hasColumn(conn, "bom_items", "subPartId")) {
+                            conn.prepare("ALTER TABLE bom_items ADD COLUMN subPartId INTEGER NOT NULL DEFAULT 0").use { it.step() }
+                        }
                         conn.prepare("UPDATE bom_items SET partId = ? WHERE partUuid = ?").use { stmt ->
                             stmt.bindLong(1, newId)
                             stmt.bindText(2, uuid)
                             stmt.step()
                         }
-                    }
-                    if (hasColumn(conn, "bom_items", "subPartId")) {
                         conn.prepare("UPDATE bom_items SET subPartId = ? WHERE subPartUuid = ?").use { stmt ->
                             stmt.bindLong(1, newId)
                             stmt.bindText(2, uuid)
                             stmt.step()
                         }
                     }
-                    if (hasColumn(conn, "stock_items", "partId")) {
+                    if (tableExists(conn, "stock_items")) {
+                        if (!hasColumn(conn, "stock_items", "partId")) {
+                            conn.prepare("ALTER TABLE stock_items ADD COLUMN partId INTEGER NOT NULL DEFAULT 0").use { it.step() }
+                        }
                         conn.prepare("UPDATE stock_items SET partId = ? WHERE partUuid = ?").use { stmt ->
                             stmt.bindLong(1, newId)
                             stmt.bindText(2, uuid)
                             stmt.step()
                         }
                     }
-                    if (hasColumn(conn, "part_pricing", "partId")) {
+                    if (tableExists(conn, "part_pricing")) {
+                        if (!hasColumn(conn, "part_pricing", "partId")) {
+                            conn.prepare("ALTER TABLE part_pricing ADD COLUMN partId INTEGER NOT NULL DEFAULT 0").use { it.step() }
+                        }
                         conn.prepare("UPDATE part_pricing SET partId = ? WHERE partUuid = ?").use { stmt ->
                             stmt.bindLong(1, newId)
                             stmt.bindText(2, uuid)
@@ -1249,14 +1277,20 @@ internal object SqliteDatabaseSchema {
                         }
                     }
                 } else if (table == "companies") {
-                    if (hasColumn(conn, "contacts", "companyId")) {
+                    if (tableExists(conn, "contacts")) {
+                        if (!hasColumn(conn, "contacts", "companyId")) {
+                            conn.prepare("ALTER TABLE contacts ADD COLUMN companyId INTEGER NOT NULL DEFAULT 0").use { it.step() }
+                        }
                         conn.prepare("UPDATE contacts SET companyId = ? WHERE companyUuid = ?").use { stmt ->
                             stmt.bindLong(1, newId)
                             stmt.bindText(2, uuid)
                             stmt.step()
                         }
                     }
-                    if (hasColumn(conn, "addresses", "companyId")) {
+                    if (tableExists(conn, "addresses")) {
+                        if (!hasColumn(conn, "addresses", "companyId")) {
+                            conn.prepare("ALTER TABLE addresses ADD COLUMN companyId INTEGER NOT NULL DEFAULT 0").use { it.step() }
+                        }
                         conn.prepare("UPDATE addresses SET companyId = ? WHERE companyUuid = ?").use { stmt ->
                             stmt.bindLong(1, newId)
                             stmt.bindText(2, uuid)

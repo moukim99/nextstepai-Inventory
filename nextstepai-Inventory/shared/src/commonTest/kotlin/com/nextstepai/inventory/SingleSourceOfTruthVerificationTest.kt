@@ -638,6 +638,15 @@ class SingleSourceOfTruthVerificationTest {
                     isDeleted INTEGER NOT NULL DEFAULT 0
                 );
             """.trimIndent()).use { it.step() }
+            raw.prepare("""
+                CREATE TABLE part_pricing (
+                    uuid TEXT PRIMARY KEY NOT NULL,
+                    partUuid TEXT NOT NULL UNIQUE,
+                    currency TEXT NOT NULL DEFAULT 'USD',
+                    overallMin REAL,
+                    overallMax REAL
+                );
+            """.trimIndent()).use { it.step() }
 
             // Insert two colliding active parts with identical id = 10
             raw.prepare("INSERT INTO parts (uuid, id, name, isDeleted) VALUES ('part-collision-1', 10, 'Part 1', 0)").use { it.step() }
@@ -648,6 +657,8 @@ class SingleSourceOfTruthVerificationTest {
             raw.prepare("INSERT INTO bom_items (uuid, partUuid, partId) VALUES ('bom-c2', 'part-collision-2', 10)").use { it.step() }
             raw.prepare("INSERT INTO stock_items (uuid, partUuid, partId) VALUES ('stock-c1', 'part-collision-1', 10)").use { it.step() }
             raw.prepare("INSERT INTO stock_items (uuid, partUuid, partId) VALUES ('stock-c2', 'part-collision-2', 10)").use { it.step() }
+            raw.prepare("INSERT INTO part_pricing (uuid, partUuid, overallMin, overallMax) VALUES ('pricing-c1', 'part-collision-1', 10.0, 20.0)").use { it.step() }
+            raw.prepare("INSERT INTO part_pricing (uuid, partUuid, overallMin, overallMax) VALUES ('pricing-c2', 'part-collision-2', 15.0, 25.0)").use { it.step() }
             raw.close()
 
             SqliteDatabaseManager.setCustomDatabasePath(tempFile.absolutePath)
@@ -669,14 +680,90 @@ class SingleSourceOfTruthVerificationTest {
             // Verify child relations were cascaded properly
             var childBomPartId2 = 0L
             var childStockPartId2 = 0L
+            var childPricingPartId1 = 0L
+            var childPricingPartId2 = 0L
             healedConn.prepare("SELECT partId FROM bom_items WHERE partUuid = 'part-collision-2'").use {
                 if (it.step()) childBomPartId2 = it.getLong(0)
             }
             healedConn.prepare("SELECT partId FROM stock_items WHERE partUuid = 'part-collision-2'").use {
                 if (it.step()) childStockPartId2 = it.getLong(0)
             }
+            healedConn.prepare("SELECT partId FROM part_pricing WHERE partUuid = 'part-collision-1'").use {
+                if (it.step()) childPricingPartId1 = it.getLong(0)
+            }
+            healedConn.prepare("SELECT partId FROM part_pricing WHERE partUuid = 'part-collision-2'").use {
+                if (it.step()) childPricingPartId2 = it.getLong(0)
+            }
             assertEquals(id2, childBomPartId2, "بند BOM التابع للقطعة الثانية تم تحديثه لمعرف القطعة الجديد")
             assertEquals(id2, childStockPartId2, "عنصر المخزون التابع للقطعة الثانية تم تحديثه لمعرف القطعة الجديد")
+            assertEquals(10L, childPricingPartId1, "سعر القطعة الأولى تم ربطه بالمعرف الأصلي 10")
+            assertEquals(id2, childPricingPartId2, "سعر القطعة الثانية المكررة تم تحديث معرفه إلى المعرف الجديد المستحدث")
+        } finally {
+            SqliteDatabaseManager.closeDatabase()
+            SqliteDatabaseManager.setCustomDatabasePath(tempDbFile.absolutePath)
+            runCatching { tempFile.delete() }
+        }
+    }
+
+    @Test
+    fun testLegacyMigrationExplicitlyUpgradesPartPricingAndRollsBackOnFailure() {
+        val runToken = Clock.System.now().toEpochMilliseconds().toString().takeLast(6)
+        val tempFile = File(System.getProperty("java.io.tmpdir"), "legacy_pricing_migration_$runToken.db")
+        tempFile.deleteOnExit()
+
+        try {
+            val driver = androidx.sqlite.driver.bundled.BundledSQLiteDriver()
+            val raw = driver.open(tempFile.absolutePath)
+
+            // Create legacy parts table and legacy part_pricing table (without id, without partId)
+            raw.prepare("""
+                CREATE TABLE parts (
+                    uuid TEXT PRIMARY KEY NOT NULL,
+                    id INTEGER NOT NULL DEFAULT 0,
+                    name TEXT NOT NULL,
+                    isDeleted INTEGER NOT NULL DEFAULT 0
+                );
+            """.trimIndent()).use { it.step() }
+
+            raw.prepare("""
+                CREATE TABLE part_pricing (
+                    uuid TEXT PRIMARY KEY NOT NULL,
+                    partUuid TEXT NOT NULL UNIQUE,
+                    currency TEXT NOT NULL DEFAULT 'USD',
+                    overallMin REAL,
+                    overallMax REAL
+                );
+            """.trimIndent()).use { it.step() }
+
+            raw.prepare("INSERT INTO parts (uuid, id, name, isDeleted) VALUES ('part-leg-1', 101, 'Legacy Resistor', 0)").use { it.step() }
+            raw.prepare("INSERT INTO parts (uuid, id, name, isDeleted) VALUES ('part-leg-2', 102, 'Legacy Capacitor', 0)").use { it.step() }
+            raw.prepare("INSERT INTO part_pricing (uuid, partUuid, overallMin, overallMax) VALUES ('pp-leg-1', 'part-leg-1', 1.5, 3.0)").use { it.step() }
+            raw.prepare("INSERT INTO part_pricing (uuid, partUuid, overallMin, overallMax) VALUES ('pp-leg-2', 'part-leg-2', 2.0, 5.0)").use { it.step() }
+            raw.close()
+
+            // Open via SqliteDatabaseManager - should migrate part_pricing and backfill partId
+            SqliteDatabaseManager.setCustomDatabasePath(tempFile.absolutePath)
+            val migratedConn = SqliteDatabaseManager.getConnection()
+
+            // Verify part_pricing has partId column and has been populated properly
+            var pp1PartId = 0L
+            var pp2PartId = 0L
+            migratedConn.prepare("SELECT partId FROM part_pricing WHERE uuid = 'pp-leg-1'").use {
+                if (it.step()) pp1PartId = it.getLong(0)
+            }
+            migratedConn.prepare("SELECT partId FROM part_pricing WHERE uuid = 'pp-leg-2'").use {
+                if (it.step()) pp2PartId = it.getLong(0)
+            }
+            assertEquals(101L, pp1PartId, "ترحيل part_pricing قام بربط القطعة 101 بنجاح")
+            assertEquals(102L, pp2PartId, "ترحيل part_pricing قام بربط القطعة 102 بنجاح")
+
+            // Verify column existence via PRAGMA
+            val columns = mutableSetOf<String>()
+            migratedConn.prepare("PRAGMA table_info(part_pricing)").use { stmt ->
+                while (stmt.step()) columns.add(stmt.getText(1))
+            }
+            assertTrue("id" in columns, "عمود id موجود في part_pricing بعد الترحيل")
+            assertTrue("partId" in columns, "عمود partId موجود في part_pricing بعد الترحيل")
         } finally {
             SqliteDatabaseManager.closeDatabase()
             SqliteDatabaseManager.setCustomDatabasePath(tempDbFile.absolutePath)
