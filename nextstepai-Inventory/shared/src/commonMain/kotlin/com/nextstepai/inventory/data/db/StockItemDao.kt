@@ -184,6 +184,68 @@ class StockItemDao {
         }
     }
 
+    fun getAvailableStockItemsForPart(partId: Long, partUuid: String? = null): List<StockItemEntity> {
+        val conn = SqliteDatabaseManager.getConnection()
+        val results = mutableListOf<StockItemEntity>()
+        val p1 = partUuid ?: ""
+        val p2 = "part-$partId"
+        val p3 = "part-uuid-$partId"
+        val sql = """
+            SELECT $selectColumns
+            FROM stock_items
+            WHERE isDeleted = 0
+              AND quantity > 0
+              AND statusCode = 10
+              AND (
+                  partId = ?
+                  OR partUuid = ?
+                  OR partUuid = ?
+                  OR partUuid = ?
+              )
+            ORDER BY expiryDate ASC, updatedAt ASC
+        """.trimIndent()
+        conn.prepare(sql).use { stmt ->
+            stmt.bindLong(1, partId)
+            stmt.bindText(2, p1)
+            stmt.bindText(3, p2)
+            stmt.bindText(4, p3)
+            while (stmt.step()) {
+                results.add(mapStockItemEntity(stmt))
+            }
+        }
+        return results
+    }
+
+    fun updateStockItemQuantity(uuid: String, newQuantity: Double, updatedAt: Long) {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            UPDATE stock_items
+            SET quantity = ?,
+                syncStatus = 'PENDING',
+                updatedAt = ?
+            WHERE uuid = ?
+        """.trimIndent()).use { stmt ->
+            stmt.bindDouble(1, newQuantity)
+            stmt.bindLong(2, updatedAt)
+            stmt.bindText(3, uuid)
+            stmt.step()
+        }
+    }
+
+    fun depleteStockItem(uuid: String, updatedAt: Long, deleteOnDeplete: Boolean = false) {
+        val conn = SqliteDatabaseManager.getConnection()
+        val sql = if (deleteOnDeplete) {
+            "UPDATE stock_items SET quantity = 0.0, isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?"
+        } else {
+            "UPDATE stock_items SET quantity = 0.0, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?"
+        }
+        conn.prepare(sql).use { stmt ->
+            stmt.bindLong(1, updatedAt)
+            stmt.bindText(2, uuid)
+            stmt.step()
+        }
+    }
+
     private fun mapStockItemEntity(stmt: SQLiteStatement): StockItemEntity {
         return StockItemEntity(
             uuid = runCatching { stmt.getText(0) }.getOrDefault(""),
