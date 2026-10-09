@@ -17,7 +17,7 @@ class PartDao {
         totalInStock, revision, keywords, assembly, component, isTemplate, variantOfUuid,
         trackable, purchaseable, salable, virtual, active, locked, defaultLocationUuid,
         defaultExpiryDays, link, localImagePath, metadata, version, syncStatus, isDeleted,
-        updatedAt, lastModifiedByDeviceUuid
+        updatedAt, lastModifiedByDeviceUuid, id
     """.trimIndent()
 
     fun getPartsPaged(limit: Int = 20, offset: Int = 0): List<PartEntity> {
@@ -143,8 +143,8 @@ class PartDao {
                 totalInStock, revision, keywords, assembly, component, isTemplate, variantOfUuid,
                 trackable, purchaseable, salable, virtual, active, locked, defaultLocationUuid,
                 defaultExpiryDays, link, localImagePath, metadata, version, syncStatus, isDeleted,
-                updatedAt, lastModifiedByDeviceUuid
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                updatedAt, lastModifiedByDeviceUuid, id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(uuid) DO UPDATE SET
                 name = excluded.name,
                 ipn = excluded.ipn,
@@ -175,7 +175,8 @@ class PartDao {
                 syncStatus = excluded.syncStatus,
                 isDeleted = excluded.isDeleted,
                 updatedAt = excluded.updatedAt,
-                lastModifiedByDeviceUuid = excluded.lastModifiedByDeviceUuid
+                lastModifiedByDeviceUuid = excluded.lastModifiedByDeviceUuid,
+                id = CASE WHEN excluded.id > 0 THEN excluded.id ELSE parts.id END
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
             stmt.bindText(2, entity.name)
@@ -208,6 +209,7 @@ class PartDao {
             stmt.bindLong(29, if (entity.isDeleted) 1L else 0L)
             stmt.bindLong(30, entity.updatedAt)
             if (entity.lastModifiedByDeviceUuid != null) stmt.bindText(31, entity.lastModifiedByDeviceUuid) else stmt.bindNull(31)
+            stmt.bindLong(32, entity.id)
             stmt.step()
         }
     }
@@ -233,8 +235,8 @@ class PartDao {
                 assembly, component, isTemplate, variantOfUuid, trackable,
                 purchaseable, salable, virtual, active, locked,
                 defaultLocationUuid, defaultExpiryDays, link, localImagePath,
-                metadata, version, syncStatus, isDeleted, updatedAt, lastModifiedByDeviceUuid
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                metadata, version, syncStatus, isDeleted, updatedAt, lastModifiedByDeviceUuid, id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
             stmt.bindText(2, entity.name)
@@ -267,6 +269,7 @@ class PartDao {
             stmt.bindLong(29, if (entity.isDeleted) 1L else 0L)
             stmt.bindLong(30, entity.updatedAt)
             if (entity.lastModifiedByDeviceUuid != null) stmt.bindText(31, entity.lastModifiedByDeviceUuid) else stmt.bindNull(31)
+            stmt.bindLong(32, entity.id)
             stmt.step()
         }
         var changed = 0
@@ -407,7 +410,8 @@ class PartDao {
             syncStatus = SyncStatus.fromString(stmt.getText(27)),
             isDeleted = runCatching { stmt.getLong(28) != 0L }.getOrDefault(false),
             updatedAt = runCatching { stmt.getLong(29) }.getOrDefault(0L),
-            lastModifiedByDeviceUuid = runCatching { if (stmt.isNull(30)) null else stmt.getText(30) }.getOrNull()
+            lastModifiedByDeviceUuid = runCatching { if (stmt.isNull(30)) null else stmt.getText(30) }.getOrNull(),
+            id = runCatching { stmt.getLong(31) }.getOrDefault(0L)
         )
     }
 }
