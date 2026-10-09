@@ -12,7 +12,7 @@ import kotlin.time.Clock
 class CompanyDao {
 
     private val selectColumns = """
-        uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt, version
+        uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt, version, id
     """.trimIndent()
 
     fun getCompaniesPaged(
@@ -122,8 +122,8 @@ class CompanyDao {
     fun insert(entity: CompanyEntity): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
-            INSERT INTO companies (uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt, version)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO companies (uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt, version, id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
             stmt.bindText(2, entity.name)
@@ -144,6 +144,7 @@ class CompanyDao {
             stmt.bindLong(17, if (entity.isDeleted) 1L else 0L)
             stmt.bindLong(18, entity.updatedAt)
             stmt.bindLong(19, entity.version.toLong())
+            stmt.bindLong(20, entity.id)
             stmt.step()
         }
         var changed = 0
@@ -192,8 +193,8 @@ class CompanyDao {
     fun insertOrUpdate(entity: CompanyEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
-            INSERT OR REPLACE INTO companies (uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO companies (uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt, id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
             stmt.bindText(2, entity.name)
@@ -213,6 +214,7 @@ class CompanyDao {
             stmt.bindText(16, entity.syncStatus.name)
             stmt.bindLong(17, if (entity.isDeleted) 1L else 0L)
             stmt.bindLong(18, entity.updatedAt)
+            stmt.bindLong(19, entity.id)
             stmt.step()
         }
     }
@@ -249,7 +251,8 @@ class CompanyDao {
             syncStatus = SyncStatus.fromString(stmt.getText(15)),
             isDeleted = stmt.getLong(16) != 0L,
             updatedAt = stmt.getLong(17),
-            version = runCatching { stmt.getLong(18).toInt() }.getOrDefault(1)
+            version = runCatching { stmt.getLong(18).toInt() }.getOrDefault(1),
+            id = runCatching { stmt.getLong(19) }.getOrDefault(0L)
         )
     }
 }
