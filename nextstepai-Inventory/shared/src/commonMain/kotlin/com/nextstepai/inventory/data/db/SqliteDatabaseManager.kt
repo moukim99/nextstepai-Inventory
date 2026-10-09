@@ -69,14 +69,20 @@ object SqliteDatabaseManager {
                 rawConn.prepare("PRAGMA busy_timeout = 10000;").use { it.step() }
             }
 
-            // 1. إنشاء الجداول الأساسية إن لم تكن موجودة مسبقاً
-            SqliteDatabaseSchema.createTables(rawConn)
+            // Execute schema creation, migration, and default seeding as a single atomic unit.
+            rawConn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+            try {
+                // 1. إنشاء الجداول الأساسية وترقيتها وفرض الفهارس وقيود التفرد ذرياً
+                SqliteDatabaseSchema.createTables(rawConn)
 
-            // 2. الترحيل التلقائي: تجنب الفشل في حال كان العمود أو الجدول موجوداً مسبقاً
-            SqliteDatabaseMigrations.applyMigrations(rawConn)
+                // 2. إدراج الإعدادات الافتراضية والبيانات الأولية بأمان
+                SqliteDatabaseSeeder.seedDefaultsAndInitialData(rawConn)
 
-            // 3. إدراج الإعدادات الافتراضية والبيانات الأولية بأمان
-            SqliteDatabaseSeeder.seedDefaultsAndInitialData(rawConn)
+                rawConn.prepare("COMMIT;").use { it.step() }
+            } catch (initErr: Throwable) {
+                runCatching { rawConn.prepare("ROLLBACK;").use { it.step() } }
+                throw initErr
+            }
 
             ThreadSafeSQLiteConnection(rawConn)
         } catch (e: Throwable) {

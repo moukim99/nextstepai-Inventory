@@ -1479,7 +1479,7 @@ internal fun ParentLocationSelectionBottomSheet(
         if (selectedParentId != null) {
             val selectedLoc = locations.find { it.id == selectedParentId }
             if (selectedLoc != null && selectedLoc.parentId != null) {
-                initialExpanded.add(selectedLoc.parentId!!)
+                initialExpanded.add(selectedLoc.parentId)
             } else if (selectedLoc != null && (selectedLoc.locationType.equals("SITE", ignoreCase = true) || selectedLoc.locationType.equals("ROOT", ignoreCase = true))) {
                 initialExpanded.add(selectedLoc.id)
             }

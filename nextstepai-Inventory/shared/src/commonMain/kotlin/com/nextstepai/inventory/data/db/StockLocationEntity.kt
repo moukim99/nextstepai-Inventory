@@ -14,6 +14,9 @@ import kotlin.time.Clock
 data class StockLocationEntity(
     @PrimaryKey
     override val uuid: String = AppUuid.generate(),
+    val id: Long = 0L,
+    val parentId: Long? = null,
+    val ownerId: Long? = null,
     val name: String,
     val description: String = "",
     val parentUuid: String? = null,

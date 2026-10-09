@@ -43,6 +43,7 @@ import com.nextstepai.inventory.data.db.PartAttachmentDao
 import com.nextstepai.inventory.data.db.PartNotesDao
 import com.nextstepai.inventory.data.db.PartInternalPriceDao
 import com.nextstepai.inventory.data.db.PartSalePriceDao
+import com.nextstepai.inventory.domain.PartPricingCalculator
 import com.nextstepai.inventory.data.db.PartStarDao
 import com.nextstepai.inventory.data.db.PartPricingDao
 import com.nextstepai.inventory.data.db.PartTestTemplateDao
@@ -51,6 +52,7 @@ import com.nextstepai.inventory.data.db.PartRelatedDao
 import com.nextstepai.inventory.data.db.PartParameterTemplateDao
 import com.nextstepai.inventory.data.db.PartCategoryParameterTemplateDao
 import com.nextstepai.inventory.data.db.getRoomDatabase
+import com.nextstepai.inventory.data.db.SqliteDatabaseManager
 import com.nextstepai.inventory.data.db.SqliteNumericIdAllocator
 import com.nextstepai.inventory.util.AppUuid
 
@@ -134,7 +136,7 @@ class PartRepository(
     }
 
     private fun PartEntity.toPart(): Part {
-        val parsedId = uuid.removePrefix("part-").toLongOrNull() ?: 0L
+        val parsedId = id.takeIf { it > 0L } ?: uuid.removePrefix("part-").toLongOrNull() ?: 0L
         return Part(
             id = parsedId,
             uuid = uuid,
@@ -307,6 +309,7 @@ class PartRepository(
         val inserted = partDao.insert(
             PartEntity(
                 uuid = partUuid,
+                id = allocatedId,
                 name = partToInsert.name,
                 ipn = partToInsert.ipn,
                 description = partToInsert.description,
@@ -429,38 +432,43 @@ class PartRepository(
      * حذف أمني للقطعة باستخدام المعرف النصي UUID.
      */
     fun deletePartByUuid(uuid: String): Result<Boolean> {
-        val part = getPartByUuid(uuid)
-            ?: return Result.failure(IllegalArgumentException("القطعة المطلوب حذفها غير موجودة بالمنظومة"))
+        val conn = SqliteDatabaseManager.getConnection()
+        val part = try {
+            conn.prepare("BEGIN IMMEDIATE").use { it.step() }
+            val existing = getPartByUuid(uuid)
+                ?: throw IllegalArgumentException("القطعة المطلوب حذفها غير موجودة بالمنظومة")
 
-        val deleted = partDao.softDeleteByUuid(part.effectiveUuid)
-        if (!deleted) {
-            return Result.failure(IllegalStateException("فشل حذف القطعة من قاعدة البيانات"))
+            val deleted = partDao.softDeleteByUuid(existing.effectiveUuid)
+            if (!deleted) {
+                throw IllegalStateException("فشل حذف القطعة من قاعدة البيانات")
+            }
+
+            // جميع تغييرات الحذف التابعة تُنفذ في المعاملة نفسها؛ أي خطأ يؤدي إلى rollback.
+            partAttachmentDao.deleteForPart(existing.effectiveUuid)
+            partNotesDao.deleteForPart(existing.effectiveUuid)
+            partInternalPriceDao.deleteForPart(existing.effectiveUuid)
+            partSalePriceDao.deleteForPart(existing.effectiveUuid)
+            partStarDao.deleteForPart(existing.effectiveUuid)
+            partPricingDao.deleteForPart(existing.effectiveUuid)
+            partTestTemplateDao.deleteForPart(existing.effectiveUuid)
+            partParameterDao.deleteForPart(existing.effectiveUuid)
+            partRelatedDao.deleteForPart(existing.effectiveUuid)
+
+            conn.prepare("COMMIT").use { it.step() }
+            existing
+        } catch (failure: Throwable) {
+            runCatching { conn.prepare("ROLLBACK").use { it.step() } }
+            return Result.failure(failure)
         }
 
-        // حذف الكيانات التابعة للقطعة في SQLite
-        runCatching {
-            partAttachmentDao.deleteForPart(part.effectiveUuid)
-            partNotesDao.deleteForPart(part.effectiveUuid)
-            partInternalPriceDao.deleteForPart(part.effectiveUuid)
-            partSalePriceDao.deleteForPart(part.effectiveUuid)
-            partStarDao.deleteForPart(part.effectiveUuid)
-            partPricingDao.deleteForPart(part.effectiveUuid)
-            partTestTemplateDao.deleteForPart(part.effectiveUuid)
-            partParameterDao.deleteForPart(part.effectiveUuid)
-            partRelatedDao.deleteForPart(part.effectiveUuid)
-        }
-
-        // إزالة القطعة من جدول الذاكرة الداخلي
+        // الجداول القديمة والملفات ليست جزءاً من معاملة SQLite؛ تُعامل كمزامنة أفضلية بعد نجاحها.
         runCatching { partTable.deletePart(part.id) }
-
-        // الحذف الفيزيائي الآلي لملف صورة الملصق لمنع الملفات المهملة
         part.labelImagePath?.let { path ->
             runCatching {
                 val file = File(path)
                 if (file.exists()) file.delete()
             }
         }
-
         return Result.success(true)
     }
 
@@ -468,7 +476,32 @@ class PartRepository(
      * جلب قوالب المعاملات المرتبطة بتصنيف محدد مع دعم التوريث من التصنيف الأب.
      */
     fun getCategoryParameterTemplates(categoryId: Long): List<CategoryParameterTemplateView> {
-        return categoryParameterTable.getCategoryParameterTemplatesForCategory(categoryId)
+        val categoriesById = categoryRepository.getCategories().associateBy { it.id }
+        val result = mutableListOf<CategoryParameterTemplateView>()
+        val visitedTemplateIds = mutableSetOf<Long>()
+        var currentCategoryId: Long? = categoryId
+        var inherited = false
+        var depth = 0
+
+        // Bound traversal to the known category count so malformed parent cycles cannot loop forever.
+        while (currentCategoryId != null && depth <= categoriesById.size) {
+            val category = categoriesById[currentCategoryId] ?: break
+            val categoryUuid = "cat-${currentCategoryId.toString().padStart(3, '0')}"
+            for (link in partCategoryParameterTemplateDao.getForCategory(categoryUuid)) {
+                if (!visitedTemplateIds.add(link.parameterTemplateId)) continue
+                val template = partParameterTemplateDao.getById(link.parameterTemplateId) ?: continue
+                result += CategoryParameterTemplateView(
+                    categoryTemplate = link,
+                    template = template,
+                    isInherited = inherited,
+                    sourceCategoryName = category.name
+                )
+            }
+            currentCategoryId = category.parentId
+            inherited = true
+            depth++
+        }
+        return result
     }
 
     /**
@@ -494,11 +527,8 @@ class PartRepository(
     /**
      * جلب كافة قوالب المعاملات القياسية العامة (PartParameterTemplate).
      */
-    fun getAllParameterTemplates(): List<PartParameterTemplate> {
-        val fromDb = partParameterTemplateDao.getAll()
-        if (fromDb.isNotEmpty()) return fromDb
-        return categoryParameterTable.getAllParameterTemplates()
-    }
+    fun getAllParameterTemplates(): List<PartParameterTemplate> =
+        partParameterTemplateDao.getAll()
 
     /**
      * إدراج قالب معامل أو وحدة قياسية جديدة إلى النظام في قاعدة البيانات.
@@ -545,11 +575,8 @@ class PartRepository(
      * جلب قيم المعاملات الفنية المحددة لقطعة معينة (PartParameter) من SQLite.
      */
     fun getPartParameters(partId: Long): List<PartParameter> {
-        val targetPart = getPartById(partId)
-        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
-        val fromDb = partParameterDao.getForPart(partUuid)
-        if (fromDb.isNotEmpty()) return fromDb
-        return categoryParameterTable.getParametersForPart(partId)
+        val targetPart = getPartById(partId) ?: return emptyList()
+        return partParameterDao.getForPart(targetPart.effectiveUuid).map { it.copy(partId = partId) }
     }
 
     /**
@@ -579,7 +606,7 @@ class PartRepository(
         val p2 = getPartById(part2Id) ?: throw IllegalArgumentException("القطعة الثانية غير موجودة")
         val saved = partRelatedDao.insert(p1.effectiveUuid, p2.effectiveUuid)
         runCatching { partRelatedTable.insertPartRelated(part1Id, part2Id) }
-        return saved
+        return saved.copy(part1Id = part1Id, part2Id = part2Id)
     }
 
     /**
@@ -588,17 +615,14 @@ class PartRepository(
     fun getRelatedPartsForPart(partId: Long): List<PartRelatedView> {
         val targetPart = getPartById(partId) ?: return emptyList()
         val relatedRecords = partRelatedDao.getRelatedForPart(targetPart.effectiveUuid)
-        if (relatedRecords.isNotEmpty()) {
-            val allParts = getParts().associateBy { it.id }
-            return relatedRecords.mapNotNull { rel ->
-                val otherId = if (rel.part1Id == partId) rel.part2Id else rel.part1Id
-                val otherPart = allParts[otherId] ?: getPartById(otherId)
-                if (otherPart != null) {
-                    PartRelatedView(relatedRecord = rel, relatedPart = otherPart)
-                } else null
-            }
+        val allParts = getParts().associateBy { it.id }
+        return relatedRecords.mapNotNull { rel ->
+            val otherId = if (rel.part1Id == partId) rel.part2Id else rel.part1Id
+            val otherPart = allParts[otherId] ?: getPartById(otherId)
+            if (otherPart != null) {
+                PartRelatedView(relatedRecord = rel, relatedPart = otherPart)
+            } else null
         }
-        return partRelatedTable.getRelatedPartsForPart(partId, getParts())
     }
 
     /**
@@ -627,11 +651,8 @@ class PartRepository(
      * جلب قوالب الفحوصات الخاصة بقطعة معينة من SQLite.
      */
     fun getPartTestTemplates(partId: Long): List<PartTestTemplate> {
-        val targetPart = getPartById(partId)
-        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
-        val fromDb = partTestTemplateDao.getForPart(partUuid)
-        if (fromDb.isNotEmpty()) return fromDb
-        return partTestTemplateTable.getTestTemplatesForPart(partId)
+        val targetPart = getPartById(partId) ?: return emptyList()
+        return partTestTemplateDao.getForPart(targetPart.effectiveUuid).map { it.copy(partId = partId) }
     }
 
     /**
@@ -661,11 +682,8 @@ class PartRepository(
      * جلب المرفقات والوثائق التابعة لقطعة معينة من SQLite.
      */
     fun getPartAttachments(partId: Long): List<PartAttachment> {
-        val targetPart = getPartById(partId)
-        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
-        val fromDb = partAttachmentDao.getForPart(partUuid)
-        if (fromDb.isNotEmpty()) return fromDb
-        return partAttachmentTable.getAttachmentsForPart(partId)
+        val targetPart = getPartById(partId) ?: return emptyList()
+        return partAttachmentDao.getForPart(targetPart.effectiveUuid).map { it.copy(partId = partId) }
     }
 
     /**
@@ -695,27 +713,29 @@ class PartRepository(
      * جلب الملاحظات التفصيلية الخاصة بقطعة معينة من SQLite.
      */
     fun getPartNotes(partId: Long): PartNotes? {
-        val targetPart = getPartById(partId)
-        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
-        return partNotesDao.getForPart(partUuid) ?: partNotesTable.getNotesForPart(partId)
+        val targetPart = getPartById(partId) ?: return null
+        return partNotesDao.getForPart(targetPart.effectiveUuid)?.copy(partId = partId)
     }
 
     /**
      * جلب سجل حساب وتسعير التكاليف لقطعة معينة في PartPricing من SQLite.
      */
     fun getPartPricing(partId: Long): PartPricingEntity? {
-        val targetPart = getPartById(partId)
-        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
-        return partPricingDao.getForPart(partUuid) ?: partPricingTable.getPricingForPart(partId)
+        val targetPart = getPartById(partId) ?: return null
+        return partPricingDao.getForPart(targetPart.effectiveUuid)?.copy(partId = partId)
     }
 
     /**
      * إعادة حساب وتحديث التكاليف المجمعة لقطعة معينة في PartPricing وحفظها في SQLite.
      */
     fun recalculatePartPricing(part: Part, bomItems: List<BomItem> = emptyList()): PartPricingEntity {
-        val calculated = partPricingTable.recalculatePricingForPart(part, bomItems)
-        val saved = partPricingDao.saveOrUpdate(calculated, part.effectiveUuid)
-        return saved
+        val internalPrices = partInternalPriceDao.getForPart(part.effectiveUuid)
+        val calculated = PartPricingCalculator.calculate(
+            part = part,
+            bomItems = bomItems,
+            internalPrices = internalPrices
+        )
+        return partPricingDao.saveOrUpdate(calculated, part.effectiveUuid).copy(partId = part.id)
     }
 
     /**
@@ -750,11 +770,8 @@ class PartRepository(
      * جلب شرائح الأسعار والتكاليف الداخلية لقطعة معينة من SQLite.
      */
     fun getPartInternalPrices(partId: Long): List<PartInternalPriceEntity> {
-        val targetPart = getPartById(partId)
-        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
-        val fromDb = partInternalPriceDao.getForPart(partUuid)
-        if (fromDb.isNotEmpty()) return fromDb
-        return partInternalPriceTable.getInternalPricesForPart(partId)
+        val targetPart = getPartById(partId) ?: return emptyList()
+        return partInternalPriceDao.getForPart(targetPart.effectiveUuid).map { it.copy(partId = partId) }
     }
 
     /**
@@ -800,11 +817,8 @@ class PartRepository(
      * جلب شرائح أسعار البيع للعملاء لقطعة معينة من SQLite.
      */
     fun getPartSalePrices(partId: Long): List<PartSalePriceEntity> {
-        val targetPart = getPartById(partId)
-        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
-        val fromDb = partSalePriceDao.getForPart(partUuid)
-        if (fromDb.isNotEmpty()) return fromDb
-        return partSalePriceTable.getSalePricesForPart(partId)
+        val targetPart = getPartById(partId) ?: return emptyList()
+        return partSalePriceDao.getForPart(targetPart.effectiveUuid).map { it.copy(partId = partId) }
     }
 
     /**
@@ -812,11 +826,9 @@ class PartRepository(
      */
     fun getBestPartSalePriceForQuantity(partId: Long, quantity: Double): PartSalePriceEntity? {
         val prices = getPartSalePrices(partId)
-        if (prices.isNotEmpty()) {
-            return prices.filter { it.quantity <= quantity }.maxByOrNull { it.quantity }
-                ?: prices.minByOrNull { it.quantity }
-        }
-        return partSalePriceTable.getBestSalePriceForQuantity(partId, quantity)
+        if (prices.isEmpty()) return null
+        return prices.filter { it.quantity <= quantity }.maxByOrNull { it.quantity }
+            ?: prices.minByOrNull { it.quantity }
     }
 
     /**
@@ -858,11 +870,8 @@ class PartRepository(
      */
     fun getStarredPartIdsForUser(userId: Long = 1L): List<Long> {
         val userUuid = "usr-$userId"
-        val uuids = partStarDao.getStarredPartUuids(userUuid)
-        if (uuids.isNotEmpty()) {
-            return uuids.mapNotNull { it.removePrefix("part-").toLongOrNull() }
-        }
-        return partStarTable.getStarredPartIdsForUser(userId)
+        return partStarDao.getStarredPartUuids(userUuid)
+            .mapNotNull { uuid -> partDao.getPartByUuid(uuid)?.let { it.id.takeIf { id -> id > 0L } ?: uuid.removePrefix("part-").toLongOrNull() } }
     }
 
     /**

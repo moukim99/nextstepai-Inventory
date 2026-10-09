@@ -58,8 +58,17 @@ class CompanyRepository(
         )
     }
 
+    private fun resolveCompanyId(uuid: String): Long? {
+        val legacyId = uuid.removePrefix("company-").toLongOrNull()
+        if (legacyId != null && legacyId > 0L) return legacyId
+        return companyDao.getCompanyByUuid(uuid)?.id?.takeIf { it > 0L }
+    }
+
+    private fun resolveCompanyUuid(id: Long): String =
+        companyDao.getCompanyById(id)?.uuid ?: "company-$id"
+
     private fun CompanyEntity.toCompany(): Company {
-        val parsedId = uuid.removePrefix("company-").toLongOrNull() ?: 0L
+        val parsedId = id.takeIf { it > 0L } ?: uuid.removePrefix("company-").toLongOrNull() ?: 0L
         return Company(
             id = parsedId,
             uuid = uuid,
@@ -76,7 +85,7 @@ class CompanyRepository(
             imageUrl = logoPath,
             notes = notes,
             metadata = metadata,
-            parentId = parentUuid?.removePrefix("company-")?.toLongOrNull()
+            parentId = parentUuid?.let { resolveCompanyId(it) }
         )
     }
 
@@ -123,10 +132,8 @@ class CompanyRepository(
     /**
      * جلب شركة حسب المعرف من SQLite مباشرة.
      */
-    fun getCompanyById(id: Long): Company? {
-        val entity = companyDao.getCompanyByUuid("company-$id")
-        return entity?.toCompany() ?: getCompanies().firstOrNull { it.id == id }
-    }
+    fun getCompanyById(id: Long): Company? =
+        companyDao.getCompanyById(id)?.toCompany()
 
     fun getCompanyByUuid(uuid: String): Company? {
         val entity = companyDao.getCompanyByUuid(uuid)
@@ -162,10 +169,11 @@ class CompanyRepository(
                 logoPath = companyWithId.imageUrl,
                 notes = companyWithId.notes,
                 metadata = companyWithId.metadata,
-                parentUuid = companyWithId.parentId?.let { "company-$it" },
+                parentUuid = companyWithId.parentId?.let(::resolveCompanyUuid),
                 syncStatus = SyncStatus.PENDING,
                 isDeleted = false,
-                updatedAt = now
+                updatedAt = now,
+                id = companyWithId.id
             )
         )
         if (!inserted) {
@@ -205,7 +213,7 @@ class CompanyRepository(
                 logoPath = company.imageUrl,
                 notes = company.notes,
                 metadata = company.metadata,
-                parentUuid = company.parentId?.let { "company-$it" },
+                parentUuid = company.parentId?.let(::resolveCompanyUuid),
                 version = existing.version + 1,
                 syncStatus = SyncStatus.PENDING,
                 isDeleted = false,
@@ -232,10 +240,11 @@ class CompanyRepository(
     }
 
     fun deleteCompanyByUuid(uuid: String): Boolean {
+        val current = companyDao.getCompanyByUuid(uuid)
         val deleted = companyDao.delete(uuid)
         if (deleted) {
-            val parsedId = uuid.removePrefix("company-").toLongOrNull()
-            if (parsedId != null) {
+            val parsedId = current?.id ?: uuid.removePrefix("company-").toLongOrNull()
+            if (parsedId != null && parsedId > 0L) {
                 runCatching { companyTable.deleteCompany(parsedId) }
             }
         }
@@ -256,7 +265,7 @@ class CompanyRepository(
 
     private fun CompanyAttachmentEntity.toCompanyAttachment(): CompanyAttachment {
         val parsedId = uuid.removePrefix("company-att-").toLongOrNull() ?: 0L
-        val parsedCompanyId = companyUuid.removePrefix("company-").toLongOrNull() ?: 0L
+        val parsedCompanyId = resolveCompanyId(companyUuid) ?: 0L
         return CompanyAttachment(
             id = parsedId,
             companyId = parsedCompanyId,
@@ -274,7 +283,7 @@ class CompanyRepository(
 
     private fun ContactEntity.toContact(): Contact {
         val parsedId = uuid.removePrefix("contact-").toLongOrNull() ?: 0L
-        val parsedCompanyId = companyUuid.removePrefix("company-").toLongOrNull() ?: 0L
+        val parsedCompanyId = resolveCompanyId(companyUuid) ?: 0L
         return Contact(
             id = parsedId,
             companyId = parsedCompanyId,
@@ -288,7 +297,7 @@ class CompanyRepository(
 
     private fun AddressEntity.toAddress(): Address {
         val parsedId = uuid.removePrefix("address-").toLongOrNull() ?: 0L
-        val parsedCompanyId = companyUuid.removePrefix("company-").toLongOrNull() ?: 0L
+        val parsedCompanyId = resolveCompanyId(companyUuid) ?: 0L
         return Address(
             id = parsedId,
             companyId = parsedCompanyId,
@@ -306,7 +315,7 @@ class CompanyRepository(
 
     private fun CompanyBankAccountEntity.toCompanyBankAccount(): CompanyBankAccount {
         val parsedId = uuid.removePrefix("bank-").toLongOrNull() ?: 0L
-        val parsedCompanyId = companyUuid.removePrefix("company-").toLongOrNull() ?: 0L
+        val parsedCompanyId = resolveCompanyId(companyUuid) ?: 0L
         return CompanyBankAccount(
             id = parsedId,
             companyId = parsedCompanyId,
@@ -324,7 +333,7 @@ class CompanyRepository(
 
     private fun CompanyLegalRecordEntity.toCompanyLegalRecord(): CompanyLegalRecord {
         val parsedId = uuid.removePrefix("legal-").toLongOrNull() ?: 0L
-        val parsedCompanyId = companyUuid.removePrefix("company-").toLongOrNull() ?: 0L
+        val parsedCompanyId = resolveCompanyId(companyUuid) ?: 0L
         return CompanyLegalRecord(
             id = parsedId,
             companyId = parsedCompanyId,
@@ -344,7 +353,7 @@ class CompanyRepository(
     private fun ManufacturerPartEntity.toManufacturerPart(): ManufacturerPart {
         val parsedId = uuid.removePrefix("mfg-part-").toLongOrNull() ?: 0L
         val parsedPartId = partUuid.removePrefix("part-").toLongOrNull() ?: 0L
-        val parsedMfgId = manufacturerUuid.removePrefix("company-").toLongOrNull() ?: 0L
+        val parsedMfgId = resolveCompanyId(manufacturerUuid) ?: 0L
         return ManufacturerPart(
             id = parsedId,
             partId = parsedPartId,
@@ -386,7 +395,7 @@ class CompanyRepository(
     private fun SupplierPartEntity.toSupplierPart(): SupplierPart {
         val parsedId = uuid.removePrefix("sup-part-").toLongOrNull() ?: 0L
         val parsedPartId = partUuid.removePrefix("part-").toLongOrNull() ?: 0L
-        val parsedSupId = supplierUuid.removePrefix("company-").toLongOrNull() ?: 0L
+        val parsedSupId = resolveCompanyId(supplierUuid) ?: 0L
         val parsedMfgPartId = manufacturerPartUuid?.removePrefix("mfg-part-")?.toLongOrNull()
         return SupplierPart(
             id = parsedId,
@@ -423,7 +432,7 @@ class CompanyRepository(
     // --- مرفقات الشركات العامة (Company Attachments) ---
 
     fun getAttachmentsForCompany(companyId: Long): List<CompanyAttachment> {
-        return companyAttachmentDao.getForCompany("company-$companyId").map { it.toCompanyAttachment() }
+        return companyAttachmentDao.getForCompany(resolveCompanyUuid(companyId)).map { it.toCompanyAttachment() }
     }
 
     fun addCompanyAttachment(attachment: CompanyAttachment): CompanyAttachment {
@@ -442,7 +451,7 @@ class CompanyRepository(
         companyAttachmentDao.insertOrUpdate(
             CompanyAttachmentEntity(
                 uuid = "company-att-$allocatedId",
-                companyUuid = "company-${attachmentToInsert.companyId}",
+                companyUuid = resolveCompanyUuid(attachmentToInsert.companyId),
                 documentType = attachmentToInsert.documentType,
                 attachmentPath = attachmentToInsert.attachmentPath,
                 link = attachmentToInsert.link,
@@ -470,14 +479,14 @@ class CompanyRepository(
     // --- جهات الاتصال (Contacts) ---
 
     fun getContactsForCompany(companyId: Long): List<Contact> {
-        return contactDao.getContactsForCompany("company-$companyId").map { it.toContact() }
+        return contactDao.getContactsForCompany(resolveCompanyUuid(companyId)).map { it.toContact() }
     }
 
     fun addContact(contact: Contact): Contact {
         require(contact.name.isNotBlank()) { "اسم جهة الاتصال إلزامي ولا يمكن أن يكون فارغاً" }
         require(contact.companyId != 0L) { "معرف الشركة إلزامي لربط جهة الاتصال" }
 
-        val existing = contactDao.getContactsForCompany("company-${contact.companyId}")
+        val existing = contactDao.getContactsForCompany(resolveCompanyUuid(contact.companyId))
         val isFirst = existing.isEmpty()
         val shouldBePrimary = contact.isPrimary || isFirst
 
@@ -486,7 +495,7 @@ class CompanyRepository(
         contactDao.insertOrUpdate(
             ContactEntity(
                 uuid = "contact-$allocatedId",
-                companyUuid = "company-${contactToInsert.companyId}",
+                companyUuid = resolveCompanyUuid(contactToInsert.companyId),
                 name = contactToInsert.name,
                 phone = contactToInsert.phone,
                 email = contactToInsert.email,
@@ -510,14 +519,14 @@ class CompanyRepository(
     // --- العناوين (Addresses) ---
 
     fun getAddressesForCompany(companyId: Long): List<Address> {
-        return addressDao.getAddressesForCompany("company-$companyId").map { it.toAddress() }
+        return addressDao.getAddressesForCompany(resolveCompanyUuid(companyId)).map { it.toAddress() }
     }
 
     fun addAddress(address: Address): Address {
         require(address.line1.isNotBlank()) { "السطر الأول من العنوان إلزامي" }
         require(address.companyId != 0L) { "معرف الشركة إلزامي لربط العنوان" }
 
-        val existing = addressDao.getAddressesForCompany("company-${address.companyId}")
+        val existing = addressDao.getAddressesForCompany(resolveCompanyUuid(address.companyId))
         val isFirst = existing.isEmpty()
         val shouldBePrimary = address.isPrimary || isFirst
 
@@ -526,7 +535,7 @@ class CompanyRepository(
         addressDao.insertOrUpdate(
             AddressEntity(
                 uuid = "address-$allocatedId",
-                companyUuid = "company-${addressToInsert.companyId}",
+                companyUuid = resolveCompanyUuid(addressToInsert.companyId),
                 title = addressToInsert.title,
                 isPrimary = addressToInsert.isPrimary,
                 line1 = addressToInsert.line1,
@@ -554,7 +563,7 @@ class CompanyRepository(
     // --- الحسابات البنكية للشركة (Company Bank Accounts) ---
 
     fun getBankAccountsForCompany(companyId: Long): List<CompanyBankAccount> {
-        return companyBankAccountDao.getForCompany("company-$companyId").map { it.toCompanyBankAccount() }
+        return companyBankAccountDao.getForCompany(resolveCompanyUuid(companyId)).map { it.toCompanyBankAccount() }
     }
 
     fun addBankAccount(account: CompanyBankAccount): CompanyBankAccount {
@@ -568,7 +577,7 @@ class CompanyRepository(
         companyBankAccountDao.insertOrUpdate(
             CompanyBankAccountEntity(
                 uuid = "bank-$allocatedId",
-                companyUuid = "company-${accountToInsert.companyId}",
+                companyUuid = resolveCompanyUuid(accountToInsert.companyId),
                 bankName = accountToInsert.bankName,
                 accountName = accountToInsert.accountName,
                 accountNumber = accountToInsert.accountNumber,
@@ -596,13 +605,13 @@ class CompanyRepository(
     // --- السجلات القانونية والتراخيص (Company Legal Records) ---
 
     fun getLegalRecordForCompany(companyId: Long): CompanyLegalRecord? {
-        return companyLegalRecordDao.getForCompany("company-$companyId")?.toCompanyLegalRecord()
+        return companyLegalRecordDao.getForCompany(resolveCompanyUuid(companyId))?.toCompanyLegalRecord()
     }
 
     fun saveOrUpdateLegalRecord(record: CompanyLegalRecord): CompanyLegalRecord {
         require(record.companyId != 0L) { "معرف الشركة إلزامي لربط السجل القانوني" }
 
-        val existing = companyLegalRecordDao.getForCompany("company-${record.companyId}")
+        val existing = companyLegalRecordDao.getForCompany(resolveCompanyUuid(record.companyId))
         val allocatedId = if (record.id > 0L) {
             record.id
         } else if (existing != null) {
@@ -615,7 +624,7 @@ class CompanyRepository(
         companyLegalRecordDao.insertOrUpdate(
             CompanyLegalRecordEntity(
                 uuid = "legal-$allocatedId",
-                companyUuid = "company-${recordToSave.companyId}",
+                companyUuid = resolveCompanyUuid(recordToSave.companyId),
                 commercialRegisterNumber = recordToSave.commercialRegisterNumber,
                 taxId = recordToSave.taxId,
                 nationalIdNumber = recordToSave.nationalIdNumber,
@@ -645,7 +654,7 @@ class CompanyRepository(
     // --- قطع المصنّع (Manufacturer Parts) ---
 
     fun getManufacturerPartsForCompany(companyId: Long): List<ManufacturerPart> {
-        return manufacturerPartDao.getForCompany("company-$companyId").map { it.toManufacturerPart() }
+        return manufacturerPartDao.getForCompany(resolveCompanyUuid(companyId)).map { it.toManufacturerPart() }
     }
 
     fun getManufacturerPartsForPart(partId: Long): List<ManufacturerPart> {
@@ -673,7 +682,7 @@ class CompanyRepository(
             ManufacturerPartEntity(
                 uuid = "mfg-part-$allocatedId",
                 partUuid = "part-${partToInsert.partId}",
-                manufacturerUuid = "company-${partToInsert.manufacturerId}",
+                manufacturerUuid = resolveCompanyUuid(partToInsert.manufacturerId),
                 mpn = partToInsert.mpn,
                 description = partToInsert.description,
                 link = partToInsert.link,
@@ -776,7 +785,7 @@ class CompanyRepository(
     // --- قطع الموردين (Supplier Parts) ---
 
     fun getSupplierPartsForCompany(companyId: Long): List<SupplierPart> {
-        return supplierPartDao.getForCompany("company-$companyId").map { it.toSupplierPart() }
+        return supplierPartDao.getForCompany(resolveCompanyUuid(companyId)).map { it.toSupplierPart() }
     }
 
     fun getSupplierPartsForPart(partId: Long): List<SupplierPart> {
@@ -804,7 +813,7 @@ class CompanyRepository(
             SupplierPartEntity(
                 uuid = "sup-part-$allocatedId",
                 partUuid = "part-${partToInsert.partId}",
-                supplierUuid = "company-${partToInsert.supplierId}",
+                supplierUuid = resolveCompanyUuid(partToInsert.supplierId),
                 sku = partToInsert.sku,
                 manufacturerPartUuid = partToInsert.manufacturerPartId?.let { "mfg-part-$it" },
                 description = partToInsert.description,

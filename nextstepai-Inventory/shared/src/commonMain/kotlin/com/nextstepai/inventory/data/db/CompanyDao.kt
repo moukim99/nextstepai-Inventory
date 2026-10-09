@@ -12,7 +12,7 @@ import kotlin.time.Clock
 class CompanyDao {
 
     private val selectColumns = """
-        uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt, version
+        uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt, version, id
     """.trimIndent()
 
     fun getCompaniesPaged(
@@ -47,6 +47,21 @@ class CompanyDao {
             }
         }
         return results
+    }
+
+    fun getCompanyById(id: Long): CompanyEntity? {
+        if (id <= 0L) return null
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            SELECT $selectColumns
+            FROM companies
+            WHERE id = ? AND isDeleted = 0
+            LIMIT 1
+        """.trimIndent()).use { stmt ->
+            stmt.bindLong(1, id)
+            if (stmt.step()) return mapCompanyEntity(stmt)
+        }
+        return null
     }
 
     fun getCompanyByUuid(uuid: String): CompanyEntity? {
@@ -122,8 +137,8 @@ class CompanyDao {
     fun insert(entity: CompanyEntity): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
-            INSERT INTO companies (uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt, version)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO companies (uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt, version, id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
             stmt.bindText(2, entity.name)
@@ -144,6 +159,7 @@ class CompanyDao {
             stmt.bindLong(17, if (entity.isDeleted) 1L else 0L)
             stmt.bindLong(18, entity.updatedAt)
             stmt.bindLong(19, entity.version.toLong())
+            stmt.bindLong(20, entity.id)
             stmt.step()
         }
         var changed = 0
@@ -192,8 +208,28 @@ class CompanyDao {
     fun insertOrUpdate(entity: CompanyEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
-            INSERT OR REPLACE INTO companies (uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO companies (uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt, id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(uuid) DO UPDATE SET
+                name = excluded.name,
+                description = excluded.description,
+                website = excluded.website,
+                phone = excluded.phone,
+                email = excluded.email,
+                isSupplier = excluded.isSupplier,
+                isManufacturer = excluded.isManufacturer,
+                isCustomer = excluded.isCustomer,
+                active = excluded.active,
+                currency = excluded.currency,
+                logoPath = excluded.logoPath,
+                notes = excluded.notes,
+                metadata = excluded.metadata,
+                parentUuid = excluded.parentUuid,
+                syncStatus = excluded.syncStatus,
+                isDeleted = excluded.isDeleted,
+                updatedAt = excluded.updatedAt,
+                version = companies.version + 1,
+                id = CASE WHEN excluded.id > 0 THEN excluded.id ELSE companies.id END
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
             stmt.bindText(2, entity.name)
@@ -213,6 +249,7 @@ class CompanyDao {
             stmt.bindText(16, entity.syncStatus.name)
             stmt.bindLong(17, if (entity.isDeleted) 1L else 0L)
             stmt.bindLong(18, entity.updatedAt)
+            stmt.bindLong(19, entity.id)
             stmt.step()
         }
     }
@@ -249,7 +286,8 @@ class CompanyDao {
             syncStatus = SyncStatus.fromString(stmt.getText(15)),
             isDeleted = stmt.getLong(16) != 0L,
             updatedAt = stmt.getLong(17),
-            version = runCatching { stmt.getLong(18).toInt() }.getOrDefault(1)
+            version = runCatching { stmt.getLong(18).toInt() }.getOrDefault(1),
+            id = runCatching { stmt.getLong(19) }.getOrDefault(0L)
         )
     }
 }
