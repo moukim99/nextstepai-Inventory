@@ -910,7 +910,12 @@ class SingleSourceOfTruthVerificationTest {
             assertTrue(errUnclassified.message.orEmpty().contains("unclassified table 'unclassified_table_xyz'", ignoreCase = true))
 
             // Explicitly classified optional table missing: must safely ignore without throwing
-            SqliteDatabaseMigrations.addColumnIfMissing(conn, "ALTER TABLE some_optional_future_table ADD COLUMN testCol INTEGER NOT NULL DEFAULT 0;")
+            SqliteDatabaseMigrations.registerOptionalTable("test_optional_table")
+            try {
+                SqliteDatabaseMigrations.addColumnIfMissing(conn, "ALTER TABLE test_optional_table ADD COLUMN testCol INTEGER NOT NULL DEFAULT 0;")
+            } finally {
+                SqliteDatabaseMigrations.unregisterOptionalTable("test_optional_table")
+            }
             conn.close()
 
             // Verify extractTableName unit tests

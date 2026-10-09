@@ -21,9 +21,22 @@ internal object SqliteDatabaseMigrations {
         "part_parameter_templates", "part_category_parameter_templates", "stock_item_tracking"
     ).map { it.lowercase() }.toSet()
 
-    val optionalTables: Set<String> = setOf(
-        "some_optional_future_table"
-    ).map { it.lowercase() }.toSet()
+    private val dynamicOptionalTables = mutableSetOf<String>()
+
+    val optionalTables: Set<String>
+        get() = synchronized(dynamicOptionalTables) { dynamicOptionalTables.toSet() }
+
+    fun registerOptionalTable(tableName: String) {
+        synchronized(dynamicOptionalTables) {
+            dynamicOptionalTables.add(tableName.lowercase().trim())
+        }
+    }
+
+    fun unregisterOptionalTable(tableName: String) {
+        synchronized(dynamicOptionalTables) {
+            dynamicOptionalTables.remove(tableName.lowercase().trim())
+        }
+    }
 
     fun extractTableName(sql: String): String? {
         val match = Regex(
