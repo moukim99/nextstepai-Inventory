@@ -137,6 +137,8 @@ class SingleSourceOfTruthVerificationTest {
     @Test
     fun testNumericIdAllocatorAccountsForCustomUuidRows() {
         val conn = SqliteDatabaseManager.getConnection()
+        assertEquals(1L, PartDao().getPartByUuid("part-1")?.id, "يجب حفظ المعرف الرقمي لبيانات القطع الأولية في SQLite")
+        assertEquals(5L, PartDao().getPartByUuid("part-5")?.id, "يجب أن تحتفظ كل القطع الأولية بمعرفها الرقمي")
         conn.prepare("INSERT INTO parts (uuid, id, name) VALUES ('custom-part-with-high-id', 50000, 'custom id row')").use { it.step() }
         conn.prepare("INSERT INTO companies (uuid, id, name) VALUES ('custom-company-with-high-id', 60000, 'custom company row')").use { it.step() }
 
