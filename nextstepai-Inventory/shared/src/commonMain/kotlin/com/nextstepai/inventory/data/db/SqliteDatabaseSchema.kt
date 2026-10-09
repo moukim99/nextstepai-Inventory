@@ -1031,13 +1031,15 @@ internal object SqliteDatabaseSchema {
      * Only zero/missing IDs are touched, so reopening the database cannot change assigned IDs.
      */
     private fun backfillMissingNumericIds(conn: SQLiteConnection, table: String, prefix: String) {
-        require(table == "parts" || table == "companies")
-        val suffixStart = prefix.length + 1
-        val pending = mutableListOf<Pair<String, Long>>()
-        conn.prepare("SELECT uuid, rowid FROM $table WHERE id = 0 ORDER BY rowid").use { stmt ->
-            while (stmt.step()) pending += stmt.getText(0) to stmt.getLong(1)
+        require((table == "parts" && prefix == "part-") ||
+                (table == "companies" && prefix == "company-")) {
+            "Unsupported ID backfill target: $table / $prefix"
         }
-        for ((uuid, rowId) in pending) {
+        val pendingRowIds = mutableListOf<Long>()
+        conn.prepare("SELECT rowid FROM $table WHERE id = 0 ORDER BY rowid").use { stmt ->
+            while (stmt.step()) pendingRowIds += stmt.getLong(0)
+        }
+        for (rowId in pendingRowIds) {
             var nextId = 1L
             conn.prepare("SELECT COALESCE(MAX(id), 0) + 1 FROM $table").use { stmt ->
                 if (stmt.step()) nextId = stmt.getLong(0)
