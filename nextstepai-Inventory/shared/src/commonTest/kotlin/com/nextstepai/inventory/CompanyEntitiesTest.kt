@@ -265,7 +265,7 @@ class CompanyEntitiesTest {
         val repo = CompanyRepository()
         val compAttDao = CompanyAttachmentDao()
 
-        val company = repo.addCompany(Company(name = "مؤسسة الأفق للتجارة"))
+        val company = repo.addCompany(Company(name = "مؤسسة الأفق للتجارة ${Clock.System.now().toEpochMilliseconds()}"))
         val att = repo.addCompanyAttachment(
             CompanyAttachment(companyId = company.id, attachmentPath = "/docs/cr.pdf", comment = "السجل التجاري")
         )
@@ -293,10 +293,11 @@ class CompanyEntitiesTest {
     @Test
     fun testValidateSupplierForPurchaseOrderConstraint() {
         val repo = CompanyRepository()
+        val token = Clock.System.now().toEpochMilliseconds()
 
         // إضافة شركة كمصنّع فقط (ليست مورداً)
         val nonSupplier = repo.addCompany(
-            Company(name = "مصنع الأمل التقني", isSupplier = false, isManufacturer = true)
+            Company(name = "مصنع الأمل التقني $token", isSupplier = false, isManufacturer = true)
         )
 
         // التحقق من أن اختيار هذه الشركة لأمر الشراء يرمي استثناء
@@ -306,7 +307,7 @@ class CompanyEntitiesTest {
 
         // إضافة شركة كمورد
         val supplier = repo.addCompany(
-            Company(name = "مؤسسة التوريد الحديثة", isSupplier = true)
+            Company(name = "مؤسسة التوريد الحديثة $token", isSupplier = true)
         )
         assertTrue(repo.validateSupplierForPurchaseOrder(supplier.id))
     }
@@ -316,7 +317,7 @@ class CompanyEntitiesTest {
         val repo = CompanyRepository()
         val mfgAttDao = ManufacturerPartAttachmentDao()
 
-        val mfgCompany = repo.addCompany(Company(name = "STMicroelectronics", isManufacturer = true))
+        val mfgCompany = repo.addCompany(Company(name = "STMicroelectronics ${Clock.System.now().toEpochMilliseconds()}", isManufacturer = true))
         val mfgPart = repo.addManufacturerPart(
             ManufacturerPart(partId = 1, manufacturerId = mfgCompany.id, mpn = "STM32F407VGT6")
         )
@@ -356,7 +357,7 @@ class CompanyEntitiesTest {
     fun testRepositoryIntegrationForContactsAndAddresses() {
         val repo = CompanyRepository()
         val company = repo.addCompany(
-            Company(name = "شركة الأمل البرمجية", isSupplier = true, isManufacturer = true, website = "https://alamal.com", notes = "ملاحظات هامة")
+            Company(name = "شركة الأمل البرمجية ${Clock.System.now().toEpochMilliseconds()}", isSupplier = true, isManufacturer = true, website = "https://alamal.com", notes = "ملاحظات هامة")
         )
         assertEquals("https://alamal.com", company.website)
         assertEquals("ملاحظات هامة", company.notes)

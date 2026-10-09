@@ -13,9 +13,17 @@ internal object SqliteDatabaseMigrations {
         "contacts", "addresses", "build_orders"
     )
 
+    fun extractTableName(sql: String): String? {
+        val match = Regex(
+            """ALTER\s+TABLE\s+(?:(?:`([^`]+)`|"([^"]+)"|\[([^\]]+)\]|([a-zA-Z0-9_]+))\.)?(?:`([^`]+)`|"([^"]+)"|\[([^\]]+)\]|([a-zA-Z0-9_]+))""",
+            RegexOption.IGNORE_CASE
+        ).find(sql) ?: return null
+
+        return match.groupValues.slice(5..8).firstOrNull { it.isNotEmpty() }
+    }
+
     fun addColumnIfMissing(conn: SQLiteConnection, sql: String) {
-        val tableName = Regex("""ALTER\s+TABLE\s+(\w+)""", RegexOption.IGNORE_CASE)
-            .find(sql)?.groupValues?.get(1).orEmpty()
+        val tableName = extractTableName(sql)
 
         try {
             conn.prepare(sql).use { it.step() }
@@ -28,10 +36,13 @@ internal object SqliteDatabaseMigrations {
             }
             val isNoSuchTable = msg.contains("no such table", ignoreCase = true)
             if (isNoSuchTable) {
+                if (tableName.isNullOrEmpty()) {
+                    throw IllegalStateException("Migration halted: cannot determine table name from SQL '$sql' upon missing table error.", e)
+                }
                 if (tableName in essentialTables) {
                     throw IllegalStateException("Migration halted: required essential table '$tableName' is missing from schema.", e)
                 }
-                // Optional table that may not be present in legacy variant
+                // Known optional table that may not be present in legacy variant
                 return
             }
             throw e

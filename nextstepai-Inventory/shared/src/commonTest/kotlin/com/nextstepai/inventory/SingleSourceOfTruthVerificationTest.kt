@@ -882,15 +882,34 @@ class SingleSourceOfTruthVerificationTest {
             val driver = androidx.sqlite.driver.bundled.BundledSQLiteDriver()
             val conn = driver.open(tempFile.absolutePath)
 
-            // Essential table missing: must throw IllegalStateException
-            val err = assertFailsWith<IllegalStateException>("الترحيل يجب أن يتوقف إذا كان الجدول الأساسي مفقوداً") {
+            // Essential table missing (unquoted, quoted, and qualified): must throw IllegalStateException
+            val err1 = assertFailsWith<IllegalStateException>("الترحيل يجب أن يتوقف إذا كان الجدول الأساسي مفقوداً") {
                 SqliteDatabaseMigrations.addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN testCol INTEGER NOT NULL DEFAULT 0;")
             }
-            assertTrue(err.message.orEmpty().contains("essential table 'parts'", ignoreCase = true))
+            assertTrue(err1.message.orEmpty().contains("essential table 'parts'", ignoreCase = true))
+
+            val err2 = assertFailsWith<IllegalStateException>("الترحيل يجب أن يتوقف إذا كان الجدول الأساسي المقتبس مفقوداً") {
+                SqliteDatabaseMigrations.addColumnIfMissing(conn, "ALTER TABLE \"companies\" ADD COLUMN testCol INTEGER NOT NULL DEFAULT 0;")
+            }
+            assertTrue(err2.message.orEmpty().contains("essential table 'companies'", ignoreCase = true))
+
+            val err3 = assertFailsWith<IllegalStateException>("الترحيل يجب أن يتوقف إذا كان الجدول الأساسي المؤهل مفقوداً") {
+                SqliteDatabaseMigrations.addColumnIfMissing(conn, "ALTER TABLE main.[part_pricing] ADD COLUMN testCol INTEGER NOT NULL DEFAULT 0;")
+            }
+            assertTrue(err3.message.orEmpty().contains("essential table 'part_pricing'", ignoreCase = true))
 
             // Non-essential / optional table missing: must safely ignore without throwing
             SqliteDatabaseMigrations.addColumnIfMissing(conn, "ALTER TABLE some_optional_future_table ADD COLUMN testCol INTEGER NOT NULL DEFAULT 0;")
             conn.close()
+
+            // Verify extractTableName unit tests
+            assertEquals("parts", SqliteDatabaseMigrations.extractTableName("ALTER TABLE parts ADD COLUMN c INT"))
+            assertEquals("parts", SqliteDatabaseMigrations.extractTableName("ALTER TABLE \"parts\" ADD COLUMN c INT"))
+            assertEquals("parts", SqliteDatabaseMigrations.extractTableName("ALTER TABLE `parts` ADD COLUMN c INT"))
+            assertEquals("parts", SqliteDatabaseMigrations.extractTableName("ALTER TABLE [parts] ADD COLUMN c INT"))
+            assertEquals("parts", SqliteDatabaseMigrations.extractTableName("ALTER TABLE main.\"parts\" ADD COLUMN c INT"))
+            assertEquals("parts", SqliteDatabaseMigrations.extractTableName("ALTER TABLE \"main\".[parts] ADD COLUMN c INT"))
+            assertNull(SqliteDatabaseMigrations.extractTableName("SELECT * FROM parts"))
         } finally {
             runCatching { tempFile.delete() }
         }
