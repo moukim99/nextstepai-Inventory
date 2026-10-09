@@ -54,6 +54,29 @@ object SqliteNumericIdAllocator {
 
         val suffixStart = prefix.length + 1
         val conn = SqliteDatabaseManager.getConnection()
+        // Parts and companies now persist numeric IDs independently of the UUID, so
+        // their sequence must consider both custom-UUID rows and legacy prefixed UUIDs.
+        val maxIdQuery = if (table == "parts" || table == "companies") {
+            """
+            SELECT MAX(
+                COALESCE((SELECT MAX(id) FROM $table), 0),
+                COALESCE((
+                    SELECT MAX(CAST(SUBSTR(uuid, $suffixStart) AS INTEGER))
+                    FROM $table
+                    WHERE uuid LIKE ? AND SUBSTR(uuid, $suffixStart) GLOB '[0-9]*'
+                ), 0)
+            )
+            """.trimIndent()
+        } else {
+            """
+            SELECT COALESCE(
+                MAX(CAST(SUBSTR(uuid, $suffixStart) AS INTEGER)),
+                0
+            )
+            FROM $table
+            WHERE uuid LIKE ? AND SUBSTR(uuid, $suffixStart) GLOB '[0-9]*'
+            """.trimIndent()
+        }
 
         // The write lock is acquired before reading or changing the sequence. This
         // closes the race where two processes could both read the same last_id.
@@ -62,15 +85,7 @@ object SqliteNumericIdAllocator {
             conn.prepare(
                 """
                 INSERT OR IGNORE INTO id_sequences (table_name, last_id)
-                VALUES (?, (
-                    SELECT COALESCE(
-                        MAX(CAST(SUBSTR(uuid, $suffixStart) AS INTEGER)),
-                        0
-                    )
-                    FROM $table
-                    WHERE uuid LIKE ?
-                      AND SUBSTR(uuid, $suffixStart) GLOB '[0-9]*'
-                ))
+                VALUES (?, ($maxIdQuery))
                 """.trimIndent()
             ).use { stmt ->
                 stmt.bindText(1, table)
@@ -83,15 +98,7 @@ object SqliteNumericIdAllocator {
                 UPDATE id_sequences
                 SET last_id = MAX(
                     last_id + 1,
-                    (
-                        SELECT COALESCE(
-                            MAX(CAST(SUBSTR(uuid, $suffixStart) AS INTEGER)),
-                            0
-                        ) + 1
-                        FROM $table
-                        WHERE uuid LIKE ?
-                          AND SUBSTR(uuid, $suffixStart) GLOB '[0-9]*'
-                    )
+                    ($maxIdQuery) + 1
                 )
                 WHERE table_name = ?
                 """.trimIndent()
