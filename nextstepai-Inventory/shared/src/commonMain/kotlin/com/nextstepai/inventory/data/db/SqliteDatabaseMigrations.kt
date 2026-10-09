@@ -8,10 +8,22 @@ import androidx.sqlite.SQLiteConnection
  */
 internal object SqliteDatabaseMigrations {
 
-    val essentialTables = setOf(
+    val essentialTables: Set<String> = setOf(
         "parts", "companies", "stock_items", "bom_items", "part_pricing",
-        "contacts", "addresses", "build_orders"
-    )
+        "contacts", "addresses", "build_orders", "purchase_orders", "purchase_order_lines",
+        "stock_locations", "stock_location_types", "part_categories", "part_parameters",
+        "part_notes", "part_attachments", "part_test_templates", "part_related",
+        "part_stars", "part_internal_prices", "part_sale_prices", "bom_item_substitutes",
+        "stock_item_attachments", "stock_item_test_results", "company_attachments",
+        "sales_orders", "sales_order_lines", "manufacturing_phases", "part_allocations",
+        "manufacturer_parts", "supplier_parts", "notifications_history", "app_settings",
+        "build_order_line_items", "build_items", "manufacturer_part_attachments",
+        "part_parameter_templates", "part_category_parameter_templates", "stock_item_tracking"
+    ).map { it.lowercase() }.toSet()
+
+    val optionalTables: Set<String> = setOf(
+        "some_optional_future_table"
+    ).map { it.lowercase() }.toSet()
 
     fun extractTableName(sql: String): String? {
         val match = Regex(
@@ -24,6 +36,7 @@ internal object SqliteDatabaseMigrations {
 
     fun addColumnIfMissing(conn: SQLiteConnection, sql: String) {
         val tableName = extractTableName(sql)
+        val normalizedTable = tableName?.lowercase()?.trim()
 
         try {
             conn.prepare(sql).use { it.step() }
@@ -36,14 +49,18 @@ internal object SqliteDatabaseMigrations {
             }
             val isNoSuchTable = msg.contains("no such table", ignoreCase = true)
             if (isNoSuchTable) {
-                if (tableName.isNullOrEmpty()) {
+                if (normalizedTable.isNullOrEmpty()) {
                     throw IllegalStateException("Migration halted: cannot determine table name from SQL '$sql' upon missing table error.", e)
                 }
-                if (tableName in essentialTables) {
+                if (normalizedTable in essentialTables) {
                     throw IllegalStateException("Migration halted: required essential table '$tableName' is missing from schema.", e)
                 }
-                // Known optional table that may not be present in legacy variant
-                return
+                if (normalizedTable in optionalTables) {
+                    // Known optional table that may not be present in legacy variant
+                    return
+                }
+                // Unclassified or unrecognized table: halt migration under strict fail-closed policy
+                throw IllegalStateException("Migration halted: unclassified table '$tableName' is missing from schema.", e)
             }
             throw e
         }

@@ -882,7 +882,7 @@ class SingleSourceOfTruthVerificationTest {
             val driver = androidx.sqlite.driver.bundled.BundledSQLiteDriver()
             val conn = driver.open(tempFile.absolutePath)
 
-            // Essential table missing (unquoted, quoted, and qualified): must throw IllegalStateException
+            // Essential table missing (unquoted, quoted, qualified, and uppercase): must throw IllegalStateException
             val err1 = assertFailsWith<IllegalStateException>("الترحيل يجب أن يتوقف إذا كان الجدول الأساسي مفقوداً") {
                 SqliteDatabaseMigrations.addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN testCol INTEGER NOT NULL DEFAULT 0;")
             }
@@ -898,7 +898,18 @@ class SingleSourceOfTruthVerificationTest {
             }
             assertTrue(err3.message.orEmpty().contains("essential table 'part_pricing'", ignoreCase = true))
 
-            // Non-essential / optional table missing: must safely ignore without throwing
+            val errUppercase = assertFailsWith<IllegalStateException>("الترحيل يجب أن يتوقف إذا صيغ اسم الجدول الأساسي بأحرف كبيرة Case-Insensitive") {
+                SqliteDatabaseMigrations.addColumnIfMissing(conn, "ALTER TABLE \"PARTS\" ADD COLUMN testCol INTEGER NOT NULL DEFAULT 0;")
+            }
+            assertTrue(errUppercase.message.orEmpty().contains("essential table 'PARTS'", ignoreCase = true))
+
+            // Unclassified / unknown table missing: must halt migration (fail-closed)
+            val errUnclassified = assertFailsWith<IllegalStateException>("الترحيل يجب أن يتوقف إذا كان الجدول غير مصنف Fail-Closed") {
+                SqliteDatabaseMigrations.addColumnIfMissing(conn, "ALTER TABLE unclassified_table_xyz ADD COLUMN testCol INTEGER NOT NULL DEFAULT 0;")
+            }
+            assertTrue(errUnclassified.message.orEmpty().contains("unclassified table 'unclassified_table_xyz'", ignoreCase = true))
+
+            // Explicitly classified optional table missing: must safely ignore without throwing
             SqliteDatabaseMigrations.addColumnIfMissing(conn, "ALTER TABLE some_optional_future_table ADD COLUMN testCol INTEGER NOT NULL DEFAULT 0;")
             conn.close()
 
