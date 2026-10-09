@@ -589,17 +589,14 @@ class PartRepository(
     fun getRelatedPartsForPart(partId: Long): List<PartRelatedView> {
         val targetPart = getPartById(partId) ?: return emptyList()
         val relatedRecords = partRelatedDao.getRelatedForPart(targetPart.effectiveUuid)
-        if (relatedRecords.isNotEmpty()) {
-            val allParts = getParts().associateBy { it.id }
-            return relatedRecords.mapNotNull { rel ->
-                val otherId = if (rel.part1Id == partId) rel.part2Id else rel.part1Id
-                val otherPart = allParts[otherId] ?: getPartById(otherId)
-                if (otherPart != null) {
-                    PartRelatedView(relatedRecord = rel, relatedPart = otherPart)
-                } else null
-            }
+        val allParts = getParts().associateBy { it.id }
+        return relatedRecords.mapNotNull { rel ->
+            val otherId = if (rel.part1Id == partId) rel.part2Id else rel.part1Id
+            val otherPart = allParts[otherId] ?: getPartById(otherId)
+            if (otherPart != null) {
+                PartRelatedView(relatedRecord = rel, relatedPart = otherPart)
+            } else null
         }
-        return partRelatedTable.getRelatedPartsForPart(partId, getParts())
     }
 
     /**
