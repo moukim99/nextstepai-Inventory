@@ -4,9 +4,9 @@ package com.nextstepai.inventory.data.db
  * Allocates the next numeric domain id for legacy entities whose canonical
  * SQLite identity is currently encoded as a `<prefix><numeric-id>` UUID string.
  *
- * Uses an atomic sequence table (`id_sequences`) combined with thread-level
- * synchronization to guarantee unique, collision-free allocations even under
- * concurrent access and cold restarts.
+ * Uses an SQLite IMMEDIATE write transaction around sequence initialization,
+ * increment, and read. SQLite serializes writers across independent connections
+ * and processes; the JVM lock additionally protects the shared in-process connection.
  */
 object SqliteNumericIdAllocator {
 
@@ -55,62 +55,65 @@ object SqliteNumericIdAllocator {
         val suffixStart = prefix.length + 1
         val conn = SqliteDatabaseManager.getConnection()
 
-        // 1. Ensure sequence row exists and reflects at least MAX(id) from the table
-        conn.prepare(
-            """
-            INSERT OR IGNORE INTO id_sequences (table_name, last_id)
-            VALUES (?, (
-                SELECT COALESCE(
-                    MAX(CAST(SUBSTR(uuid, $suffixStart) AS INTEGER)),
-                    0
-                )
-                FROM $table
-                WHERE uuid LIKE ?
-                  AND SUBSTR(uuid, $suffixStart) GLOB '[0-9]*'
-            ))
-            """.trimIndent()
-        ).use { stmt ->
-            stmt.bindText(1, table)
-            stmt.bindText(2, "$prefix%")
-            stmt.step()
-        }
-
-        // 2. Increment atomically, ensuring it is at least MAX(existing_table_id) + 1
-        conn.prepare(
-            """
-            UPDATE id_sequences
-            SET last_id = MAX(
-                last_id + 1,
-                (
+        // The write lock is acquired before reading or changing the sequence. This
+        // closes the race where two processes could both read the same last_id.
+        conn.prepare("BEGIN IMMEDIATE").use { it.step() }
+        try {
+            conn.prepare(
+                """
+                INSERT OR IGNORE INTO id_sequences (table_name, last_id)
+                VALUES (?, (
                     SELECT COALESCE(
                         MAX(CAST(SUBSTR(uuid, $suffixStart) AS INTEGER)),
                         0
-                    ) + 1
+                    )
                     FROM $table
                     WHERE uuid LIKE ?
                       AND SUBSTR(uuid, $suffixStart) GLOB '[0-9]*'
-                )
-            )
-            WHERE table_name = ?
-            """.trimIndent()
-        ).use { stmt ->
-            stmt.bindText(1, "$prefix%")
-            stmt.bindText(2, table)
-            stmt.step()
-        }
-
-        // 3. Read the allocated ID
-        conn.prepare("SELECT last_id FROM id_sequences WHERE table_name = ?").use { stmt ->
-            stmt.bindText(1, table)
-            if (stmt.step()) {
-                val allocated = stmt.getLong(0)
-                if (allocated == Long.MAX_VALUE) {
-                    throw IllegalStateException("No more numeric ids available for $table")
-                }
-                return allocated
+                ))
+                """.trimIndent()
+            ).use { stmt ->
+                stmt.bindText(1, table)
+                stmt.bindText(2, "$prefix%")
+                stmt.step()
             }
-        }
 
-        return 1L
-    }
-}
+            conn.prepare(
+                """
+                UPDATE id_sequences
+                SET last_id = MAX(
+                    last_id + 1,
+                    (
+                        SELECT COALESCE(
+                            MAX(CAST(SUBSTR(uuid, $suffixStart) AS INTEGER)),
+                            0
+                        ) + 1
+                        FROM $table
+                        WHERE uuid LIKE ?
+                          AND SUBSTR(uuid, $suffixStart) GLOB '[0-9]*'
+                    )
+                )
+                WHERE table_name = ?
+                """.trimIndent()
+            ).use { stmt ->
+                stmt.bindText(1, "$prefix%")
+                stmt.bindText(2, table)
+                stmt.step()
+            }
+
+            var allocated: Long? = null
+            conn.prepare("SELECT last_id FROM id_sequences WHERE table_name = ?").use { stmt ->
+                stmt.bindText(1, table)
+                if (stmt.step()) allocated = stmt.getLong(0)
+            }
+            val result = allocated
+                ?: throw IllegalStateException("Unable to allocate a numeric id for $table")
+            check(result < Long.MAX_VALUE) { "No more numeric ids available for $table" }
+
+            conn.prepare("COMMIT").use { it.step() }
+            result
+        } catch (failure: Throwable) {
+            runCatching { conn.prepare("ROLLBACK").use { it.step() } }
+            throw failure
+        }
+    }}
