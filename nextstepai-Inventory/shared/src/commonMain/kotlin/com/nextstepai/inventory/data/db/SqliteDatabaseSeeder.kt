@@ -118,25 +118,26 @@ internal object SqliteDatabaseSeeder {
                 seedParts.forEach { row ->
                     conn.prepare("""
                         INSERT OR IGNORE INTO parts (
-                            uuid, name, ipn, description, categoryUuid, units, minimumStock, totalInStock,
+                            uuid, id, name, ipn, description, categoryUuid, units, minimumStock, totalInStock,
                             assembly, component, isTemplate, trackable, purchaseable, salable,
                             version, syncStatus, isDeleted, updatedAt, lastModifiedByDeviceUuid
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'SYNCHRONIZED', 0, 1738000000000, 'dev-local');
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'SYNCHRONIZED', 0, 1738000000000, 'dev-local');
                     """.trimIndent()).use { stmt ->
                         stmt.bindText(1, row[0] as String)
-                        stmt.bindText(2, row[1] as String)
-                        stmt.bindText(3, row[2] as String)
-                        stmt.bindText(4, row[3] as String)
-                        stmt.bindText(5, row[4] as String)
-                        stmt.bindText(6, row[5] as String)
-                        stmt.bindDouble(7, row[6] as Double)
-                        stmt.bindDouble(8, row[7] as Double)
-                        stmt.bindLong(9, (row[8] as Int).toLong())
-                        stmt.bindLong(10, (row[9] as Int).toLong())
-                        stmt.bindLong(11, (row[10] as Int).toLong())
-                        stmt.bindLong(12, (row[11] as Int).toLong())
-                        stmt.bindLong(13, (row[12] as Int).toLong())
-                        stmt.bindLong(14, (row[13] as Int).toLong())
+                        stmt.bindLong(2, (row[0] as String).removePrefix("part-").toLongOrNull() ?: 0L)
+                        stmt.bindText(3, row[1] as String)
+                        stmt.bindText(4, row[2] as String)
+                        stmt.bindText(5, row[3] as String)
+                        stmt.bindText(6, row[4] as String)
+                        stmt.bindText(7, row[5] as String)
+                        stmt.bindDouble(8, row[6] as Double)
+                        stmt.bindDouble(9, row[7] as Double)
+                        stmt.bindLong(10, (row[8] as Int).toLong())
+                        stmt.bindLong(11, (row[9] as Int).toLong())
+                        stmt.bindLong(12, (row[10] as Int).toLong())
+                        stmt.bindLong(13, (row[11] as Int).toLong())
+                        stmt.bindLong(14, (row[12] as Int).toLong())
+                        stmt.bindLong(15, (row[13] as Int).toLong())
                         stmt.step()
                     }
                 }
