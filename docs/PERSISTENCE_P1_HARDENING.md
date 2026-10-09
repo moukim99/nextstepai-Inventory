@@ -51,7 +51,7 @@ The former implementation swallowed a dependent-row exception and reported succe
 - `nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/SqliteNumericIdAllocator.kt`
 
 **Change**
-The sequence-row creation, increment, and read now occur between `BEGIN IMMEDIATE` and `COMMIT`; an exception triggers `ROLLBACK`. The in-process lock remains as an additional guard.
+The sequence-row creation, increment, and read now occur between `BEGIN IMMEDIATE` and `COMMIT`; an exception triggers `ROLLBACK`. The in-process lock remains as an additional guard. For `parts` and `companies`, the high-water mark now considers both the persisted numeric `id` column and legacy numeric UUID suffixes, so custom-UUID rows cannot cause a later allocation to reuse an existing domain ID.
 
 **Why**
 A JVM-level lock does not serialize independent processes. SQLite's write transaction must protect the whole read/modify/read sequence, not just the individual update statement.
@@ -80,6 +80,7 @@ New or expanded cases:
 - `testCustomCompanyUuidKeepsNumericIdentityAndChildRelationsAfterRestart`: verifies custom company UUID, numeric-ID lookup, and child relation after restart.
 - `testPartCascadeDeleteRollsBackWhenDependentDeleteFails`: injects a missing dependent table to verify failure and rollback.
 - `testCompanyUniqueIndexMigrationFailsClosedOnLegacyDuplicates`: verifies duplicate active names block index migration explicitly.
+- `testNumericIdAllocatorAccountsForCustomUuidRows`: verifies that new part/company IDs are allocated above existing rows whose UUIDs are not numeric-prefixed.
 - Existing allocator concurrency and CRUD/tombstone checks remain in the suite.
 
 ## Validation and merge gate
