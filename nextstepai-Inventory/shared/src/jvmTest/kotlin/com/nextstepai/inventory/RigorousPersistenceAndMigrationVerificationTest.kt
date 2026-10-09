@@ -220,6 +220,23 @@ class RigorousPersistenceAndMigrationVerificationTest {
                 """.trimIndent()).use { it.step() }
 
                 preMigrationConn.prepare("""
+                    CREATE TABLE stock_items (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        partId INTEGER,
+                        locationId INTEGER,
+                        quantity REAL
+                    );
+                """.trimIndent()).use { it.step() }
+
+                preMigrationConn.prepare("""
+                    CREATE TABLE part_categories (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        parentId INTEGER
+                    );
+                """.trimIndent()).use { it.step() }
+
+                preMigrationConn.prepare("""
                     INSERT INTO parts (id, name, description, ipn)
                     VALUES (101, 'مقاومة قديمة 10K', 'مقاومة كربونية دقيقة', 'RES-10K');
                 """.trimIndent()).use { it.step() }
@@ -238,12 +255,21 @@ class RigorousPersistenceAndMigrationVerificationTest {
                     INSERT INTO stock_locations (id, name, description, parentId)
                     VALUES (302, 'رف قديم 01', 'مستوى أرضي', 301);
                 """.trimIndent()).use { it.step() }
+
+                preMigrationConn.prepare("""
+                    INSERT INTO part_categories (id, name, parentId)
+                    VALUES (11, 'مكونات إلكترونية', NULL);
+                """.trimIndent()).use { it.step() }
+
+                preMigrationConn.prepare("""
+                    INSERT INTO stock_items (id, partId, locationId, quantity)
+                    VALUES (501, 101, 302, 45.0);
+                """.trimIndent()).use { it.step() }
             } finally {
                 preMigrationConn.close()
             }
 
-            // 2. الآن نفتح هذه القاعدة القديمة بواسطة SqliteDatabaseManager
-            // يجب أن تنجح الترقية التلقائية دون أي استثناء (no such column: uuid) وبدون فقدان البيانات
+            // 2. الآن نفتح هذه القاعدة القديمة بواسطة SqliteDatabaseManager عبر مسار الإنتاج الفعلي
             SqliteDatabaseManager.setCustomDatabasePath(legacyDbFile.absolutePath)
             val migratedConn = SqliteDatabaseManager.getConnection()
             assertNotNull(migratedConn, "فشل تهيئة وترقية قاعدة البيانات القديمة")
@@ -252,6 +278,7 @@ class RigorousPersistenceAndMigrationVerificationTest {
             val partRepo = PartRepository()
             val companyRepo = CompanyRepository()
             val locationRepo = StockLocationRepository()
+            val stockRepo = StockRepository(locationRepository = locationRepo)
 
             val parts = partRepo.getParts()
             val migratedPart = parts.find { it.id == 101L }
@@ -278,6 +305,14 @@ class RigorousPersistenceAndMigrationVerificationTest {
             assertEquals("loc-301", rootLoc.uuid)
             assertEquals("loc-302", childLoc.uuid)
 
+            // التحقق من استرجاع الوحدة المخزنية القديمة وارتباطها بالصنف والرف
+            val stockItems = stockRepo.getStockItems()
+            val migratedStockItem = stockItems.find { it.id == 501L }
+            assertNotNull(migratedStockItem, "تم فقدان الوحدة المخزنية القديمة أثناء الترحيل!")
+            assertEquals(101L, migratedStockItem.partId)
+            assertEquals(302L, migratedStockItem.locationId)
+            assertEquals(45.0, migratedStockItem.quantity)
+
             // 4. التحقق من أن إضافة صنف وموقع جديد الآن يحترم الترقيم التصاعدي دون تصادم
             val newPart = partRepo.addPart(Part(name = "مكثف جديد 100uF"))
             assertTrue(newPart.id > 101L, "يجب أن يكون ترقيم الصنف الجديد أعلى من الأصناف القديمة")
@@ -286,10 +321,94 @@ class RigorousPersistenceAndMigrationVerificationTest {
             assertTrue(newLoc.id > 302L, "يجب أن يكون ترقيم الموقع الجديد أعلى من المواقع القديمة")
             assertEquals(301L, newLoc.parentId)
 
+            // 5. محاكاة إغلاق التطبيق وإعادة فتحه للتحقق من ثبات الترحيل وعدم تكرار العمليات (Idempotency)
+            SqliteDatabaseManager.closeDatabase()
+
+            val freshLocationRepo = StockLocationRepository()
+            val freshStockRepo = StockRepository(locationRepository = freshLocationRepo)
+            val freshPartRepo = PartRepository()
+
+            val postRestartLocations = freshLocationRepo.getLocations()
+            val postRestartItems = freshStockRepo.getStockItems()
+            val postRestartParts = freshPartRepo.getParts()
+
+            assertEquals(3, postRestartLocations.size, "يجب أن تبقى المواقع الثلاثة كما هي بعد إعادة التشغيل")
+            assertEquals(1, postRestartItems.size, "يجب أن تبقى الوحدة المخزنية كما هي بعد إعادة التشغيل")
+            assertEquals(2, postRestartParts.size, "يجب أن يبقى الصنفان كما هما بعد إعادة التشغيل")
+
         } finally {
             SqliteDatabaseManager.closeDatabase()
             SqliteDatabaseManager.setCustomDatabasePath(null)
             runCatching { legacyDbFile.delete() }
+        }
+    }
+
+    @Test
+    fun testOpeningSeverelyIncompleteDatabaseViaActualProductionPathCreatesMissingTablesSafely() {
+        val runToken = Clock.System.now().toEpochMilliseconds().toString().takeLast(6)
+        val partialDbFile = File(System.getProperty("java.io.tmpdir"), "test_partial_db_$runToken.db")
+        if (partialDbFile.exists()) partialDbFile.delete()
+        partialDbFile.deleteOnExit()
+
+        try {
+            // إنشاء قاعدة بيانات تحتوي على جدولين فقط من أصل 39 جدولاً
+            val driver = BundledSQLiteDriver()
+            val initialConn = driver.open(partialDbFile.absolutePath)
+            try {
+                initialConn.prepare("""
+                    CREATE TABLE parts (
+                        id INTEGER PRIMARY KEY,
+                        name TEXT NOT NULL
+                    );
+                """.trimIndent()).use { it.step() }
+
+                initialConn.prepare("""
+                    INSERT INTO parts (id, name) VALUES (1, 'جزء أولي');
+                """.trimIndent()).use { it.step() }
+            } finally {
+                initialConn.close()
+            }
+
+            // فتح القاعدة عبر المسار الفعلي للإنتاج
+            SqliteDatabaseManager.setCustomDatabasePath(partialDbFile.absolutePath)
+            val conn = SqliteDatabaseManager.getConnection()
+            assertNotNull(conn, "فشل فتح قاعدة البيانات الناقصة عبر مسار الإنتاج")
+
+            // التأكد من أن جميع المستودعات تستطيع العمل فوراً دون خطأ 'no such table'
+            val partRepo = PartRepository()
+            val locationRepo = StockLocationRepository()
+            val stockRepo = StockRepository(locationRepository = locationRepo)
+            val companyRepo = CompanyRepository()
+
+            // 1. القراءة من الجداول القديمة التي رُقّيت
+            val parts = partRepo.getParts()
+            assertEquals(1, parts.size)
+            assertEquals("جزء أولي", parts[0].name)
+
+            // 2. القراءة والكتابة في الجداول التي أنشئت تلقائياً
+            val newCompany = companyRepo.addCompany(Company(name = "شركة حديثة $runToken"))
+            assertTrue(newCompany.id > 0, "فشل إضافة شركة في جدول أُنشئ حديثاً")
+
+            val newLocation = locationRepo.addLocation(StockLocation(name = "مستودع حديث $runToken"))
+            assertTrue(newLocation.id > 0, "فشل إضافة موقع في جدول أُنشئ حديثاً")
+
+            val newItem = stockRepo.addStockItem(StockItem(partId = parts[0].id, locationId = newLocation.id, quantity = 10.0))
+            assertTrue(newItem.id > 0, "فشل إضافة مادة مخزنية في جدول أُنشئ حديثاً")
+
+            // 3. إغلاق وإعادة فتح للتأكد من الاستقرار التام
+            SqliteDatabaseManager.closeDatabase()
+            val reconnected = SqliteDatabaseManager.getConnection()
+            assertNotNull(reconnected)
+
+            val reloadedParts = partRepo.getParts()
+            val reloadedCompanies = companyRepo.getCompanies()
+            assertEquals(1, reloadedParts.size)
+            assertEquals(1, reloadedCompanies.size)
+
+        } finally {
+            SqliteDatabaseManager.closeDatabase()
+            SqliteDatabaseManager.setCustomDatabasePath(null)
+            runCatching { partialDbFile.delete() }
         }
     }
 
