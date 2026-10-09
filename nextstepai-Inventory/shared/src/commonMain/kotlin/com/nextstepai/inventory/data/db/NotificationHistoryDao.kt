@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -11,7 +11,7 @@ import kotlin.time.Clock
 @Dao
 class NotificationHistoryDao {
 
-    suspend fun getAllNotifications(limit: Int = 50, offset: Int = 0): List<NotificationHistoryEntity> {
+    fun getAllNotifications(limit: Int = 50, offset: Int = 0): List<NotificationHistoryEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<NotificationHistoryEntity>()
         val sql = """
@@ -32,7 +32,7 @@ class NotificationHistoryDao {
         return results
     }
 
-    suspend fun getUnreadNotifications(): List<NotificationHistoryEntity> {
+    fun getUnreadNotifications(): List<NotificationHistoryEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<NotificationHistoryEntity>()
         val sql = """
@@ -50,7 +50,7 @@ class NotificationHistoryDao {
         return results
     }
 
-    suspend fun getUnreadCount(): Int {
+    fun getUnreadCount(): Int {
         val conn = SqliteDatabaseManager.getConnection()
         var count = 0
         val sql = "SELECT COUNT(*) FROM notifications_history WHERE isRead = 0 AND isDeleted = 0"
@@ -62,7 +62,7 @@ class NotificationHistoryDao {
         return count
     }
 
-    suspend fun getPendingTriggerNotifications(currentTimeMs: Long): List<NotificationHistoryEntity> {
+    fun getPendingTriggerNotifications(currentTimeMs: Long): List<NotificationHistoryEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<NotificationHistoryEntity>()
         val sql = """
@@ -81,7 +81,7 @@ class NotificationHistoryDao {
         return results
     }
 
-    suspend fun getByUuid(uuid: String): NotificationHistoryEntity? {
+    fun getByUuid(uuid: String): NotificationHistoryEntity? {
         val conn = SqliteDatabaseManager.getConnection()
         var entity: NotificationHistoryEntity? = null
         val sql = """
@@ -99,7 +99,7 @@ class NotificationHistoryDao {
         return entity
     }
 
-    suspend fun insertOrUpdate(entity: NotificationHistoryEntity) {
+    fun insertOrUpdate(entity: NotificationHistoryEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         val sql = """
             INSERT OR REPLACE INTO notifications_history (
@@ -126,7 +126,7 @@ class NotificationHistoryDao {
         }
     }
 
-    suspend fun markAsRead(uuid: String, updatedAtMs: Long = Clock.System.now().toEpochMilliseconds()) {
+    fun markAsRead(uuid: String, updatedAtMs: Long = Clock.System.now().toEpochMilliseconds()) {
         val conn = SqliteDatabaseManager.getConnection()
         val sql = "UPDATE notifications_history SET isRead = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?"
         conn.prepare(sql).use { stmt ->
@@ -136,7 +136,7 @@ class NotificationHistoryDao {
         }
     }
 
-    suspend fun markAsTriggered(uuid: String, updatedAtMs: Long = Clock.System.now().toEpochMilliseconds()) {
+    fun markAsTriggered(uuid: String, updatedAtMs: Long = Clock.System.now().toEpochMilliseconds()) {
         val conn = SqliteDatabaseManager.getConnection()
         val sql = "UPDATE notifications_history SET isTriggered = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?"
         conn.prepare(sql).use { stmt ->
@@ -146,7 +146,7 @@ class NotificationHistoryDao {
         }
     }
 
-    suspend fun delete(uuid: String, updatedAtMs: Long = Clock.System.now().toEpochMilliseconds()) {
+    fun delete(uuid: String, updatedAtMs: Long = Clock.System.now().toEpochMilliseconds()) {
         val conn = SqliteDatabaseManager.getConnection()
         val sql = "UPDATE notifications_history SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?"
         conn.prepare(sql).use { stmt ->
@@ -169,7 +169,7 @@ class NotificationHistoryDao {
             isRead = stmt.getLong(8) != 0L,
             isTriggered = stmt.getLong(9) != 0L,
             createdAt = stmt.getLong(10),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(11)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(11)),
             isDeleted = stmt.getLong(12) != 0L,
             updatedAt = stmt.getLong(13)
         )

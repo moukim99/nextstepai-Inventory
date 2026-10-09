@@ -14,7 +14,6 @@ import com.nextstepai.inventory.data.db.SalesOrderDao
 import com.nextstepai.inventory.data.db.SalesOrderEntity
 import com.nextstepai.inventory.data.db.SalesOrderLineEntity
 import com.nextstepai.inventory.sync.SyncStatus
-import kotlinx.coroutines.runBlocking
 
 /**
  * نتيجة تشغيل محرك تلبية الطلبات (Order Fulfillment Engine Result).
@@ -43,14 +42,12 @@ class SalesOrderRepository(
         customerId: Long? = null,
         status: SOStatus? = null
     ): List<SalesOrder> {
-        val entities = runBlocking {
-            salesOrderDao.getOrdersPaged(
-                customerId = customerId,
-                statusCode = status?.code,
-                limit = 500,
-                offset = 0
-            )
-        }
+        val entities = salesOrderDao.getOrdersPaged(
+            customerId = customerId,
+            statusCode = status?.code,
+            limit = 500,
+            offset = 0
+        )
         if (entities.isNotEmpty()) {
             val allTableOrders = salesOrderTable.getAllOrders()
             var result = entities.mapIndexed { index, entity ->
@@ -96,40 +93,38 @@ class SalesOrderRepository(
             salesOrderTable.insertLineItem(line.copy(orderId = inserted.id))
         }
 
-        runBlocking {
-            salesOrderDao.insertOrUpdateOrder(
-                SalesOrderEntity(
-                    uuid = "so-${inserted.id}",
-                    reference = inserted.reference,
-                    customerId = inserted.customerId,
-                    customerUuid = inserted.customerUuid.ifBlank { "cust-${inserted.customerId}" },
-                    customerName = inserted.customerName,
-                    statusCode = inserted.status.code,
-                    description = inserted.description,
-                    orderCurrency = inserted.orderCurrency,
-                    targetDate = inserted.targetDate,
-                    totalPrice = inserted.totalPrice,
-                    notes = inserted.notes,
+        salesOrderDao.insertOrUpdateOrder(
+            SalesOrderEntity(
+                uuid = "so-${inserted.id}",
+                reference = inserted.reference,
+                customerId = inserted.customerId,
+                customerUuid = inserted.customerUuid.ifBlank { "cust-${inserted.customerId}" },
+                customerName = inserted.customerName,
+                statusCode = inserted.status.code,
+                description = inserted.description,
+                orderCurrency = inserted.orderCurrency,
+                targetDate = inserted.targetDate,
+                totalPrice = inserted.totalPrice,
+                notes = inserted.notes,
+                syncStatus = SyncStatus.PENDING
+            )
+        )
+        inserted.lineItems.forEach { line ->
+            salesOrderDao.insertOrUpdateLine(
+                SalesOrderLineEntity(
+                    uuid = "so-line-${line.id}",
+                    orderUuid = "so-${inserted.id}",
+                    orderId = inserted.id,
+                    partId = line.partId,
+                    partName = line.partName,
+                    quantity = line.quantity,
+                    unitPrice = line.unitPrice,
+                    allocatedQuantity = line.allocatedQuantity,
+                    shippedQuantity = line.shippedQuantity,
+                    notes = line.notes,
                     syncStatus = SyncStatus.PENDING
                 )
             )
-            inserted.lineItems.forEach { line ->
-                salesOrderDao.insertOrUpdateLine(
-                    SalesOrderLineEntity(
-                        uuid = "so-line-${line.id}",
-                        orderUuid = "so-${inserted.id}",
-                        orderId = inserted.id,
-                        partId = line.partId,
-                        partName = line.partName,
-                        quantity = line.quantity,
-                        unitPrice = line.unitPrice,
-                        allocatedQuantity = line.allocatedQuantity,
-                        shippedQuantity = line.shippedQuantity,
-                        notes = line.notes,
-                        syncStatus = SyncStatus.PENDING
-                    )
-                )
-            }
         }
 
         if (!autoFulfill) {

@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -15,7 +15,7 @@ class StockItemAttachmentDao {
         userId, metadata, syncStatus, isDeleted, updatedAt
     """.trimIndent()
 
-    suspend fun getAttachmentsForStockItem(stockItemId: Long): List<StockItemAttachmentEntity> {
+    fun getAttachmentsForStockItem(stockItemId: Long): List<StockItemAttachmentEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<StockItemAttachmentEntity>()
 
@@ -35,7 +35,7 @@ class StockItemAttachmentDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: StockItemAttachmentEntity) {
+    fun insertOrUpdate(entity: StockItemAttachmentEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO stock_item_attachments (
@@ -61,7 +61,7 @@ class StockItemAttachmentDao {
         }
     }
 
-    suspend fun deleteAttachment(uuid: String) {
+    fun deleteAttachment(uuid: String) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("UPDATE stock_item_attachments SET isDeleted = 1 WHERE uuid = ?").use { stmt ->
             stmt.bindText(1, uuid)
@@ -81,7 +81,7 @@ class StockItemAttachmentDao {
             uploadDate = runCatching { stmt.getText(7) }.getOrDefault(""),
             userId = runCatching { if (stmt.isNull(8)) null else stmt.getLong(8) }.getOrNull(),
             metadata = runCatching { stmt.getText(9) }.getOrDefault("{}"),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(10)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(10)),
             isDeleted = runCatching { stmt.getLong(11) != 0L }.getOrDefault(false),
             updatedAt = runCatching { stmt.getLong(12) }.getOrDefault(0L)
         )

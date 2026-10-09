@@ -6,7 +6,14 @@ package com.nextstepai.inventory.sync
  */
 enum class SyncStatus {
     PENDING,
-    SYNCED
+    SYNCED;
+
+    companion object {
+        fun fromString(value: String?): SyncStatus = when (value?.uppercase()?.trim()) {
+            "SYNCED", "SYNCHRONIZED" -> SYNCED
+            else -> PENDING
+        }
+    }
 }
 
 /**
@@ -35,7 +42,8 @@ data class SyncPayload(
  */
 data class BatchSyncRequest(
     val pendingPushes: List<SyncPayload>,
-    val lastSyncTimestamp: Long
+    val lastSyncTimestamp: Long,
+    val idempotencyKey: String = ""
 )
 
 /**
@@ -46,3 +54,50 @@ data class BatchSyncResponse(
     val remoteChanges: List<SyncPayload>,
     val serverTimestamp: Long
 )
+
+/**
+ * استراتيجية حل تعارضات المزامنة بين البيانات المحلية والبعيدة.
+ */
+enum class ConflictResolutionStrategy {
+    LAST_WRITE_WINS,
+    CLIENT_WINS,
+    SERVER_WINS
+}
+
+/**
+ * معالج تعارضات المزامنة لتحديد السجل الرابح بشكل حتمي (Deterministic Conflict Resolution).
+ */
+object SyncConflictResolver {
+    fun resolve(
+        local: SyncPayload,
+        remote: SyncPayload,
+        strategy: ConflictResolutionStrategy = ConflictResolutionStrategy.LAST_WRITE_WINS
+    ): SyncPayload {
+        return when (strategy) {
+            ConflictResolutionStrategy.CLIENT_WINS -> local
+            ConflictResolutionStrategy.SERVER_WINS -> remote
+            ConflictResolutionStrategy.LAST_WRITE_WINS -> {
+                if (local.updatedAt >= remote.updatedAt) local else remote
+            }
+        }
+    }
+
+    fun mergeChanges(
+        localPushes: List<SyncPayload>,
+        remoteChanges: List<SyncPayload>,
+        strategy: ConflictResolutionStrategy = ConflictResolutionStrategy.LAST_WRITE_WINS
+    ): List<SyncPayload> {
+        val localMap = localPushes.associateBy { it.uuid }
+        val merged = mutableListOf<SyncPayload>()
+
+        for (remote in remoteChanges) {
+            val local = localMap[remote.uuid]
+            if (local == null) {
+                merged.add(remote)
+            } else {
+                merged.add(resolve(local, remote, strategy))
+            }
+        }
+        return merged
+    }
+}

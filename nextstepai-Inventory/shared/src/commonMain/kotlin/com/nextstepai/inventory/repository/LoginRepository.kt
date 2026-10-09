@@ -1,23 +1,35 @@
 package com.nextstepai.inventory.repository
 
+import com.nextstepai.inventory.auth.AuthTokens
+import com.nextstepai.inventory.auth.SecureTokenStorage
 import com.nextstepai.inventory.data.LoginRecord
 import com.nextstepai.inventory.data.LoginTable
 
 /**
- * المستودع (Repository) المسؤول عن إدارة عمليات التحقق والتفاعل مع جدول الدخول (Login Table).
+ * المستودع (Repository) المسؤول عن إدارة عمليات التحقق والتفاعل مع جدول الدخول (Login Table)
+ * وحفظ الرموز المميزة الآمنة (SecureTokenStorage).
  */
 class LoginRepository(
-    private val loginTable: LoginTable = LoginTable()
+    private val loginTable: LoginTable = LoginTable(),
+    private val tokenStorage: SecureTokenStorage = SecureTokenStorage()
 ) {
     /**
      * التحقق البسيط وتسجيل دخول المستخدم بنقرة واحدة بدون بيانات مسجلة مسبقاً.
-     * يقوم بإنشاء وإدراج سجل جديد في جدول الدخول والتحقق من صحة العملية.
+     * يقوم بإنشاء وإدراج سجل جديد في جدول الدخول وحفظ رموز المصادقة المشفرة.
      */
-    fun verifyAndLogin(): LoginRecord {
+    suspend fun verifyAndLogin(username: String = "زائر المستودع"): LoginRecord {
         val record = loginTable.insertLoginRecord(
-            username = "زائر المستودع",
+            username = username,
             authStatus = "AUTO_VERIFIED"
         )
+        if (record.isLoggedIn) {
+            tokenStorage.saveTokens(
+                AuthTokens(
+                    accessToken = "jwt-access-${record.id}-${record.loginTime}",
+                    refreshToken = "jwt-refresh-${record.id}-${record.loginTime}"
+                )
+            )
+        }
         return record
     }
 
@@ -36,9 +48,17 @@ class LoginRepository(
     }
 
     /**
-     * تسجيل الخروج من التطبيق.
+     * الحصول على رموز المصادقة المشفرة.
      */
-    fun logout() {
+    suspend fun getTokens(): AuthTokens? {
+        return tokenStorage.getTokens()
+    }
+
+    /**
+     * تسجيل الخروج من التطبيق ومسح الرموز المميزة الآمنة.
+     */
+    suspend fun logout() {
         loginTable.clearSession()
+        tokenStorage.clearTokens()
     }
 }

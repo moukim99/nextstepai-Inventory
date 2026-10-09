@@ -27,6 +27,7 @@ data class ManufacturingPhase(
 /**
  * إدارة وتخزين المراحل التصنيعية في الذاكرة وقاعدة البيانات.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class ManufacturingPhaseTable(
     private val dao: ManufacturingPhaseDao = ManufacturingPhaseDao()
 ) {

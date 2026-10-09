@@ -27,7 +27,11 @@ data class CompanyEntity(
     val notes: String = "",
     val metadata: String = "{}",
     val parentUuid: String? = null,
+    val version: Int = 1,
     override val syncStatus: SyncStatus = SyncStatus.PENDING,
     override val isDeleted: Boolean = false,
     override val updatedAt: Long = Clock.System.now().toEpochMilliseconds(),
+    val lastModifiedByDeviceUuid: String? = null,
+    /** Stable legacy/domain ID kept separate from the canonical UUID. */
+    val id: Long = 0L
 ) : SyncableEntity

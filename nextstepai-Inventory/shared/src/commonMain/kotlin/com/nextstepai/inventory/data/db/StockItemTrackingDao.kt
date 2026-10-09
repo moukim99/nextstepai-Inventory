@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -15,7 +15,7 @@ class StockItemTrackingDao {
         syncStatus, lastModifiedByDeviceUuid
     """.trimIndent()
 
-    suspend fun getTrackingForStockItem(stockItemUuid: String): List<StockItemTrackingEntity> {
+    fun getTrackingForStockItem(stockItemUuid: String): List<StockItemTrackingEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<StockItemTrackingEntity>()
 
@@ -35,7 +35,7 @@ class StockItemTrackingDao {
         return results
     }
 
-    suspend fun getAllTrackingLogs(): List<StockItemTrackingEntity> {
+    fun getAllTrackingLogs(): List<StockItemTrackingEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<StockItemTrackingEntity>()
 
@@ -53,7 +53,7 @@ class StockItemTrackingDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: StockItemTrackingEntity) {
+    fun insertOrUpdate(entity: StockItemTrackingEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO stock_item_tracking (
@@ -86,7 +86,7 @@ class StockItemTrackingDao {
             deltas = runCatching { stmt.getText(5) }.getOrDefault("{}"),
             userUuid = runCatching { if (stmt.isNull(6)) null else stmt.getText(6) }.getOrNull(),
             createdAt = runCatching { stmt.getLong(7) }.getOrDefault(0L),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(8)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(8)),
             lastModifiedByDeviceUuid = runCatching { if (stmt.isNull(9)) null else stmt.getText(9) }.getOrNull()
         )
     }

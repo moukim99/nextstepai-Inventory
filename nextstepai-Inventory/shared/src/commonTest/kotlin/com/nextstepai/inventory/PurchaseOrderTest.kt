@@ -6,6 +6,8 @@ import com.nextstepai.inventory.data.PurchaseOrderLineItem
 import com.nextstepai.inventory.data.PurchaseOrderTable
 import com.nextstepai.inventory.data.db.PurchaseOrderDao
 import com.nextstepai.inventory.data.db.PurchaseOrderEntity
+import com.nextstepai.inventory.auth.AuthTokens
+import com.nextstepai.inventory.auth.SecureTokenStorage
 import com.nextstepai.inventory.repository.PurchaseOrderRepository
 import com.nextstepai.inventory.sync.SyncStatus
 import kotlinx.coroutines.runBlocking
@@ -112,6 +114,7 @@ class PurchaseOrderTest {
 
     @Test
     fun testPoBatchSyncWithCloudflare() = runBlocking {
+        SecureTokenStorage().saveTokens(AuthTokens("test-access-token", "test-refresh-token"))
         val repository = PurchaseOrderRepository()
 
         repository.addOrder(

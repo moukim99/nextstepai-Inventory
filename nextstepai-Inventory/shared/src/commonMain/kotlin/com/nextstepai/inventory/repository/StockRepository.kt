@@ -35,7 +35,6 @@ import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
 import com.nextstepai.inventory.util.AppUuid
 import com.nextstepai.inventory.util.DateTimeUtils
-import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.time.Clock
 
@@ -52,6 +51,7 @@ class StockRepository(
     private val attachmentDao: StockItemAttachmentDao = StockItemAttachmentDao(),
     private val notificationDao: NotificationHistoryDao = NotificationHistoryDao(),
     private val partDao: PartDao = PartDao(),
+    val locationRepository: StockLocationRepository = StockLocationRepository(locationDao = locationDao, stockTable = stockTable),
     private val batchSyncService: BatchSyncService = BatchSyncService(),
     private val imageProcessor: ImageProcessor = ImageProcessor(maxDimension = 1024, compressionQuality = 85)
 ) {
@@ -80,89 +80,57 @@ class StockRepository(
      * جلب كافة السجلات المخزنية الفعلية من قاعدة البيانات الدائمة (SQLite).
      */
     fun getStockItems(): List<StockItem> {
-        val entities = runBlocking { stockDao.getStockItemsPaged(limit = 1000, offset = 0) }
-        return entities.mapIndexed { index, entity ->
-            val parsedId = entity.uuid.removePrefix("stock-").toLongOrNull() ?: (index + 1L)
-            StockItem(
-                id = parsedId,
-                partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
-                locationId = entity.locationUuid?.removePrefix("loc-")?.toLongOrNull() ?: 1L,
-                quantity = entity.quantity,
-                serial = entity.serial,
-                batch = entity.batch,
-                status = StockStatus.fromCode(entity.statusCode),
-                packaging = entity.packaging,
-                purchasePrice = entity.purchasePrice,
-                expiryDate = entity.expiryDate,
-                stocktakeDate = entity.stocktakeDate,
-                notes = entity.notes
-            )
+        val entities = runCatching { stockDao.getStockItemsPaged(limit = 1000, offset = 0) }.getOrDefault(emptyList())
+        if (entities.isNotEmpty()) {
+            return entities.mapIndexed { index, entity ->
+                val parsedId = entity.uuid.removePrefix("stock-").toLongOrNull() ?: (index + 1L)
+                StockItem(
+                    id = parsedId,
+                    partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
+                    locationId = entity.locationUuid?.takeIf { it.isNotBlank() }?.removePrefix("location-")?.removePrefix("loc-")?.toLongOrNull(),
+                    quantity = entity.quantity,
+                    serial = entity.serial,
+                    batch = entity.batch,
+                    status = StockStatus.fromCode(entity.statusCode),
+                    packaging = entity.packaging,
+                    purchasePrice = entity.purchasePrice,
+                    purchasePriceCurrency = entity.purchasePriceCurrency,
+                    purchaseOrderId = entity.purchaseOrderUuid?.removePrefix("po-")?.toLongOrNull(),
+                    supplierPartId = entity.supplierPartUuid.takeIf { it.isNotBlank() }?.removePrefix("sup-p-")?.toLongOrNull(),
+                    salesOrderId = entity.salesOrderUuid?.removePrefix("so-")?.toLongOrNull(),
+                    customerId = entity.customerUuid.takeIf { it.isNotBlank() }?.removePrefix("comp-")?.toLongOrNull(),
+                    buildId = entity.buildUuid?.removePrefix("bo-")?.toLongOrNull(),
+                    isBuilding = entity.isBuilding,
+                    parentId = entity.parentStockItemUuid?.removePrefix("stock-")?.toLongOrNull(),
+                    expiryDate = entity.expiryDate,
+                    stocktakeDate = entity.stocktakeDate,
+                    stocktakeUserId = entity.stocktakeUserUuid?.removePrefix("usr-")?.toLongOrNull(),
+                    reviewNeeded = entity.reviewNeeded,
+                    deleteOnDeplete = entity.deleteOnDeplete,
+                    link = entity.link,
+                    notes = entity.notes,
+                    metadata = entity.metadata
+                )
+            }
         }
+        return stockTable.getAllStockItems()
     }
 
     /**
      * جلب كافة مواقع التخزين المتاحة من SQLite مع السقوط الآمن على الجدول المحلي.
      */
-    fun getLocations(): List<StockLocation> {
-        val entities = runCatching { runBlocking { locationDao.getAllLocations() } }.getOrDefault(emptyList())
-        if (entities.isNotEmpty()) {
-            return entities.map { entity ->
-                val parsedId = entity.uuid.removePrefix("loc-").toLongOrNull() ?: 1L
-                StockLocation(
-                    id = parsedId,
-                    uuid = entity.uuid,
-                    name = entity.name,
-                    description = entity.description,
-                    parentId = entity.parentUuid?.removePrefix("loc-")?.toLongOrNull(),
-                    structural = entity.structural,
-                    external = entity.external,
-                    locationType = entity.locationType,
-                    ownerId = null,
-                    icon = entity.icon,
-                    customIcon = entity.customIcon,
-                    address = entity.address,
-                    customCapacity = entity.customCapacity,
-                    isBulkGenerated = entity.isBulkGenerated,
-                    level = entity.level,
-                    lft = entity.lft,
-                    rght = entity.rght,
-                    treeId = entity.treeId,
-                    metadata = entity.metadata
-                )
-            }
-        }
-        return stockTable.getAllLocations()
-    }
+    fun getLocations(): List<StockLocation> = locationRepository.getLocations()
 
     /**
      * جلب كافة أنواع وقوالب مواقع التخزين المتاحة مع مواصفاتها الهندسية.
      */
-    fun getLocationTypes(): List<StockLocationType> {
-        val locationTypeDao = StockLocationTypeDao()
-        val entities = runCatching { runBlocking { locationTypeDao.getAllLocationTypes() } }.getOrDefault(emptyList())
-        return entities.map { entity ->
-            StockLocationType(
-                id = entity.typeId,
-                name = entity.name,
-                description = entity.description,
-                icon = entity.icon,
-                customIcon = entity.customIcon,
-                length = entity.length,
-                width = entity.width,
-                height = entity.height,
-                maxWeight = entity.maxWeight,
-                maxVolume = entity.maxVolume,
-                metadata = entity.metadata
-            )
-        }
-    }
+    fun getLocationTypes(): List<StockLocationType> = locationRepository.getLocationTypes()
 
     /**
      * حساب توليد المسار الهرمي الكامل التراكمي للموقع من الجذر حتى النهاية.
      */
-    fun getFullPathForLocation(locationId: Long?, separator: String = " / "): String {
-        return stockTable.getFullPathForLocation(locationId, separator)
-    }
+    fun getFullPathForLocation(locationId: Long?, separator: String = " / "): String =
+        locationRepository.getFullPathForLocation(locationId, separator)
 
 
 
@@ -192,9 +160,7 @@ class StockRepository(
      */
     fun addStockItemAttachment(attachmentItem: StockItemAttachment): StockItemAttachment {
         val inserted = stockTable.addStockItemAttachment(attachmentItem)
-        runBlocking {
-            attachmentDao.insertOrUpdate(inserted.toEntity())
-        }
+        attachmentDao.insertOrUpdate(inserted.toEntity())
         return inserted
     }
 
@@ -204,9 +170,7 @@ class StockRepository(
     fun deleteStockItemAttachment(id: Long): Boolean {
         val deleted = stockTable.deleteStockItemAttachment(id)
         if (deleted) {
-            runBlocking {
-                attachmentDao.deleteAttachment("attachment-$id")
-            }
+            attachmentDao.deleteAttachment("attachment-$id")
         }
         return deleted
     }
@@ -216,102 +180,30 @@ class StockRepository(
      */
     fun addTestResult(testResult: StockItemTestResult): StockItemTestResult {
         val inserted = stockTable.addTestResult(testResult)
-        runBlocking {
-            testResultDao.insertOrUpdate(inserted.toEntity())
-        }
+        testResultDao.insertOrUpdate(inserted.toEntity())
         return inserted
     }
 
     /**
      * كاشف التكرار الميداني للهرمية (Auto-Collision & Duplicate Guard):
-     * التحقق مما إذا كان ينتج عن حفظ موقع جديد/معدل نفس الاسم أو نفس العنوان تحت نفس الأب المباشر ونفس المسار.
      */
     fun isLocationDuplicateUnderSameParent(
         name: String,
         parentId: Long?,
         excludeId: Long? = null,
         address: String? = null
-    ): Boolean {
-        val trimmedName = name.trim()
-        if (trimmedName.isBlank()) return false
-        val trimmedAddress = address?.trim() ?: ""
-
-        val allLocations = getLocations()
-        return allLocations.any { loc ->
-            if (loc.id == excludeId) return@any false
-            if (loc.parentId != parentId) return@any false
-
-            val nameMatch = loc.name.trim().equals(trimmedName, ignoreCase = true)
-            val addressMatch = trimmedAddress.isNotBlank() && loc.address.trim().isNotBlank() &&
-                    loc.address.trim().equals(trimmedAddress, ignoreCase = true)
-
-            nameMatch || addressMatch
-        }
-    }
+    ): Boolean = locationRepository.isLocationDuplicateUnderSameParent(name, parentId, excludeId, address)
 
     /**
      * خوارزمية منع التكرار البرمجي آلياً (Auto-Collision Prevention Algorithm):
-     * توليد اسم فريد بإضافة ترقيم تسلسلي تلقائي عند وجود اسم مكرر تحت نفس الأب.
      */
-    fun generateUniqueLocationName(baseName: String, parentId: Long?, excludeId: Long? = null): String {
-        val trimmed = baseName.trim().ifBlank { "موقع" }
-        var candidate = trimmed
-        var counter = 1
-        val allLocations = getLocations()
-
-        while (allLocations.any { loc ->
-            loc.id != excludeId && loc.parentId == parentId && loc.name.trim().equals(candidate, ignoreCase = true)
-        }) {
-            candidate = "$trimmed-${counter.toString().padStart(2, '0')}"
-            counter++
-        }
-        return candidate
-    }
+    fun generateUniqueLocationName(baseName: String, parentId: Long?, excludeId: Long? = null): String =
+        locationRepository.generateUniqueLocationName(baseName, parentId, excludeId)
 
     /**
-     * إضافة أو تحديث موقع تخزيني جديد في الشجرة الهرمية لمواقع التخزين (StockLocation) مع حسم التعارضات المزامنة وحماية الموقع الأساسي.
+     * إضافة أو تحديث موقع تخزيني جديد في الشجرة الهرمية لمواقع التخزين (StockLocation).
      */
-    fun addLocation(location: StockLocation): StockLocation {
-        var finalLocation = location
-
-        if (location.isPrimary) {
-            // البحث عن الموقع الأساسي القائم حالياً من نفس الفئة المعزولة (موقع خارجي vs موقع داخلي vs مستودع داخلي)
-            val existingPrimary = getLocations().find { existing ->
-                existing.id != location.id && existing.isPrimary &&
-                        when {
-                            location.external -> existing.external
-                            location.locationType.equals("SITE", ignoreCase = true) -> existing.locationType.equals("SITE", ignoreCase = true) && !existing.external
-                            location.locationType.equals("WAREHOUSE", ignoreCase = true) -> existing.locationType.equals("WAREHOUSE", ignoreCase = true) && !existing.external
-                            else -> false
-                        }
-            }
-
-            if (existingPrimary != null) {
-                // سياسة حسم التعارضات عند التزامن (Conflict Resolution based on updatedAt)
-                val allEntities = runCatching { runBlocking { locationDao.getAllLocations() } }.getOrDefault(emptyList())
-                val locUpdatedAt = allEntities.find { it.uuid == location.uuid || it.uuid == "loc-${location.id}" }?.updatedAt ?: Clock.System.now().toEpochMilliseconds()
-                val existingUpdatedAt = allEntities.find { it.uuid == existingPrimary.uuid || it.uuid == "loc-${existingPrimary.id}" }?.updatedAt ?: 0L
-
-                if (locUpdatedAt >= existingUpdatedAt) {
-                    // الكائن الجديد أحدث: إغلاق الصفة الأساسية عن الموقع القديم
-                    val demoted = existingPrimary.withPrimary(false)
-                    stockTable.insertLocation(demoted)
-                    runBlocking {
-                        locationDao.insertOrUpdate(demoted.toEntity())
-                    }
-                } else {
-                    // الموقع القديم أحدث: تجريد الكائن الجديد من الصفة الأساسية
-                    finalLocation = location.withPrimary(false)
-                }
-            }
-        }
-
-        val inserted = stockTable.insertLocation(finalLocation)
-        runBlocking {
-            locationDao.insertOrUpdate(inserted.toEntity())
-        }
-        return inserted
-    }
+    fun addLocation(location: StockLocation): StockLocation = locationRepository.addLocation(location)
 
     /**
      * إنشاء سلسلة هرمية ذرية للموقع المستهدف مع كافة طبقاته الوسيطة المفقودة (Atomic Transaction).
@@ -319,43 +211,15 @@ class StockRepository(
     fun addLocationWithIntermediates(
         targetLocation: StockLocation,
         intermediates: List<IntermediateNodeSpec>
-    ): StockLocation {
-        var currentParentId = targetLocation.parentId
-
-        for (spec in intermediates) {
-            if (spec.existingId != null && spec.existingId > 0L) {
-                currentParentId = spec.existingId
-            } else if (spec.name.isNotBlank()) {
-                val newIntermediate = StockLocation(
-                    name = spec.name.trim(),
-                    description = "طبقة وسيطة مضافة آلياً لحشو فجوة الهرمية",
-                    parentId = currentParentId,
-                    structural = true,
-                    locationType = spec.locationType
-                )
-                val inserted = addLocation(newIntermediate)
-                currentParentId = inserted.id
-            }
-        }
-
-        val finalTarget = targetLocation.copy(parentId = currentParentId)
-        return addLocation(finalTarget)
-    }
+    ): StockLocation = locationRepository.addLocationWithIntermediates(targetLocation, intermediates)
 
     /**
      * تحديث بيانات موقع تخزيني قائم في الشجرة الهرمية لمواقع التخزين (StockLocation).
      */
-    fun updateLocation(location: StockLocation): StockLocation {
-        return addLocation(location)
-    }
+    fun updateLocation(location: StockLocation): StockLocation = locationRepository.updateLocation(location)
 
     /**
      * حذف موقع تخزيني حذفاً مرناً (Soft Delete) بعد إجراء الفحوصات الأمنية الثلاثية
-     * مع حماية عدم الوقوع في حالة انعدام الأساسي (Soft Delete Guard):
-     * 1. التأكد من عدم وجود عناصر ومواد مخزنة داخل الموقع.
-     * 2. التأكد من عدم وجود مواقع وأرفف فرعية (Child Locations) تابعة له.
-     * 3. التأكد من عدم ارتباطه بأوامر إنتاج وتصنيع نشطة أو أوامر شراء معلقة.
-     * 4. تعيين أقدم موقع نشط كبديل أساسي آلياً عند حذف الكيان الأساسي الحالي.
      */
     fun deleteLocation(locationId: Long): Boolean {
         // الفحص الأول: خلو الموقع من العناصر المخزنة
@@ -389,79 +253,34 @@ class StockRepository(
             throw IllegalArgumentException("لا يمكن حذف الموقع لارتباطه بـ ${purchaseOrdersReferenced.size} أمر شراء معلق كوجهة تسليم.")
         }
 
-        val targetLoc = getLocations().find { it.id == locationId }
-        val wasPrimary = targetLoc?.isPrimary == true
-        val targetType = targetLoc?.locationType ?: ""
-
-        val removedFromTable = stockTable.deleteLocation(locationId)
-        runBlocking {
-            locationDao.softDeleteLocation(targetLoc?.uuid ?: "loc-$locationId")
-            targetLoc?.labelImagePath?.let { path ->
-                runCatching {
-                    val file = File(path)
-                    if (file.exists()) file.delete()
-                }
-            }
-        }
-
-        // حماية انعدام الأساسي (Soft Delete Guard): إذا كان الموقع المحذوف هو الأساسي، يُعيّن أقدم موقع نشط قائم من نفس الفئة المعزولة كبديل
-        if (wasPrimary && targetLoc != null) {
-            val remainingOfSameType = getLocations().filter { loc ->
-                loc.id != locationId &&
-                        when {
-                            targetLoc.external -> loc.external
-                            targetType.equals("SITE", ignoreCase = true) -> loc.locationType.equals("SITE", ignoreCase = true) && !loc.external
-                            targetType.equals("WAREHOUSE", ignoreCase = true) -> loc.locationType.equals("WAREHOUSE", ignoreCase = true) && !loc.external
-                            else -> false
-                        }
-            }
-
-            if (remainingOfSameType.isNotEmpty()) {
-                val oldestRemaining = remainingOfSameType.minByOrNull { it.id } ?: remainingOfSameType.first()
-                updateLocation(oldestRemaining.withPrimary(true))
-            }
-        }
-
-        return removedFromTable
+        return locationRepository.deleteLocationInternal(locationId)
     }
 
     /**
      * أرشفة وحفظ لقطة صورة الملصق المادية وتحديث بيانات الأرشفة لجدول الموقع.
      */
-    fun saveLocationLabelSnapshot(locationId: Long, snapshotData: String): StockLocation? {
-        val targetLoc = getLocations().find { it.id == locationId } ?: return null
-        val genAt = Clock.System.now().toEpochMilliseconds()
-        val imagePath = "files/labels/locations/loc_${targetLoc.effectiveUuid}.webp"
-        val updatedLoc = targetLoc.withLabelSnapshot(imagePath, genAt, snapshotData)
-        return updateLocation(updatedLoc)
-    }
+    fun saveLocationLabelSnapshot(locationId: Long, snapshotData: String): StockLocation? =
+        locationRepository.saveLocationLabelSnapshot(locationId, snapshotData)
 
     /**
      * إضافة دفعة مواقع تخزينية متسلسلة جديدة (Bulk Location Generator).
      */
-    fun addBatchLocations(locations: List<StockLocation>): List<StockLocation> {
-        val insertedList = stockTable.insertBatchLocations(locations)
-        runBlocking {
-            locationDao.insertBatchLocations(insertedList.map { it.toEntity() })
-        }
-        return insertedList
-    }
+    fun addBatchLocations(locations: List<StockLocation>): List<StockLocation> =
+        locationRepository.addBatchLocations(locations)
 
     /**
      * إضافة وحدة مخزنية جديدة وتسجيل حركة الإنشاء آلياً.
      */
     fun addStockItem(item: StockItem): StockItem {
         val inserted = stockTable.insertStockItem(item)
-        runBlocking {
-            stockDao.insertOrUpdate(inserted.toEntity())
-            val trackings = stockTable.getTrackingForStockItem(inserted.id)
-            trackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
-            checkAndInsertLowStockNotification(inserted.partId)
-        }
+        stockDao.insertOrUpdate(inserted.toEntity())
+        val trackings = stockTable.getTrackingForStockItem(inserted.id)
+        trackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
+        checkAndInsertLowStockNotification(inserted.partId)
         return inserted
     }
 
-    private suspend fun checkAndInsertLowStockNotification(partId: Long) {
+    private fun checkAndInsertLowStockNotification(partId: Long) {
         runCatching {
             val allStock = stockTable.getAllStockItems().filter { it.partId == partId }
             val currentTotalStock = allStock.sumOf { it.quantity }
@@ -488,12 +307,10 @@ class StockRepository(
      */
     fun splitStockItem(parentId: Long, splitQuantity: Double): StockItem {
         val child = stockTable.splitStockItem(parentId, splitQuantity)
-        runBlocking {
-            stockDao.insertOrUpdate(child.toEntity())
-            val parentTrackings = stockTable.getTrackingForStockItem(parentId)
-            val childTrackings = stockTable.getTrackingForStockItem(child.id)
-            (parentTrackings + childTrackings).forEach { trackingDao.insertOrUpdate(it.toEntity()) }
-        }
+        stockDao.insertOrUpdate(child.toEntity())
+        val parentTrackings = stockTable.getTrackingForStockItem(parentId)
+        val childTrackings = stockTable.getTrackingForStockItem(child.id)
+        (parentTrackings + childTrackings).forEach { trackingDao.insertOrUpdate(it.toEntity()) }
         return child
     }
 
@@ -510,26 +327,24 @@ class StockRepository(
     ): Boolean {
         // التأكد من تحميل/مزامنة السجل في جدول الذاكرة إذا أُمُر بالنقل مباشرة
         if (stockTable.getAllStockItems().none { it.id == itemId }) {
-            runBlocking {
-                val entities = stockDao.getStockItemsPaged(limit = 1000, offset = 0)
-                val entity = entities.find { it.uuid == "stock-$itemId" || it.uuid.removePrefix("stock-").toLongOrNull() == itemId }
-                if (entity != null) {
-                    val stockItem = StockItem(
-                        id = itemId,
-                        partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
-                        locationId = entity.locationUuid?.removePrefix("loc-")?.toLongOrNull() ?: 1L,
-                        quantity = entity.quantity,
-                        serial = entity.serial,
-                        batch = entity.batch,
-                        status = StockStatus.fromCode(entity.statusCode),
-                        packaging = entity.packaging,
-                        purchasePrice = entity.purchasePrice,
-                        expiryDate = entity.expiryDate,
-                        stocktakeDate = entity.stocktakeDate,
-                        notes = entity.notes
-                    )
-                    stockTable.insertStockItem(stockItem)
-                }
+            val entities = stockDao.getStockItemsPaged(limit = 1000, offset = 0)
+            val entity = entities.find { it.uuid == "stock-$itemId" || it.uuid.removePrefix("stock-").toLongOrNull() == itemId }
+            if (entity != null) {
+                val stockItem = StockItem(
+                    id = itemId,
+                    partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
+                    locationId = entity.locationUuid?.removePrefix("loc-")?.toLongOrNull() ?: 1L,
+                    quantity = entity.quantity,
+                    serial = entity.serial,
+                    batch = entity.batch,
+                    status = StockStatus.fromCode(entity.statusCode),
+                    packaging = entity.packaging,
+                    purchasePrice = entity.purchasePrice,
+                    expiryDate = entity.expiryDate,
+                    stocktakeDate = entity.stocktakeDate,
+                    notes = entity.notes
+                )
+                stockTable.insertStockItem(stockItem)
             }
         }
 
@@ -542,16 +357,14 @@ class StockRepository(
             notes = notes
         )
 
-        runBlocking {
-            stockDao.insertOrUpdate(sourceItem.toEntity())
-            val sourceTrackings = stockTable.getTrackingForStockItem(sourceItem.id)
-            sourceTrackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
+        stockDao.insertOrUpdate(sourceItem.toEntity())
+        val sourceTrackings = stockTable.getTrackingForStockItem(sourceItem.id)
+        sourceTrackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
 
-            if (targetItem != null) {
-                stockDao.insertOrUpdate(targetItem.toEntity())
-                val targetTrackings = stockTable.getTrackingForStockItem(targetItem.id)
-                targetTrackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
-            }
+        if (targetItem != null) {
+            stockDao.insertOrUpdate(targetItem.toEntity())
+            val targetTrackings = stockTable.getTrackingForStockItem(targetItem.id)
+            targetTrackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
         }
         return true
     }
@@ -561,11 +374,9 @@ class StockRepository(
      */
     fun performStocktake(stockId: Long, userId: Long, stocktakeDate: String = DateTimeUtils.getCurrentDate()): StockItem {
         val updated = stockTable.performStocktake(stockId, userId, stocktakeDate)
-        runBlocking {
-            stockDao.insertOrUpdate(updated.toEntity())
-            val trackings = stockTable.getTrackingForStockItem(stockId)
-            trackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
-        }
+        stockDao.insertOrUpdate(updated.toEntity())
+        val trackings = stockTable.getTrackingForStockItem(stockId)
+        trackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
         return updated
     }
 
@@ -581,9 +392,7 @@ class StockRepository(
         deltas: String = "{}"
     ): StockItemTracking {
         val tracking = stockTable.recordTracking(stockItemId, trackingType, userId, label, notes, deltas)
-        runBlocking {
-            trackingDao.insertOrUpdate(tracking.toEntity())
-        }
+        trackingDao.insertOrUpdate(tracking.toEntity())
         return tracking
     }
 
@@ -665,29 +474,6 @@ class StockRepository(
         )
     }
 
-    private fun StockLocation.toEntity(): StockLocationEntity {
-        return StockLocationEntity(
-            uuid = if (uuid.isNotBlank()) uuid else "loc-$id",
-            name = name,
-            description = description,
-            parentUuid = parentId?.let { "loc-$it" },
-            structural = structural,
-            external = external,
-            locationType = locationType,
-            icon = icon,
-            customIcon = customIcon,
-            address = address,
-            customCapacity = customCapacity,
-            isBulkGenerated = isBulkGenerated,
-            level = level,
-            lft = lft,
-            rght = rght,
-            treeId = treeId,
-            metadata = metadata,
-            syncStatus = SyncStatus.PENDING
-        )
-    }
-
     private fun StockItem.toEntity(): StockItemEntity {
         return StockItemEntity(
             uuid = "stock-$id",
@@ -719,3 +505,30 @@ class StockRepository(
         )
     }
 }
+
+internal fun StockLocation.toEntity(): StockLocationEntity {
+    return StockLocationEntity(
+        uuid = if (uuid.isNotBlank() && !uuid.startsWith("location-")) uuid else "loc-$id",
+        id = id,
+        parentId = parentId,
+        ownerId = ownerId,
+        name = name,
+        description = description,
+        parentUuid = parentId?.let { "loc-$it" },
+        structural = structural,
+        external = external,
+        locationType = locationType,
+        icon = icon,
+        customIcon = customIcon,
+        address = address,
+        customCapacity = customCapacity,
+        isBulkGenerated = isBulkGenerated,
+        level = level,
+        lft = lft,
+        rght = rght,
+        treeId = treeId,
+        metadata = metadata,
+        syncStatus = SyncStatus.PENDING
+    )
+}
+

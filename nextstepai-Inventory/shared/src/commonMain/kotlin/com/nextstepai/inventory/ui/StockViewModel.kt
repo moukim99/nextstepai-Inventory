@@ -87,7 +87,15 @@ class StockViewModel(
     private val userRepository: UserRepository = UserRepository()
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(StockUiState())
+    private val _uiState = MutableStateFlow(
+        StockUiState(
+            locations = runCatching { stockRepository.getLocations() }.getOrDefault(emptyList()),
+            locationTypes = runCatching { stockRepository.getLocationTypes() }.getOrDefault(emptyList()),
+            stockItems = runCatching { stockRepository.getStockItems() }.getOrDefault(emptyList()),
+            allStockItems = runCatching { stockRepository.getStockItems() }.getOrDefault(emptyList()),
+            parts = runCatching { partRepository.getParts() }.getOrDefault(emptyList())
+        )
+    )
     val uiState: StateFlow<StockUiState> = _uiState.asStateFlow()
 
     init {
@@ -125,11 +133,17 @@ class StockViewModel(
                             (_uiState.value.selectedPartId == null || item.partId == _uiState.value.selectedPartId)
                 }
 
-                _uiState.update {
-                    it.copy(
+                _uiState.update { current ->
+                    val mergedLocations = if (current.locations.isNotEmpty()) {
+                        val repoMap = locations.associateBy { it.id }
+                        current.locations.map { repoMap[it.id] ?: it } + locations.filter { loc -> current.locations.none { it.id == loc.id } }
+                    } else {
+                        locations
+                    }
+                    current.copy(
                         stockItems = filteredStock,
                         allStockItems = rawStock,
-                        locations = locations,
+                        locations = mergedLocations,
                         locationTypes = locationTypes,
                         parts = allParts,
                         categories = categories,
@@ -138,7 +152,11 @@ class StockViewModel(
                         supplierParts = supplierParts
                     )
                 }
-            } catch (_: Throwable) {}
+            } catch (e: Throwable) {
+                _uiState.update {
+                    it.copy(errorMessage = e.message ?: "فشل تحميل بيانات المخزون")
+                }
+            }
         }
     }
 
@@ -484,6 +502,13 @@ class StockViewModel(
                 successMessage = if (intermediates.isNotEmpty()) "تم إنشاء الموقع والتسلسل الهرمي بنجاح" else "تم إنشاء موقع التخزين بنجاح"
             )
         }
+        // Update the visible list immediately from the persisted repository result.
+        _uiState.update { state ->
+            state.copy(
+                locations = (state.locations.filterNot { it.id == inserted.id } + inserted)
+                    .sortedBy { it.name }
+            )
+        }
         loadData()
         return inserted
     }
@@ -599,12 +624,17 @@ class StockViewModel(
         )
         val inserted = stockRepository.addLocation(loc)
         _uiState.update {
+            val updatedLocations = if (it.locations.any { l -> l.id == inserted.id }) {
+                it.locations.map { l -> if (l.id == inserted.id) inserted else l }
+            } else {
+                it.locations + inserted
+            }
             it.copy(
+                locations = updatedLocations,
                 errorMessage = null,
                 successMessage = "تم إضافة الموقع الحاوي الوسيط (${inserted.name}) بنجاح"
             )
         }
-        loadData()
         return inserted
     }
 

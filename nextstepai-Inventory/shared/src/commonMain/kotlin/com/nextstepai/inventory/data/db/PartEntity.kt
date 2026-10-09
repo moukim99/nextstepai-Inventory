@@ -44,5 +44,7 @@ data class PartEntity(
     override val syncStatus: SyncStatus = SyncStatus.PENDING,
     override val isDeleted: Boolean = false,
     override val updatedAt: Long = Clock.System.now().toEpochMilliseconds(),
-    val lastModifiedByDeviceUuid: String? = null
+    val lastModifiedByDeviceUuid: String? = null,
+    /** Stable legacy/domain ID; UUID remains the canonical external identity. */
+    val id: Long = 0L
 ) : SyncableEntity

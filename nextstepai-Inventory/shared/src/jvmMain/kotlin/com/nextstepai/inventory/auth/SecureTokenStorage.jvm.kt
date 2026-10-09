@@ -40,9 +40,11 @@ actual class SecureTokenStorage actual constructor() {
     private val accessAccount = "secure_access_token"
     private val refreshAccount = "secure_refresh_token"
 
-    // Thread-safe volatile L1 memory cache for fast non-blocking reads
-    @Volatile
-    private var cachedTokens: AuthTokens? = null
+    companion object {
+        // Thread-safe volatile L1 memory cache for fast non-blocking reads across instances
+        @Volatile
+        private var cachedTokens: AuthTokens? = null
+    }
 
     // Lazy thread-safe initialization of Keyring to avoid recreating native OS handles on every call
     private val keyring: Keyring? by lazy {

@@ -24,6 +24,7 @@ data class PartTestTemplate(
 /**
  * إدارة وتخزين قوالب الفحوصات والاختبارات (PartTestTemplate) في الذاكرة مع القواعد والقيود المنطقية.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class PartTestTemplateTable(
     private val partTable: PartTable = PartTable()
 ) {

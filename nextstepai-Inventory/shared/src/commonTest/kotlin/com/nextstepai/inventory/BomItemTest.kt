@@ -2,6 +2,8 @@ package com.nextstepai.inventory
 
 import com.nextstepai.inventory.data.BomItem
 import com.nextstepai.inventory.data.BomItemTable
+import com.nextstepai.inventory.auth.AuthTokens
+import com.nextstepai.inventory.auth.SecureTokenStorage
 import com.nextstepai.inventory.repository.BomRepository
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -117,6 +119,7 @@ class BomItemTest {
 
     @Test
     fun testBomBatchSyncWithCloudflare() = runBlocking {
+        SecureTokenStorage().saveTokens(AuthTokens("test-access-token", "test-refresh-token"))
         val repository = BomRepository()
         repository.addBomItem(
             BomItem(

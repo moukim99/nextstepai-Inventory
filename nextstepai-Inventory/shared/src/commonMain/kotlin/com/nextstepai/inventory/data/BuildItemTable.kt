@@ -31,6 +31,7 @@ data class BuildItem(
 /**
  * محاكاة جدول تخصيصات المخزون لأوامر التصنيع (Build Items Stock Allocations Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class BuildItemTable {
     private val buildItems = mutableListOf<BuildItem>()
     private var nextBuildItemId = 1L

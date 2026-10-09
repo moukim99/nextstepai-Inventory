@@ -5,6 +5,7 @@ import com.nextstepai.inventory.data.db.PartSalePriceEntity
 /**
  * إدارة وتخزين شرائح أسعار البيع للعملاء (PartSalePriceTable) في الذاكرة مع شرط القابلية للبيع والقواعد المنطقية.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class PartSalePriceTable(
     private val partTable: PartTable = PartTable()
 ) {

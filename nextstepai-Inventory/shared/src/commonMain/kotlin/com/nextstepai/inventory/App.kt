@@ -47,7 +47,8 @@ private enum class Screen {
 @Composable
 @Preview
 fun App() {
-    val settingsViewModel = remember { SettingsViewModel() }
+    val container = remember { com.nextstepai.inventory.di.AppContainer() }
+    val settingsViewModel = remember(container) { container.createSettingsViewModel() }
     val settingsUiState by settingsViewModel.uiState.collectAsState()
 
     val themeMode = remember(settingsUiState.settings.themeMode) {
@@ -56,20 +57,23 @@ fun App() {
     }
 
     AppTheme(themeMode = themeMode) {
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        CompositionLocalProvider(
+            LocalLayoutDirection provides LayoutDirection.Rtl,
+            com.nextstepai.inventory.di.LocalAppContainer provides container
+        ) {
             Surface(
                 modifier = Modifier
                     .fillMaxSize()
                     .statusBarsPadding(),
                 color = MaterialTheme.colorScheme.background
             ) {
-                val loginViewModel = remember { LoginViewModel() }
-                val partViewModel = remember { PartViewModel() }
-                val bomViewModel = remember { BomViewModel() }
-                val stockViewModel = remember { StockViewModel() }
-                val companyViewModel = remember { CompanyViewModel() }
-                val poViewModel = remember { PurchaseOrderViewModel() }
-                val buildViewModel = remember { BuildOrderViewModel() }
+                val loginViewModel = remember(container) { container.createLoginViewModel() }
+                val partViewModel = remember(container) { container.createPartViewModel() }
+                val bomViewModel = remember(container) { container.createBomViewModel() }
+                val stockViewModel = remember(container) { container.createStockViewModel() }
+                val companyViewModel = remember(container) { container.createCompanyViewModel() }
+                val poViewModel = remember(container) { container.createPurchaseOrderViewModel() }
+                val buildViewModel = remember(container) { container.createBuildOrderViewModel() }
                 val loginUiState by loginViewModel.uiState.collectAsState()
                 var showSplash by remember { mutableStateOf(true) }
                 var currentScreen by remember { mutableStateOf(Screen.WAREHOUSE) }

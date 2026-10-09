@@ -17,10 +17,10 @@ class PartDao {
         totalInStock, revision, keywords, assembly, component, isTemplate, variantOfUuid,
         trackable, purchaseable, salable, virtual, active, locked, defaultLocationUuid,
         defaultExpiryDays, link, localImagePath, metadata, version, syncStatus, isDeleted,
-        updatedAt, lastModifiedByDeviceUuid
+        updatedAt, lastModifiedByDeviceUuid, id
     """.trimIndent()
 
-    suspend fun getPartsPaged(limit: Int = 20, offset: Int = 0): List<PartEntity> {
+    fun getPartsPaged(limit: Int = 20, offset: Int = 0): List<PartEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<PartEntity>()
         conn.prepare("""
@@ -39,7 +39,7 @@ class PartDao {
         return results
     }
 
-    suspend fun getPartByUuid(uuid: String): PartEntity? {
+    fun getPartByUuid(uuid: String): PartEntity? {
         if (uuid.isBlank()) return null
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
@@ -55,7 +55,7 @@ class PartDao {
         return null
     }
 
-    suspend fun getPartsByCategoryUuid(categoryUuid: String?): List<PartEntity> {
+    fun getPartsByCategoryUuid(categoryUuid: String?): List<PartEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<PartEntity>()
         val sql = if (categoryUuid == null) {
@@ -74,7 +74,7 @@ class PartDao {
         return results
     }
 
-    suspend fun getParentAssemblies(): List<PartEntity> {
+    fun getParentAssemblies(): List<PartEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<PartEntity>()
         conn.prepare("""
@@ -90,7 +90,7 @@ class PartDao {
         return results
     }
 
-    suspend fun getEligibleSubParts(parentPartUuid: String): List<PartEntity> {
+    fun getEligibleSubParts(parentPartUuid: String): List<PartEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<PartEntity>()
         conn.prepare("""
@@ -112,7 +112,7 @@ class PartDao {
         return results
     }
 
-    suspend fun getPendingSyncParts(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<PartEntity> {
+    fun getPendingSyncParts(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<PartEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<PartEntity>()
         conn.prepare("""
@@ -135,7 +135,7 @@ class PartDao {
     /**
      * إدراج أو تحديث قطعة مادية مع تطبيق زيادة الـ version تلقائياً عند التعديل المحلي.
      */
-    suspend fun insertOrUpdate(entity: PartEntity) {
+    fun insertOrUpdate(entity: PartEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT INTO parts (
@@ -143,8 +143,8 @@ class PartDao {
                 totalInStock, revision, keywords, assembly, component, isTemplate, variantOfUuid,
                 trackable, purchaseable, salable, virtual, active, locked, defaultLocationUuid,
                 defaultExpiryDays, link, localImagePath, metadata, version, syncStatus, isDeleted,
-                updatedAt, lastModifiedByDeviceUuid
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                updatedAt, lastModifiedByDeviceUuid, id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(uuid) DO UPDATE SET
                 name = excluded.name,
                 ipn = excluded.ipn,
@@ -175,7 +175,8 @@ class PartDao {
                 syncStatus = excluded.syncStatus,
                 isDeleted = excluded.isDeleted,
                 updatedAt = excluded.updatedAt,
-                lastModifiedByDeviceUuid = excluded.lastModifiedByDeviceUuid
+                lastModifiedByDeviceUuid = excluded.lastModifiedByDeviceUuid,
+                id = CASE WHEN excluded.id > 0 THEN excluded.id ELSE parts.id END
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
             stmt.bindText(2, entity.name)
@@ -208,11 +209,12 @@ class PartDao {
             stmt.bindLong(29, if (entity.isDeleted) 1L else 0L)
             stmt.bindLong(30, entity.updatedAt)
             if (entity.lastModifiedByDeviceUuid != null) stmt.bindText(31, entity.lastModifiedByDeviceUuid) else stmt.bindNull(31)
+            stmt.bindLong(32, entity.id)
             stmt.step()
         }
     }
 
-    suspend fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
+    fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
         if (uuids.isEmpty()) return
         val conn = SqliteDatabaseManager.getConnection()
         for (uuid in uuids) {
@@ -224,26 +226,148 @@ class PartDao {
         }
     }
 
-    suspend fun addStockToPart(partUuid: String, qty: Double) {
+    fun insert(entity: PartEntity): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
-        conn.prepare("UPDATE parts SET totalInStock = totalInStock + ?, version = version + 1, updatedAt = ? WHERE uuid = ?").use { stmt ->
+        conn.prepare("""
+            INSERT INTO parts (
+                uuid, name, ipn, description, categoryUuid, units,
+                minimumStock, maximumStock, totalInStock, revision, keywords,
+                assembly, component, isTemplate, variantOfUuid, trackable,
+                purchaseable, salable, virtual, active, locked,
+                defaultLocationUuid, defaultExpiryDays, link, localImagePath,
+                metadata, version, syncStatus, isDeleted, updatedAt, lastModifiedByDeviceUuid, id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """.trimIndent()).use { stmt ->
+            stmt.bindText(1, entity.uuid)
+            stmt.bindText(2, entity.name)
+            stmt.bindText(3, entity.ipn)
+            stmt.bindText(4, entity.description)
+            if (entity.categoryUuid != null) stmt.bindText(5, entity.categoryUuid) else stmt.bindNull(5)
+            stmt.bindText(6, entity.units)
+            stmt.bindDouble(7, entity.minimumStock)
+            if (entity.maximumStock != null) stmt.bindDouble(8, entity.maximumStock) else stmt.bindNull(8)
+            stmt.bindDouble(9, entity.totalInStock)
+            stmt.bindText(10, entity.revision)
+            stmt.bindText(11, entity.keywords)
+            stmt.bindLong(12, if (entity.assembly) 1L else 0L)
+            stmt.bindLong(13, if (entity.component) 1L else 0L)
+            stmt.bindLong(14, if (entity.isTemplate) 1L else 0L)
+            if (entity.variantOfUuid != null) stmt.bindText(15, entity.variantOfUuid) else stmt.bindNull(15)
+            stmt.bindLong(16, if (entity.trackable) 1L else 0L)
+            stmt.bindLong(17, if (entity.purchaseable) 1L else 0L)
+            stmt.bindLong(18, if (entity.salable) 1L else 0L)
+            stmt.bindLong(19, if (entity.virtual) 1L else 0L)
+            stmt.bindLong(20, if (entity.active) 1L else 0L)
+            stmt.bindLong(21, if (entity.locked) 1L else 0L)
+            if (entity.defaultLocationUuid != null) stmt.bindText(22, entity.defaultLocationUuid) else stmt.bindNull(22)
+            if (entity.defaultExpiryDays != null) stmt.bindLong(23, entity.defaultExpiryDays.toLong()) else stmt.bindNull(23)
+            stmt.bindText(24, entity.link)
+            if (entity.localImagePath != null) stmt.bindText(25, entity.localImagePath) else stmt.bindNull(25)
+            stmt.bindText(26, entity.metadata)
+            stmt.bindLong(27, entity.version.toLong())
+            stmt.bindText(28, entity.syncStatus.name)
+            stmt.bindLong(29, if (entity.isDeleted) 1L else 0L)
+            stmt.bindLong(30, entity.updatedAt)
+            if (entity.lastModifiedByDeviceUuid != null) stmt.bindText(31, entity.lastModifiedByDeviceUuid) else stmt.bindNull(31)
+            stmt.bindLong(32, entity.id)
+            stmt.step()
+        }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
+    }
+
+    fun update(entity: PartEntity): Boolean {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            UPDATE parts
+            SET name = ?, ipn = ?, description = ?, categoryUuid = ?, units = ?,
+                minimumStock = ?, maximumStock = ?, totalInStock = ?, revision = ?, keywords = ?,
+                assembly = ?, component = ?, isTemplate = ?, variantOfUuid = ?, trackable = ?,
+                purchaseable = ?, salable = ?, virtual = ?, active = ?, locked = ?,
+                defaultLocationUuid = ?, defaultExpiryDays = ?, link = ?, localImagePath = ?,
+                metadata = ?, version = version + 1, syncStatus = 'PENDING', isDeleted = ?,
+                updatedAt = ?, lastModifiedByDeviceUuid = ?
+            WHERE uuid = ? AND isDeleted = 0
+        """.trimIndent()).use { stmt ->
+            stmt.bindText(1, entity.name)
+            stmt.bindText(2, entity.ipn)
+            stmt.bindText(3, entity.description)
+            if (entity.categoryUuid != null) stmt.bindText(4, entity.categoryUuid) else stmt.bindNull(4)
+            stmt.bindText(5, entity.units)
+            stmt.bindDouble(6, entity.minimumStock)
+            if (entity.maximumStock != null) stmt.bindDouble(7, entity.maximumStock) else stmt.bindNull(7)
+            stmt.bindDouble(8, entity.totalInStock)
+            stmt.bindText(9, entity.revision)
+            stmt.bindText(10, entity.keywords)
+            stmt.bindLong(11, if (entity.assembly) 1L else 0L)
+            stmt.bindLong(12, if (entity.component) 1L else 0L)
+            stmt.bindLong(13, if (entity.isTemplate) 1L else 0L)
+            if (entity.variantOfUuid != null) stmt.bindText(14, entity.variantOfUuid) else stmt.bindNull(14)
+            stmt.bindLong(15, if (entity.trackable) 1L else 0L)
+            stmt.bindLong(16, if (entity.purchaseable) 1L else 0L)
+            stmt.bindLong(17, if (entity.salable) 1L else 0L)
+            stmt.bindLong(18, if (entity.virtual) 1L else 0L)
+            stmt.bindLong(19, if (entity.active) 1L else 0L)
+            stmt.bindLong(20, if (entity.locked) 1L else 0L)
+            if (entity.defaultLocationUuid != null) stmt.bindText(21, entity.defaultLocationUuid) else stmt.bindNull(21)
+            if (entity.defaultExpiryDays != null) stmt.bindLong(22, entity.defaultExpiryDays.toLong()) else stmt.bindNull(22)
+            stmt.bindText(23, entity.link)
+            if (entity.localImagePath != null) stmt.bindText(24, entity.localImagePath) else stmt.bindNull(24)
+            stmt.bindText(25, entity.metadata)
+            stmt.bindLong(26, if (entity.isDeleted) 1L else 0L)
+            stmt.bindLong(27, entity.updatedAt)
+            if (entity.lastModifiedByDeviceUuid != null) stmt.bindText(28, entity.lastModifiedByDeviceUuid) else stmt.bindNull(28)
+            stmt.bindText(29, entity.uuid)
+            stmt.step()
+        }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
+    }
+
+    fun addStockToPart(partUuid: String, qty: Double): Boolean {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("UPDATE parts SET totalInStock = totalInStock + ?, syncStatus = 'PENDING', version = version + 1, updatedAt = ? WHERE uuid = ? AND isDeleted = 0").use { stmt ->
             stmt.bindDouble(1, qty)
             stmt.bindLong(2, Clock.System.now().toEpochMilliseconds())
             stmt.bindText(3, partUuid)
             stmt.step()
         }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 
-    suspend fun softDeleteByUuid(uuid: String, updatedAtMs: Long = Clock.System.now().toEpochMilliseconds()) {
+    fun softDeleteByUuid(uuid: String, updatedAtMs: Long = Clock.System.now().toEpochMilliseconds()): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
-        conn.prepare("UPDATE parts SET isDeleted = 1, syncStatus = 'PENDING', version = version + 1, updatedAt = ? WHERE uuid = ?").use { stmt ->
+        conn.prepare("UPDATE parts SET isDeleted = 1, syncStatus = 'PENDING', version = version + 1, updatedAt = ? WHERE uuid = ? AND isDeleted = 0").use { stmt ->
             stmt.bindLong(1, updatedAtMs)
             stmt.bindText(2, uuid)
             stmt.step()
         }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 
-    suspend fun getActiveCount(): Int {
+    fun getActiveCount(): Int {
         val conn = SqliteDatabaseManager.getConnection()
         var count = 0
         conn.prepare("SELECT COUNT(*) FROM parts WHERE isDeleted = 0").use { stmt ->
@@ -283,10 +407,11 @@ class PartDao {
             localImagePath = runCatching { if (stmt.isNull(24)) null else stmt.getText(24) }.getOrNull(),
             metadata = runCatching { stmt.getText(25) }.getOrDefault("{}"),
             version = runCatching { stmt.getLong(26).toInt() }.getOrDefault(1),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(27)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(27)),
             isDeleted = runCatching { stmt.getLong(28) != 0L }.getOrDefault(false),
             updatedAt = runCatching { stmt.getLong(29) }.getOrDefault(0L),
-            lastModifiedByDeviceUuid = runCatching { if (stmt.isNull(30)) null else stmt.getText(30) }.getOrNull()
+            lastModifiedByDeviceUuid = runCatching { if (stmt.isNull(30)) null else stmt.getText(30) }.getOrNull(),
+            id = runCatching { stmt.getLong(31) }.getOrDefault(0L)
         )
     }
 }

@@ -81,6 +81,7 @@ data class CategoryParameterTemplateView(
 /**
  * إدارة وتخزين جدول PartCategoryParameterTemplate وقوالب ومعاملات القطع في الذاكرة مع قواعد العمل والإلزام.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class PartCategoryParameterTable(
     private val partTable: PartTable = PartTable()
 ) {
@@ -406,6 +407,26 @@ class PartCategoryParameterTable(
     fun deleteParameterTemplate(templateId: Long): Boolean {
         categoryParameterTemplates.removeIf { it.parameterTemplateId == templateId }
         partParameters.removeIf { it.templateId == templateId }
+        val templateUuid = "param-tpl-$templateId"
+        runCatching {
+            val conn = com.nextstepai.inventory.data.db.SqliteDatabaseManager.getConnection()
+            val now = kotlin.time.Clock.System.now().toEpochMilliseconds()
+            conn.prepare("UPDATE part_parameter_templates SET isDeleted = 1, syncStatus = 'PENDING', version = version + 1, updatedAt = ? WHERE uuid = ?").use { stmt ->
+                stmt.bindLong(1, now)
+                stmt.bindText(2, templateUuid)
+                stmt.step()
+            }
+            conn.prepare("UPDATE part_category_parameter_templates SET isDeleted = 1, syncStatus = 'PENDING', version = version + 1, updatedAt = ? WHERE parameterTemplateUuid = ?").use { stmt ->
+                stmt.bindLong(1, now)
+                stmt.bindText(2, templateUuid)
+                stmt.step()
+            }
+            conn.prepare("UPDATE part_parameters SET isDeleted = 1, syncStatus = 'PENDING', version = version + 1, updatedAt = ? WHERE templateUuid = ?").use { stmt ->
+                stmt.bindLong(1, now)
+                stmt.bindText(2, templateUuid)
+                stmt.step()
+            }
+        }
         return parameterTemplates.removeIf { it.id == templateId }
     }
 

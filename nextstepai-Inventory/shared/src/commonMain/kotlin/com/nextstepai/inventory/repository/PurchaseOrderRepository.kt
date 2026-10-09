@@ -14,7 +14,6 @@ import com.nextstepai.inventory.util.AppUuid
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
-import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 
 import com.nextstepai.inventory.data.db.getRoomDatabase
@@ -49,14 +48,12 @@ class PurchaseOrderRepository(
         supplierId: Long? = null,
         status: POStatus? = null
     ): List<PurchaseOrder> {
-        val entities = runBlocking {
-            orderDao.getOrdersPaged(
-                supplierId = supplierId,
-                statusCode = status?.code,
-                limit = 500,
-                offset = 0
-            )
-        }
+        val entities = orderDao.getOrdersPaged(
+            supplierId = supplierId,
+            statusCode = status?.code,
+            limit = 500,
+            offset = 0
+        )
         if (entities.isNotEmpty()) {
             val allTableOrders = orderTable.getAllOrders()
             var result = entities.mapIndexed { index, entity ->
@@ -99,37 +96,35 @@ class PurchaseOrderRepository(
             orderTable.insertLineItem(line.copy(orderId = inserted.id))
         }
         val finalOrder = orderTable.getAllOrders().find { it.id == inserted.id } ?: inserted
-        runBlocking {
-            orderDao.insertOrUpdateOrder(
-                PurchaseOrderEntity(
-                    uuid = "po-${finalOrder.id}",
-                    reference = finalOrder.reference,
-                    supplierId = finalOrder.supplierId,
-                    supplierName = finalOrder.supplierName,
-                    statusCode = finalOrder.status.code,
-                    description = finalOrder.description,
-                    orderCurrency = finalOrder.orderCurrency,
-                    targetDate = finalOrder.targetDate,
-                    totalCost = finalOrder.totalCost,
-                    sourceType = finalOrder.sourceType,
-                    sourceReferenceUuid = finalOrder.sourceReferenceUuid,
-                    destinationLocationUuid = finalOrder.destinationLocationUuid,
+        orderDao.insertOrUpdateOrder(
+            PurchaseOrderEntity(
+                uuid = "po-${finalOrder.id}",
+                reference = finalOrder.reference,
+                supplierId = finalOrder.supplierId,
+                supplierName = finalOrder.supplierName,
+                statusCode = finalOrder.status.code,
+                description = finalOrder.description,
+                orderCurrency = finalOrder.orderCurrency,
+                targetDate = finalOrder.targetDate,
+                totalCost = finalOrder.totalCost,
+                sourceType = finalOrder.sourceType,
+                sourceReferenceUuid = finalOrder.sourceReferenceUuid,
+                destinationLocationUuid = finalOrder.destinationLocationUuid,
+                syncStatus = SyncStatus.PENDING
+            )
+        )
+        finalOrder.lineItems.forEach { line ->
+            orderDao.insertOrUpdateLine(
+                PurchaseOrderLineEntity(
+                    uuid = "po-line-${line.id}",
+                    orderUuid = "po-${finalOrder.id}",
+                    supplierPartId = line.supplierPartId,
+                    quantity = line.quantity,
+                    receivedQuantity = line.receivedQuantity,
+                    purchasePrice = line.purchasePrice,
                     syncStatus = SyncStatus.PENDING
                 )
             )
-            finalOrder.lineItems.forEach { line ->
-                orderDao.insertOrUpdateLine(
-                    PurchaseOrderLineEntity(
-                        uuid = "po-line-${line.id}",
-                        orderUuid = "po-${finalOrder.id}",
-                        supplierPartId = line.supplierPartId,
-                        quantity = line.quantity,
-                        receivedQuantity = line.receivedQuantity,
-                        purchasePrice = line.purchasePrice,
-                        syncStatus = SyncStatus.PENDING
-                    )
-                )
-            }
         }
         return finalOrder
     }
@@ -139,19 +134,17 @@ class PurchaseOrderRepository(
      */
     fun addLineItem(item: PurchaseOrderLineItem): PurchaseOrderLineItem {
         val inserted = orderTable.insertLineItem(item)
-        runBlocking {
-            orderDao.insertOrUpdateLine(
-                PurchaseOrderLineEntity(
-                    uuid = "po-line-${inserted.id}",
-                    orderUuid = "po-${inserted.orderId}",
-                    supplierPartId = inserted.supplierPartId,
-                    quantity = inserted.quantity,
-                    receivedQuantity = inserted.receivedQuantity,
-                    purchasePrice = inserted.purchasePrice,
-                    syncStatus = SyncStatus.PENDING
-                )
+        orderDao.insertOrUpdateLine(
+            PurchaseOrderLineEntity(
+                uuid = "po-line-${inserted.id}",
+                orderUuid = "po-${inserted.orderId}",
+                supplierPartId = inserted.supplierPartId,
+                quantity = inserted.quantity,
+                receivedQuantity = inserted.receivedQuantity,
+                purchasePrice = inserted.purchasePrice,
+                syncStatus = SyncStatus.PENDING
             )
-        }
+        )
         return inserted
     }
 
@@ -164,55 +157,53 @@ class PurchaseOrderRepository(
             val line = orderTable.getAllOrders().flatMap { it.lineItems }.find { it.id == lineItemId }
             if (line != null) {
                 val order = orderTable.getAllOrders().find { it.id == line.orderId }
-                runBlocking {
-                    orderDao.insertOrUpdateLine(
-                        PurchaseOrderLineEntity(
-                            uuid = "po-line-${line.id}",
-                            orderUuid = "po-${line.orderId}",
-                            supplierPartId = line.supplierPartId,
-                            quantity = line.quantity,
-                            receivedQuantity = line.receivedQuantity,
-                            purchasePrice = line.purchasePrice,
+                orderDao.insertOrUpdateLine(
+                    PurchaseOrderLineEntity(
+                        uuid = "po-line-${line.id}",
+                        orderUuid = "po-${line.orderId}",
+                        supplierPartId = line.supplierPartId,
+                        quantity = line.quantity,
+                        receivedQuantity = line.receivedQuantity,
+                        purchasePrice = line.purchasePrice,
+                        syncStatus = SyncStatus.PENDING
+                    )
+                )
+
+                partDao.addStockToPart("part-${line.supplierPartId}", qty)
+
+                stockDao.insertOrUpdate(
+                    StockItemEntity(
+                        uuid = AppUuid.generate(),
+                        partUuid = "part-${line.supplierPartId}",
+                        locationUuid = "loc-001",
+                        quantity = qty,
+                        purchasePrice = line.purchasePrice,
+                        purchasePriceCurrency = order?.orderCurrency ?: "USD",
+                        batch = order?.reference ?: "PO-RECV",
+                        purchaseOrderUuid = "po-${order?.id ?: 1L}",
+                        statusCode = 10,
+                        updatedAt = Clock.System.now().toEpochMilliseconds()
+                    )
+                )
+
+                if (order != null) {
+                    orderDao.insertOrUpdateOrder(
+                        PurchaseOrderEntity(
+                            uuid = "po-${order.id}",
+                            reference = order.reference,
+                            supplierId = order.supplierId,
+                            supplierName = order.supplierName,
+                            statusCode = order.status.code,
+                            description = order.description,
+                            orderCurrency = order.orderCurrency,
+                            targetDate = order.targetDate,
+                            totalCost = order.totalCost,
+                            sourceType = order.sourceType,
+                            sourceReferenceUuid = order.sourceReferenceUuid,
+                            destinationLocationUuid = order.destinationLocationUuid,
                             syncStatus = SyncStatus.PENDING
                         )
                     )
-
-                    partDao.addStockToPart("part-${line.supplierPartId}", qty)
-
-                    stockDao.insertOrUpdate(
-                        StockItemEntity(
-                            uuid = AppUuid.generate(),
-                            partUuid = "part-${line.supplierPartId}",
-                            locationUuid = "loc-001",
-                            quantity = qty,
-                            purchasePrice = line.purchasePrice,
-                            purchasePriceCurrency = order?.orderCurrency ?: "USD",
-                            batch = order?.reference ?: "PO-RECV",
-                            purchaseOrderUuid = "po-${order?.id ?: 1L}",
-                            statusCode = 10,
-                            updatedAt = Clock.System.now().toEpochMilliseconds()
-                        )
-                    )
-
-                    if (order != null) {
-                        orderDao.insertOrUpdateOrder(
-                            PurchaseOrderEntity(
-                                uuid = "po-${order.id}",
-                                reference = order.reference,
-                                supplierId = order.supplierId,
-                                supplierName = order.supplierName,
-                                statusCode = order.status.code,
-                                description = order.description,
-                                orderCurrency = order.orderCurrency,
-                                targetDate = order.targetDate,
-                                totalCost = order.totalCost,
-                                sourceType = order.sourceType,
-                                sourceReferenceUuid = order.sourceReferenceUuid,
-                                destinationLocationUuid = order.destinationLocationUuid,
-                                syncStatus = SyncStatus.PENDING
-                            )
-                        )
-                    }
                 }
             }
         }

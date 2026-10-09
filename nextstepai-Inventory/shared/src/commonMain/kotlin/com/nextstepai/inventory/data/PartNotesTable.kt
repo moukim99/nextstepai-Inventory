@@ -20,6 +20,7 @@ data class PartNotes(
 /**
  * إدارة وتخزين الملاحظات الموسعة للقطع (PartNotes) في الذاكرة مع التدقيق الآلي لسجل التعديلات (Audit Trail).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class PartNotesTable(
     private val partTable: PartTable = PartTable()
 ) {

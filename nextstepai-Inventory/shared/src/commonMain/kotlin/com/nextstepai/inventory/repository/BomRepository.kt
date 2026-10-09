@@ -12,7 +12,6 @@ import com.nextstepai.inventory.data.db.BomItemEntity
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
-import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 
 /**
@@ -36,7 +35,7 @@ class BomRepository(
      * جلب بنود قائمة المواد الخاصة بمنتج أب محدد من قاعدة البيانات المستمرة (SQLite).
      */
     fun getBomItemsForPart(partId: Long): List<BomItem> {
-        val entities = runBlocking { bomItemDao.getBomItemsPaged(partId = partId, limit = 500, offset = 0) }
+        val entities = bomItemDao.getBomItemsPaged(partId = partId, limit = 500, offset = 0)
         return entities.mapIndexed { index, entity ->
             val parsedId = entity.uuid.removePrefix("bom-").toLongOrNull() ?: (index + 1L)
             BomItem(
@@ -64,27 +63,25 @@ class BomRepository(
         val inserted = bomItemTable.insertBomItem(bomItem)
         val targetUuid = if (bomItem.uuid.isNotBlank()) bomItem.uuid else "bom-${inserted.id}"
         val itemWithUuid = inserted.copy(uuid = targetUuid)
-        runBlocking {
-            bomItemDao.insertOrUpdate(
-                BomItemEntity(
-                    uuid = targetUuid,
-                    partId = itemWithUuid.partId,
-                    subPartId = itemWithUuid.subPartId,
-                    quantity = itemWithUuid.quantity,
-                    reference = itemWithUuid.reference,
-                    optional = itemWithUuid.optional,
-                    consumable = itemWithUuid.consumable,
-                    allowVariants = itemWithUuid.allowVariants,
-                    inherited = itemWithUuid.inherited,
-                    note = itemWithUuid.note,
-                    checksum = itemWithUuid.checksum,
-                    phaseUuid = itemWithUuid.phaseUuid,
-                    syncStatus = SyncStatus.PENDING,
-                    isDeleted = false,
-                    updatedAt = Clock.System.now().toEpochMilliseconds()
-                )
+        bomItemDao.insertOrUpdate(
+            BomItemEntity(
+                uuid = targetUuid,
+                partId = itemWithUuid.partId,
+                subPartId = itemWithUuid.subPartId,
+                quantity = itemWithUuid.quantity,
+                reference = itemWithUuid.reference,
+                optional = itemWithUuid.optional,
+                consumable = itemWithUuid.consumable,
+                allowVariants = itemWithUuid.allowVariants,
+                inherited = itemWithUuid.inherited,
+                note = itemWithUuid.note,
+                checksum = itemWithUuid.checksum,
+                phaseUuid = itemWithUuid.phaseUuid,
+                syncStatus = SyncStatus.PENDING,
+                isDeleted = false,
+                updatedAt = Clock.System.now().toEpochMilliseconds()
             )
-        }
+        )
         return itemWithUuid
     }
 
@@ -95,27 +92,25 @@ class BomRepository(
         val updated = bomItemTable.updateBomItem(bomItem)
         val targetUuid = if (bomItem.uuid.isNotBlank()) bomItem.uuid else "bom-${updated.id}"
         val itemWithUuid = updated.copy(uuid = targetUuid)
-        runBlocking {
-            bomItemDao.insertOrUpdate(
-                BomItemEntity(
-                    uuid = targetUuid,
-                    partId = itemWithUuid.partId,
-                    subPartId = itemWithUuid.subPartId,
-                    quantity = itemWithUuid.quantity,
-                    reference = itemWithUuid.reference,
-                    optional = itemWithUuid.optional,
-                    consumable = itemWithUuid.consumable,
-                    allowVariants = itemWithUuid.allowVariants,
-                    inherited = itemWithUuid.inherited,
-                    note = itemWithUuid.note,
-                    checksum = itemWithUuid.checksum,
-                    phaseUuid = itemWithUuid.phaseUuid,
-                    syncStatus = SyncStatus.PENDING,
-                    isDeleted = false,
-                    updatedAt = Clock.System.now().toEpochMilliseconds()
-                )
+        bomItemDao.insertOrUpdate(
+            BomItemEntity(
+                uuid = targetUuid,
+                partId = itemWithUuid.partId,
+                subPartId = itemWithUuid.subPartId,
+                quantity = itemWithUuid.quantity,
+                reference = itemWithUuid.reference,
+                optional = itemWithUuid.optional,
+                consumable = itemWithUuid.consumable,
+                allowVariants = itemWithUuid.allowVariants,
+                inherited = itemWithUuid.inherited,
+                note = itemWithUuid.note,
+                checksum = itemWithUuid.checksum,
+                phaseUuid = itemWithUuid.phaseUuid,
+                syncStatus = SyncStatus.PENDING,
+                isDeleted = false,
+                updatedAt = Clock.System.now().toEpochMilliseconds()
             )
-        }
+        )
         return itemWithUuid
     }
 
@@ -156,12 +151,10 @@ class BomRepository(
      */
     fun deleteBomItem(uuid: String, id: Long = 0L): Boolean {
         val now = Clock.System.now().toEpochMilliseconds()
-        runBlocking {
-            if (uuid.isNotBlank()) {
-                bomItemDao.softDeleteByIdOrUuid(id = id, uuid = uuid, updatedAt = now)
-            } else if (id > 0L) {
-                bomItemDao.softDeleteByIdOrUuid(id = id, uuid = "bom-$id", updatedAt = now)
-            }
+        if (uuid.isNotBlank()) {
+            bomItemDao.softDeleteByIdOrUuid(id = id, uuid = uuid, updatedAt = now)
+        } else if (id > 0L) {
+            bomItemDao.softDeleteByIdOrUuid(id = id, uuid = "bom-$id", updatedAt = now)
         }
         bomItemTable.deleteBomItemByUuid(uuid)
         return bomItemTable.deleteBomItem(id)

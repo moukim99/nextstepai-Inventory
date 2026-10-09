@@ -105,14 +105,12 @@ class StockLocationTest {
 
         val entity = StockLocationEntity(
             uuid = "loc-uuid-15-fields",
-            locationId = 50L,
             name = "صندوق التخزين B12",
             description = "صندوق شفاف غير موصل للكهرباء",
-            parentId = 10L,
+            parentUuid = "loc-10",
             structural = false,
             external = true,
             locationType = "SHELF",
-            ownerId = 7L,
             icon = "box",
             customIcon = "custom_icon_b12.png",
             level = 2,
@@ -130,14 +128,13 @@ class StockLocationTest {
         val loaded = allLocations.firstOrNull { it.uuid == "loc-uuid-15-fields" }
 
         assertTrue(loaded != null)
-        assertEquals(50L, loaded.locationId)
+        assertEquals("loc-uuid-15-fields", loaded.uuid)
         assertEquals("صندوق التخزين B12", loaded.name)
         assertEquals("صندوق شفاف غير موصل للكهرباء", loaded.description)
-        assertEquals(10L, loaded.parentId)
+        assertEquals("loc-10", loaded.parentUuid)
         assertEquals(false, loaded.structural)
         assertEquals(true, loaded.external)
         assertEquals("SHELF", loaded.locationType)
-        assertEquals(7L, loaded.ownerId)
         assertEquals("box", loaded.icon)
         assertEquals("custom_icon_b12.png", loaded.customIcon)
         assertEquals(2, loaded.level)
@@ -280,7 +277,6 @@ class StockLocationTest {
 
         val siteEntity = StockLocationEntity(
             uuid = "site-primary-test-1",
-            locationId = 101L,
             name = "الموقع الأخير الرئيسي",
             locationType = "SITE",
             metadata = "{\"isPrimary\":true}",
@@ -290,11 +286,9 @@ class StockLocationTest {
 
         val whEntity = StockLocationEntity(
             uuid = "wh-primary-test-1",
-            locationId = 102L,
             name = "المستودع الأساسي الرئيسي",
             locationType = "WAREHOUSE",
             parentUuid = "site-primary-test-1",
-            parentId = 101L,
             metadata = "{\"isPrimary\":true}",
             updatedAt = now
         )
@@ -313,6 +307,9 @@ class StockLocationTest {
         val primaryWh = dao.findPrimaryLocation("WAREHOUSE")
         assertTrue(primaryWh != null)
         assertEquals("wh-primary-test-1", primaryWh.uuid)
+
+        dao.softDeleteLocation("site-primary-test-1")
+        dao.softDeleteLocation("wh-primary-test-1")
     }
 
     @Test
@@ -329,6 +326,9 @@ class StockLocationTest {
     @Test
     fun testSoftDeleteGuardReassignsPrimaryToOldestRemainingLocation() {
         val repo = StockRepository()
+        repo.getLocations().filter { it.locationType.equals("SITE", ignoreCase = true) }.forEach {
+            runCatching { repo.deleteLocation(it.id) }
+        }
 
         val site1 = repo.addLocation(
             StockLocation(name = "الموقع الأول الأساسي", locationType = "SITE").withPrimary(true)
@@ -344,11 +344,16 @@ class StockLocationTest {
         val updatedSite2 = repo.getLocations().find { it.id == site2.id }
         assertTrue(updatedSite2 != null)
         assertTrue(updatedSite2.isPrimary, "يجب أن يصبح الموقع الثاني النشط هو الأساسي تلقائياً لمنع حالة Zero Primary State")
+
+        runCatching { repo.deleteLocation(site2.id) }
     }
 
     @Test
     fun testSyncConflictResolutionByTimestamp() {
         val repo = StockRepository()
+        repo.getLocations().filter { it.locationType.equals("SITE", ignoreCase = true) }.forEach {
+            runCatching { repo.deleteLocation(it.id) }
+        }
 
         val site1 = repo.addLocation(
             StockLocation(name = "موقع 1 قديم", locationType = "SITE").withPrimary(true)
@@ -363,6 +368,9 @@ class StockLocationTest {
 
         assertTrue(refreshed2?.isPrimary == true, "الموقع الأحدث يحافظ على صفة الأساسي")
         assertTrue(refreshed1?.isPrimary == false, "الموقع الأقدم يُسحب منه صفة الأساسي لتجنب التعيين المزدوج")
+
+        runCatching { repo.deleteLocation(site1.id) }
+        runCatching { repo.deleteLocation(site2.id) }
     }
 
     @Test

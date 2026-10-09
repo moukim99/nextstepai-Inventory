@@ -18,7 +18,6 @@ import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
 import com.nextstepai.inventory.data.PartPricingTable
 import com.nextstepai.inventory.data.db.StockItemDao
-import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 
 /**
@@ -55,14 +54,12 @@ class BuildOrderRepository(
         partId: Long? = null,
         status: BuildStatus? = null
     ): List<BuildOrder> {
-        val entities = runBlocking {
-            buildDao.getBuildOrdersPaged(
-                partId = partId,
-                statusCode = status?.code,
-                limit = 500,
-                offset = 0
-            )
-        }
+        val entities = buildDao.getBuildOrdersPaged(
+            partId = partId,
+            statusCode = status?.code,
+            limit = 500,
+            offset = 0
+        )
         if (entities.isNotEmpty()) {
             var result = entities.mapIndexed { index, entity ->
                 val parsedId = entity.uuid.removePrefix("build-").toLongOrNull() ?: (index + 1L)
@@ -110,9 +107,7 @@ class BuildOrderRepository(
         if (storedCost > 0.0) return storedCost
 
         // 1. سعر الشراء الفعلي المسجل في جدول المخزون للقطعة الفرعية
-        val stockItems = runBlocking {
-            runCatching { stockDao.getStockItemsPaged(partUuid = "part-$subPartId", limit = 10) }.getOrDefault(emptyList())
-        }
+        val stockItems = runCatching { stockDao.getStockItemsPaged(partUuid = "part-$subPartId", limit = 10) }.getOrDefault(emptyList())
         val stockPrice = stockItems.firstOrNull { it.purchasePrice > 0.0 }?.purchasePrice
         if (stockPrice != null && stockPrice > 0.0) {
             return stockPrice
@@ -135,9 +130,7 @@ class BuildOrderRepository(
      * جلب بنود ومخرجات أمر التصنيع المحددة.
      */
     fun getLineItemsForBuild(buildId: Long): List<BuildOrderLineItem> {
-        val dbItems = runBlocking {
-            runCatching { lineItemDao.getLineItemsForBuild(buildId) }.getOrDefault(emptyList())
-        }
+        val dbItems = runCatching { lineItemDao.getLineItemsForBuild(buildId) }.getOrDefault(emptyList())
         if (dbItems.isNotEmpty()) {
             return dbItems.map { entity ->
                 val resolvedCost = resolveUnitCostForSubPart(entity.subPartId, entity.unitCost)
@@ -166,27 +159,25 @@ class BuildOrderRepository(
      */
     fun addLineItem(item: BuildOrderLineItem): BuildOrderLineItem {
         val inserted = lineItemTable.insertLineItem(item)
-        runBlocking {
-            lineItemDao.insertOrUpdate(
-                BuildOrderLineItemEntity(
-                    uuid = "lineitem-${inserted.id}",
-                    id = inserted.id,
-                    buildId = inserted.buildId,
-                    buildUuid = inserted.buildUuid.ifBlank { "build-${inserted.buildId}" },
-                    bomItemId = inserted.bomItemId,
-                    bomItemUuid = inserted.bomItemUuid.ifBlank { "bom-${inserted.bomItemId}" },
-                    subPartId = inserted.subPartId,
-                    subPartName = inserted.subPartName,
-                    quantity = inserted.quantity,
-                    allocatedQuantity = inserted.allocatedQuantity,
-                    consumedQuantity = inserted.consumedQuantity,
-                    notes = inserted.notes,
-                    phaseUuid = inserted.phaseUuid,
-                    unitCost = inserted.unitCost,
-                    syncStatus = SyncStatus.PENDING
-                )
+        lineItemDao.insertOrUpdate(
+            BuildOrderLineItemEntity(
+                uuid = "lineitem-${inserted.id}",
+                id = inserted.id,
+                buildId = inserted.buildId,
+                buildUuid = inserted.buildUuid.ifBlank { "build-${inserted.buildId}" },
+                bomItemId = inserted.bomItemId,
+                bomItemUuid = inserted.bomItemUuid.ifBlank { "bom-${inserted.bomItemId}" },
+                subPartId = inserted.subPartId,
+                subPartName = inserted.subPartName,
+                quantity = inserted.quantity,
+                allocatedQuantity = inserted.allocatedQuantity,
+                consumedQuantity = inserted.consumedQuantity,
+                notes = inserted.notes,
+                phaseUuid = inserted.phaseUuid,
+                unitCost = inserted.unitCost,
+                syncStatus = SyncStatus.PENDING
             )
-        }
+        )
         return inserted
     }
 
@@ -206,26 +197,24 @@ class BuildOrderRepository(
      */
     fun addBuildItemAllocation(item: BuildItem): BuildItem {
         val inserted = buildItemTable.insertBuildItem(item)
-        runBlocking {
-            buildItemDao.insertOrUpdate(
-                BuildItemEntity(
-                    uuid = "builditem-${inserted.id}",
-                    id = inserted.id,
-                    buildId = inserted.buildId,
-                    buildUuid = inserted.buildUuid.ifBlank { "build-${inserted.buildId}" },
-                    buildLineId = inserted.buildLineId,
-                    buildLineUuid = inserted.buildLineUuid.ifBlank { if (inserted.buildLineId != null) "lineitem-${inserted.buildLineId}" else "" },
-                    stockItemId = inserted.stockItemId,
-                    stockItemUuid = inserted.stockItemUuid.ifBlank { "stock-${inserted.stockItemId}" },
-                    stockItemName = inserted.stockItemName,
-                    quantity = inserted.quantity,
-                    installIntoStockItemId = inserted.installIntoStockItemId,
-                    installIntoStockItemUuid = inserted.installIntoStockItemUuid,
-                    notes = inserted.notes,
-                    syncStatus = SyncStatus.PENDING
-                )
+        buildItemDao.insertOrUpdate(
+            BuildItemEntity(
+                uuid = "builditem-${inserted.id}",
+                id = inserted.id,
+                buildId = inserted.buildId,
+                buildUuid = inserted.buildUuid.ifBlank { "build-${inserted.buildId}" },
+                buildLineId = inserted.buildLineId,
+                buildLineUuid = inserted.buildLineUuid.ifBlank { if (inserted.buildLineId != null) "lineitem-${inserted.buildLineId}" else "" },
+                stockItemId = inserted.stockItemId,
+                stockItemUuid = inserted.stockItemUuid.ifBlank { "stock-${inserted.stockItemId}" },
+                stockItemName = inserted.stockItemName,
+                quantity = inserted.quantity,
+                installIntoStockItemId = inserted.installIntoStockItemId,
+                installIntoStockItemUuid = inserted.installIntoStockItemUuid,
+                notes = inserted.notes,
+                syncStatus = SyncStatus.PENDING
             )
-        }
+        )
         item.buildLineId?.let { lineId ->
             lineItemTable.allocateStock(lineId, item.quantity)
         }
@@ -265,29 +254,27 @@ class BuildOrderRepository(
         if (success) {
             val item = lineItemTable.getLineItemById(lineItemId)
             if (item != null) {
-                runBlocking {
-                    lineItemDao.insertOrUpdate(
-                        BuildOrderLineItemEntity(
-                            uuid = "lineitem-${item.id}",
-                            id = item.id,
-                            buildId = item.buildId,
-                            buildUuid = item.buildUuid.ifBlank { "build-${item.buildId}" },
-                            bomItemId = item.bomItemId,
-                            bomItemUuid = item.bomItemUuid.ifBlank { "bom-${item.bomItemId}" },
-                            subPartId = item.subPartId,
-                            subPartName = item.subPartName,
-                            quantity = item.quantity,
-                            allocatedQuantity = item.allocatedQuantity,
-                            consumedQuantity = item.consumedQuantity,
-                            notes = item.notes,
-                            phaseUuid = item.phaseUuid,
-                            unitCost = item.unitCost,
-                            syncStatus = SyncStatus.PENDING,
-                            isDeleted = false,
-                            updatedAt = Clock.System.now().toEpochMilliseconds()
-                        )
+                lineItemDao.insertOrUpdate(
+                    BuildOrderLineItemEntity(
+                        uuid = "lineitem-${item.id}",
+                        id = item.id,
+                        buildId = item.buildId,
+                        buildUuid = item.buildUuid.ifBlank { "build-${item.buildId}" },
+                        bomItemId = item.bomItemId,
+                        bomItemUuid = item.bomItemUuid.ifBlank { "bom-${item.bomItemId}" },
+                        subPartId = item.subPartId,
+                        subPartName = item.subPartName,
+                        quantity = item.quantity,
+                        allocatedQuantity = item.allocatedQuantity,
+                        consumedQuantity = item.consumedQuantity,
+                        notes = item.notes,
+                        phaseUuid = item.phaseUuid,
+                        unitCost = item.unitCost,
+                        syncStatus = SyncStatus.PENDING,
+                        isDeleted = false,
+                        updatedAt = Clock.System.now().toEpochMilliseconds()
                     )
-                }
+                )
             }
         }
         return success
@@ -301,29 +288,27 @@ class BuildOrderRepository(
         if (success) {
             val item = lineItemTable.getLineItemById(lineItemId)
             if (item != null) {
-                runBlocking {
-                    lineItemDao.insertOrUpdate(
-                        BuildOrderLineItemEntity(
-                            uuid = "lineitem-${item.id}",
-                            id = item.id,
-                            buildId = item.buildId,
-                            buildUuid = item.buildUuid.ifBlank { "build-${item.buildId}" },
-                            bomItemId = item.bomItemId,
-                            bomItemUuid = item.bomItemUuid.ifBlank { "bom-${item.bomItemId}" },
-                            subPartId = item.subPartId,
-                            subPartName = item.subPartName,
-                            quantity = item.quantity,
-                            allocatedQuantity = item.allocatedQuantity,
-                            consumedQuantity = item.consumedQuantity,
-                            notes = item.notes,
-                            phaseUuid = item.phaseUuid,
-                            unitCost = item.unitCost,
-                            syncStatus = SyncStatus.PENDING,
-                            isDeleted = false,
-                            updatedAt = Clock.System.now().toEpochMilliseconds()
-                        )
+                lineItemDao.insertOrUpdate(
+                    BuildOrderLineItemEntity(
+                        uuid = "lineitem-${item.id}",
+                        id = item.id,
+                        buildId = item.buildId,
+                        buildUuid = item.buildUuid.ifBlank { "build-${item.buildId}" },
+                        bomItemId = item.bomItemId,
+                        bomItemUuid = item.bomItemUuid.ifBlank { "bom-${item.bomItemId}" },
+                        subPartId = item.subPartId,
+                        subPartName = item.subPartName,
+                        quantity = item.quantity,
+                        allocatedQuantity = item.allocatedQuantity,
+                        consumedQuantity = item.consumedQuantity,
+                        notes = item.notes,
+                        phaseUuid = item.phaseUuid,
+                        unitCost = item.unitCost,
+                        syncStatus = SyncStatus.PENDING,
+                        isDeleted = false,
+                        updatedAt = Clock.System.now().toEpochMilliseconds()
                     )
-                }
+                )
             }
         }
         return success
@@ -334,34 +319,32 @@ class BuildOrderRepository(
      */
     fun addBuildOrder(build: BuildOrder): BuildOrder {
         val inserted = buildTable.insertBuild(build)
-        runBlocking {
-            buildDao.insertOrUpdate(
-                BuildOrderEntity(
-                    uuid = "build-${inserted.id}",
-                    reference = inserted.reference,
-                    title = inserted.title,
-                    partId = inserted.partId,
-                    partName = inserted.partName,
-                    quantity = inserted.quantity,
-                    completedQuantity = inserted.completedQuantity,
-                    statusCode = inserted.status.code,
-                    batch = inserted.batch,
-                    targetDate = inserted.targetDate,
-                    startDate = inserted.startDate,
-                    completionDate = inserted.completionDate,
-                    creationDate = inserted.creationDate,
-                    parentId = inserted.parentId,
-                    salesOrderId = inserted.salesOrderId,
-                    takeFromLocationId = inserted.takeFromLocationId,
-                    destinationLocationId = inserted.destinationLocationId,
-                    issuedBy = inserted.issuedBy,
-                    responsible = inserted.responsible,
-                    notes = inserted.notes,
-                    link = inserted.link,
-                    syncStatus = SyncStatus.PENDING
-                )
+        buildDao.insertOrUpdate(
+            BuildOrderEntity(
+                uuid = "build-${inserted.id}",
+                reference = inserted.reference,
+                title = inserted.title,
+                partId = inserted.partId,
+                partName = inserted.partName,
+                quantity = inserted.quantity,
+                completedQuantity = inserted.completedQuantity,
+                statusCode = inserted.status.code,
+                batch = inserted.batch,
+                targetDate = inserted.targetDate,
+                startDate = inserted.startDate,
+                completionDate = inserted.completionDate,
+                creationDate = inserted.creationDate,
+                parentId = inserted.parentId,
+                salesOrderId = inserted.salesOrderId,
+                takeFromLocationId = inserted.takeFromLocationId,
+                destinationLocationId = inserted.destinationLocationId,
+                issuedBy = inserted.issuedBy,
+                responsible = inserted.responsible,
+                notes = inserted.notes,
+                link = inserted.link,
+                syncStatus = SyncStatus.PENDING
             )
-        }
+        )
         return inserted
     }
 

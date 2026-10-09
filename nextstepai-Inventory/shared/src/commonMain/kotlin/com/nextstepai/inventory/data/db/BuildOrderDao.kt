@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -16,7 +16,7 @@ class BuildOrderDao {
         issuedBy, responsible, notes, link, syncStatus, isDeleted, updatedAt
     """.trimIndent()
 
-    suspend fun getBuildOrdersPaged(
+    fun getBuildOrdersPaged(
         partId: Long? = null,
         statusCode: Int? = null,
         limit: Int = 20,
@@ -49,7 +49,7 @@ class BuildOrderDao {
         return results
     }
 
-    suspend fun getPendingSyncBuilds(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<BuildOrderEntity> {
+    fun getPendingSyncBuilds(status: SyncStatus = SyncStatus.PENDING, limit: Int = 50, offset: Int = 0): List<BuildOrderEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<BuildOrderEntity>()
 
@@ -70,7 +70,7 @@ class BuildOrderDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: BuildOrderEntity) {
+    fun insertOrUpdate(entity: BuildOrderEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO build_orders (
@@ -107,7 +107,7 @@ class BuildOrderDao {
         }
     }
 
-    suspend fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
+    fun updateSyncStatusForUuids(uuids: List<String>, newStatus: SyncStatus) {
         if (uuids.isEmpty()) return
         val conn = SqliteDatabaseManager.getConnection()
         for (uuid in uuids) {
@@ -142,7 +142,7 @@ class BuildOrderDao {
             responsible = stmt.getText(18),
             notes = stmt.getText(19),
             link = stmt.getText(20),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(21)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(21)),
             isDeleted = stmt.getLong(22) != 0L,
             updatedAt = stmt.getLong(23)
         )

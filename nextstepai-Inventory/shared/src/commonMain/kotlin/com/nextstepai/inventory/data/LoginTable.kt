@@ -22,6 +22,7 @@ data class LoginRecord(
 /**
  * محاكاة وإدارة جدول الدخول (Login Table) لحفظ وجلب وإدارة حالات وسجلات الدخول.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class LoginTable {
     private val records = mutableListOf<LoginRecord>()
     private var activeRecord: LoginRecord? = null

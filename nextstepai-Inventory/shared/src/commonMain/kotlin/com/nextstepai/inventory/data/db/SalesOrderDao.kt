@@ -1,4 +1,4 @@
-package com.nextstepai.inventory.data.db
+﻿package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -18,7 +18,7 @@ class SalesOrderDao {
         uuid, orderUuid, orderId, partId, partUuid, partName, quantity, unitPrice, allocatedQuantity, shippedQuantity, notes, syncStatus, isDeleted, updatedAt
     """.trimIndent()
 
-    suspend fun getOrdersPaged(
+    fun getOrdersPaged(
         customerId: Long? = null,
         statusCode: Int? = null,
         limit: Int = 20,
@@ -51,7 +51,7 @@ class SalesOrderDao {
         return results
     }
 
-    suspend fun getLinesForOrderUuid(orderUuid: String): List<SalesOrderLineEntity> {
+    fun getLinesForOrderUuid(orderUuid: String): List<SalesOrderLineEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<SalesOrderLineEntity>()
 
@@ -69,7 +69,7 @@ class SalesOrderDao {
         return results
     }
 
-    suspend fun insertOrUpdateOrder(entity: SalesOrderEntity) {
+    fun insertOrUpdateOrder(entity: SalesOrderEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO sales_orders (
@@ -96,7 +96,7 @@ class SalesOrderDao {
         }
     }
 
-    suspend fun insertOrUpdateLine(entity: SalesOrderLineEntity) {
+    fun insertOrUpdateLine(entity: SalesOrderLineEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO sales_order_lines (
@@ -136,7 +136,7 @@ class SalesOrderDao {
             sourceType = runCatching { stmt.getText(10) }.getOrDefault("MANUAL"),
             sourceReferenceUuid = if (stmt.isNull(11)) null else stmt.getText(11),
             notes = stmt.getText(12),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(13)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(13)),
             isDeleted = stmt.getLong(14) != 0L,
             updatedAt = stmt.getLong(15)
         )
@@ -155,7 +155,7 @@ class SalesOrderDao {
             allocatedQuantity = stmt.getDouble(8),
             shippedQuantity = stmt.getDouble(9),
             notes = stmt.getText(10),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(11)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(11)),
             isDeleted = stmt.getLong(12) != 0L,
             updatedAt = stmt.getLong(13)
         )

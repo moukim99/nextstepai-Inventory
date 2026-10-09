@@ -16,6 +16,8 @@ import com.nextstepai.inventory.data.labelSnapshotData
 import com.nextstepai.inventory.data.getLabelDiffDetails
 import com.nextstepai.inventory.data.db.StockItemDao
 import com.nextstepai.inventory.data.db.StockItemEntity
+import com.nextstepai.inventory.auth.AuthTokens
+import com.nextstepai.inventory.auth.SecureTokenStorage
 import com.nextstepai.inventory.repository.StockRepository
 import com.nextstepai.inventory.sync.SyncStatus
 import kotlinx.coroutines.runBlocking
@@ -385,8 +387,8 @@ class StockItemTest {
 
         val entity = StockItemEntity(
             uuid = "stock-24-fields-test",
-            partId = 100L,
-            locationId = 2L,
+            partUuid = "part-100",
+            locationUuid = "loc-2",
             quantity = 25.5,
             serial = "",
             batch = "LOT-2025-X",
@@ -394,16 +396,16 @@ class StockItemTest {
             packaging = "Reel",
             purchasePrice = 12.5,
             purchasePriceCurrency = "SAR",
-            purchaseOrderId = 55L,
-            supplierPartId = 88L,
-            salesOrderId = 33L,
-            customerId = 77L,
-            buildId = 12L,
+            purchaseOrderUuid = "po-55",
+            supplierPartUuid = "sup-88",
+            salesOrderUuid = "so-33",
+            customerUuid = "cust-77",
+            buildUuid = "build-12",
             isBuilding = false,
-            parentId = null,
+            parentStockItemUuid = null,
             expiryDate = "2026-12-31",
             stocktakeDate = "2025-02-15",
-            stocktakeUserId = 1L,
+            stocktakeUserUuid = "usr-1",
             reviewNeeded = false,
             deleteOnDeplete = true,
             link = "https://example.com/item/100",
@@ -415,25 +417,25 @@ class StockItemTest {
 
         dao.insertOrUpdate(entity)
 
-        val loadedList = dao.getStockItemsPaged(partId = 100L, limit = 10, offset = 0)
+        val loadedList = dao.getStockItemsPaged(partUuid = "part-100", limit = 10, offset = 0)
         val loaded = loadedList.firstOrNull { it.uuid == "stock-24-fields-test" }
 
         assertTrue(loaded != null)
-        assertEquals(100L, loaded.partId)
-        assertEquals(2L, loaded.locationId)
+        assertEquals("part-100", loaded.partUuid)
+        assertEquals("loc-2", loaded.locationUuid)
         assertEquals(25.5, loaded.quantity)
         assertEquals("LOT-2025-X", loaded.batch)
         assertEquals("Reel", loaded.packaging)
         assertEquals(12.5, loaded.purchasePrice)
         assertEquals("SAR", loaded.purchasePriceCurrency)
-        assertEquals(55L, loaded.purchaseOrderId)
-        assertEquals(88L, loaded.supplierPartId)
-        assertEquals(33L, loaded.salesOrderId)
-        assertEquals(77L, loaded.customerId)
-        assertEquals(12L, loaded.buildId)
+        assertEquals("po-55", loaded.purchaseOrderUuid)
+        assertEquals("sup-88", loaded.supplierPartUuid)
+        assertEquals("so-33", loaded.salesOrderUuid)
+        assertEquals("cust-77", loaded.customerUuid)
+        assertEquals("build-12", loaded.buildUuid)
         assertEquals("2026-12-31", loaded.expiryDate)
         assertEquals("2025-02-15", loaded.stocktakeDate)
-        assertEquals(1L, loaded.stocktakeUserId)
+        assertEquals("usr-1", loaded.stocktakeUserUuid)
         assertTrue(loaded.deleteOnDeplete)
         assertEquals("https://example.com/item/100", loaded.link)
         assertEquals("ملاحظات الفحص والتوثيق الشامل", loaded.notes)
@@ -448,7 +450,7 @@ class StockItemTest {
             dao.insertOrUpdate(
                 StockItemEntity(
                     uuid = "stock-uuid-$i",
-                    partId = 1L,
+                    partUuid = "part-1",
                     quantity = 10.0,
                     syncStatus = SyncStatus.PENDING,
                     updatedAt = now + i
@@ -470,6 +472,7 @@ class StockItemTest {
 
     @Test
     fun testStockBatchSyncWithCloudflare() = runBlocking {
+        SecureTokenStorage().saveTokens(AuthTokens("test-access-token", "test-refresh-token"))
         val repository = StockRepository()
         repository.addStockItem(
             StockItem(

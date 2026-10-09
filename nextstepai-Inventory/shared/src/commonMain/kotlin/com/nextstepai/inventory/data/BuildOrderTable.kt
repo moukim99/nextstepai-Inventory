@@ -83,6 +83,7 @@ data class BuildOrder(
 /**
  * محاكاة جدول أوامر الإنتاج والتصنيع (Build Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class BuildOrderTable {
     private val builds = mutableListOf<BuildOrder>()
     private var nextBuildId = 1L

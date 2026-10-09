@@ -33,6 +33,7 @@ data class PartAttachment(
 /**
  * إدارة وتخزين مرفقات ووثائق القطع (PartAttachment) في الذاكرة مع الشروط والقيود المنطقية.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class PartAttachmentTable(
     private val partTable: PartTable = PartTable()
 ) {

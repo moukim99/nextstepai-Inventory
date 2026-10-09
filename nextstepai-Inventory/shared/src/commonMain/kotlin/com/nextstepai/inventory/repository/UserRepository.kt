@@ -21,7 +21,7 @@ class UserRepository(
     /**
      * سحب قائمة الحسابات النشطة (WHERE active = 1 AND isDeleted = 0).
      */
-    suspend fun getActiveUsers(): List<AppUser> {
+    fun getActiveUsers(): List<AppUser> {
         return runCatching {
             val entities = userDao.getActiveUsers()
             if (entities.isNotEmpty()) {

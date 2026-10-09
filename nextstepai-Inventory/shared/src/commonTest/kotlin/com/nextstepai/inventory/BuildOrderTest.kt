@@ -6,6 +6,8 @@ import com.nextstepai.inventory.data.BuildOrderTable
 import com.nextstepai.inventory.data.BuildStatus
 import com.nextstepai.inventory.data.db.BuildOrderDao
 import com.nextstepai.inventory.data.db.BuildOrderEntity
+import com.nextstepai.inventory.auth.AuthTokens
+import com.nextstepai.inventory.auth.SecureTokenStorage
 import com.nextstepai.inventory.repository.BuildOrderRepository
 import com.nextstepai.inventory.sync.SyncStatus
 import kotlinx.coroutines.runBlocking
@@ -96,6 +98,7 @@ class BuildOrderTest {
 
     @Test
     fun testBuildBatchSyncWithCloudflare() = runBlocking {
+        SecureTokenStorage().saveTokens(AuthTokens("test-access-token", "test-refresh-token"))
         val repository = BuildOrderRepository()
 
         repository.addBuildOrder(

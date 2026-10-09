@@ -41,7 +41,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
@@ -105,7 +104,14 @@ class PartViewModel(
     private val allocationRepository: PartAllocationRepository = com.nextstepai.inventory.repository.PartAllocationRepository()
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(PartUiState())
+    private val _uiState = MutableStateFlow(
+        PartUiState(
+            stockItems = runCatching { stockRepository.getStockItems() }.getOrDefault(emptyList()),
+            stockLocations = runCatching { stockRepository.getLocations() }.getOrDefault(emptyList()),
+            parts = runCatching { repository.getParts() }.getOrDefault(emptyList()),
+            categories = runCatching { repository.getCategories() }.getOrDefault(emptyList())
+        )
+    )
     val uiState: StateFlow<PartUiState> = _uiState.asStateFlow()
 
     init {
@@ -310,11 +316,9 @@ class PartViewModel(
 
             // 2. تحديد المعرف الخاص بالمستخدم المسؤول عن العمليات وتاريخ الاستلام
             val effectiveDate = receiptDate.ifBlank { DateTimeUtils.getCurrentDateTime() }
-            val activeUserId = receivedByUserId ?: runBlocking {
-                runCatching {
-                    userRepository.getActiveUsers().firstOrNull()?.uuid?.removePrefix("usr-")?.toLongOrNull()
-                }.getOrNull() ?: 1L
-            }
+            val activeUserId = receivedByUserId ?: runCatching {
+                userRepository.getActiveUsers().firstOrNull()?.uuid?.removePrefix("usr-")?.toLongOrNull()
+            }.getOrNull() ?: 1L
 
             // 3. إدراج عنصر المخزون في جدول stock_items
             val stockItem = StockItem(
@@ -359,8 +363,10 @@ class PartViewModel(
             // 6. تحديث إجمالي الرصيد التراكمي للقطعة عبر كافة المواقع
             repository.addStockToPart(partId, quantity)
 
+            val currentStockItems = stockRepository.getStockItems()
             _uiState.update { state ->
                 state.copy(
+                    stockItems = currentStockItems,
                     message = "تم استلام الشحنة (${insertedStock.quantity} ${part.units}) بتاريخ ($effectiveDate) وتوثيقها برقم الدفعة ($generatedBatch) بنجاح"
                 )
             }
@@ -420,7 +426,8 @@ class PartViewModel(
                 notes = notes
             )
             if (success) {
-                _uiState.update { it.copy(message = "تم نقل المخزون بنجاح") }
+                val currentStockItems = stockRepository.getStockItems()
+                _uiState.update { it.copy(stockItems = currentStockItems, message = "تم نقل المخزون بنجاح") }
                 loadData()
             }
         } catch (e: Exception) {
@@ -917,8 +924,8 @@ class PartViewModel(
         }
 
         val enrichedParts = filtered.map { part ->
-            val hard = runBlocking { allocationRepository.getCommittedQuantity(part.id) }
-            val soft = runBlocking { allocationRepository.getSoftQuantity(part.id) }
+            val hard = allocationRepository.getCommittedQuantity(part.id)
+            val soft = allocationRepository.getSoftQuantity(part.id)
             if (hard > 0 || soft > 0) {
                 part.copy(totalHardAllocated = hard, totalSoftAllocated = soft)
             } else {

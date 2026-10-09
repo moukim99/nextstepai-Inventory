@@ -88,8 +88,8 @@ object TestDataGenerator {
         try {
             // 1. part_categories (12 تصنيف)
             conn.prepare("""
-                INSERT INTO part_categories (id, name, parentId, description, structural, defaultLocationId)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO part_categories (uuid, id, name, parentId, parentUuid, description, structural, defaultLocationId, syncStatus, isDeleted, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val categories = listOf(
                     listOf(1L, "الكترونيات وصنع اللوحات", null, "المكونات الإلكترونية الدقيقة والشرائح", 1L, 1L),
@@ -106,12 +106,16 @@ object TestDataGenerator {
                     listOf(12L, "المنتجات التامة والتجميعات", null, "المنتجات المكتملة المصنعة الجاهزة للبيع", 1L, 3L)
                 )
                 for (c in categories) {
-                    stmt.bindLong(1, c[0] as Long)
-                    stmt.bindText(2, c[1] as String)
-                    if (c[2] == null) stmt.bindNull(3) else stmt.bindLong(3, c[2] as Long)
-                    stmt.bindText(4, c[3] as String)
-                    stmt.bindLong(5, c[4] as Long)
-                    stmt.bindLong(6, c[5] as Long)
+                    val catUuid = "cat-${(c[0] as Long).toString().padStart(3, '0')}"
+                    stmt.bindText(1, catUuid)
+                    stmt.bindLong(2, c[0] as Long)
+                    stmt.bindText(3, c[1] as String)
+                    if (c[2] == null) stmt.bindNull(4) else stmt.bindLong(4, c[2] as Long)
+                    if (c[2] == null) stmt.bindNull(5) else stmt.bindText(5, "cat-${(c[2] as Long).toString().padStart(3, '0')}")
+                    stmt.bindText(6, c[3] as String)
+                    stmt.bindLong(7, c[4] as Long)
+                    stmt.bindLong(8, c[5] as Long)
+                    stmt.bindLong(9, now)
                     stmt.step()
                     stmt.reset()
                 }
@@ -119,8 +123,8 @@ object TestDataGenerator {
 
             // 2. part_parameter_templates (8 قوالب معاملات)
             conn.prepare("""
-                INSERT INTO part_parameter_templates (id, name, units, description, choices, checkbox)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO part_parameter_templates (uuid, id, name, units, description, choices, checkbox, syncStatus, isDeleted, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val templates = listOf(
                     listOf(1L, "الجهد الكهربائي التشغيلي", "V", "نطاق جهد التغذية المطلوب", "3.3V, 5V, 12V, 24V", 0L),
@@ -133,12 +137,14 @@ object TestDataGenerator {
                     listOf(8L, "مطابق لمعايير RoHS الخضراء", "", "خالي من المواد السامة", "", 1L)
                 )
                 for (t in templates) {
-                    stmt.bindLong(1, t[0] as Long)
-                    stmt.bindText(2, t[1] as String)
-                    stmt.bindText(3, t[2] as String)
-                    stmt.bindText(4, t[3] as String)
-                    stmt.bindText(5, t[4] as String)
-                    stmt.bindLong(6, t[5] as Long)
+                    stmt.bindText(1, "param-tmpl-${t[0]}")
+                    stmt.bindLong(2, t[0] as Long)
+                    stmt.bindText(3, t[1] as String)
+                    stmt.bindText(4, t[2] as String)
+                    stmt.bindText(5, t[3] as String)
+                    stmt.bindText(6, t[4] as String)
+                    stmt.bindLong(7, t[5] as Long)
+                    stmt.bindLong(8, now)
                     stmt.step()
                     stmt.reset()
                 }
@@ -146,8 +152,8 @@ object TestDataGenerator {
 
             // 3. part_category_parameter_templates
             conn.prepare("""
-                INSERT INTO part_category_parameter_templates (id, categoryId, parameterTemplateId, defaultValue)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO part_category_parameter_templates (uuid, id, categoryId, categoryUuid, parameterTemplateId, parameterTemplateUuid, defaultValue, syncStatus, isDeleted, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val catParams = listOf(
                     listOf(1L, 2L, 2L, "10uF"),
@@ -158,10 +164,14 @@ object TestDataGenerator {
                     listOf(6L, 4L, 7L, "5A")
                 )
                 for (cp in catParams) {
-                    stmt.bindLong(1, cp[0] as Long)
-                    stmt.bindLong(2, cp[1] as Long)
-                    stmt.bindLong(3, cp[2] as Long)
-                    stmt.bindText(4, cp[3] as String)
+                    stmt.bindText(1, "cat-param-${cp[0]}")
+                    stmt.bindLong(2, cp[0] as Long)
+                    stmt.bindLong(3, cp[1] as Long)
+                    stmt.bindText(4, "cat-${(cp[1] as Long).toString().padStart(3, '0')}")
+                    stmt.bindLong(5, cp[2] as Long)
+                    stmt.bindText(6, "param-tmpl-${cp[2]}")
+                    stmt.bindText(7, cp[3] as String)
+                    stmt.bindLong(8, now)
                     stmt.step()
                     stmt.reset()
                 }
@@ -270,25 +280,29 @@ object TestDataGenerator {
 
             // 6. part_parameters (معاملات المعايير والقياسات)
             conn.prepare("""
-                INSERT INTO part_parameters (id, partId, templateId, data, dataNumeric)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO part_parameters (uuid, id, partId, partUuid, templateId, templateUuid, data, dataNumeric, syncStatus, isDeleted, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val params = listOf(
-                    listOf(1L, 1L, 1L, "3.3V", 3.3),
-                    listOf(2L, 1L, 5L, "168MHz", 168.0),
-                    listOf(3L, 1L, 6L, "1024KB", 1024.0),
-                    listOf(4L, 2L, 2L, "10uF", 10.0),
-                    listOf(5L, 5L, 3L, "10000", 10000.0),
-                    listOf(6L, 6L, 7L, "5A", 5.0),
-                    listOf(7L, 7L, 5L, "240MHz", 240.0),
-                    listOf(8L, 10L, 1L, "3.3V", 3.3)
+                    listOf("param-001", 1L, 1L, "part-uuid-1", 1L, "param-tmpl-1", "3.3V", 3.3),
+                    listOf("param-002", 2L, 1L, "part-uuid-1", 5L, "param-tmpl-5", "168MHz", 168.0),
+                    listOf("param-003", 3L, 1L, "part-uuid-1", 6L, "param-tmpl-6", "1024KB", 1024.0),
+                    listOf("param-004", 4L, 2L, "part-uuid-2", 2L, "param-tmpl-2", "10uF", 10.0),
+                    listOf("param-005", 5L, 5L, "part-uuid-5", 3L, "param-tmpl-3", "10000", 10000.0),
+                    listOf("param-006", 6L, 6L, "part-uuid-6", 7L, "param-tmpl-7", "5A", 5.0),
+                    listOf("param-007", 7L, 7L, "part-uuid-7", 5L, "param-tmpl-5", "240MHz", 240.0),
+                    listOf("param-008", 8L, 10L, "part-uuid-10", 1L, "param-tmpl-1", "3.3V", 3.3)
                 )
                 for (pm in params) {
-                    stmt.bindLong(1, pm[0] as Long)
+                    stmt.bindText(1, pm[0] as String)
                     stmt.bindLong(2, pm[1] as Long)
                     stmt.bindLong(3, pm[2] as Long)
                     stmt.bindText(4, pm[3] as String)
-                    stmt.bindDouble(5, pm[4] as Double)
+                    stmt.bindLong(5, pm[4] as Long)
+                    stmt.bindText(6, pm[5] as String)
+                    stmt.bindText(7, pm[6] as String)
+                    stmt.bindDouble(8, pm[7] as Double)
+                    stmt.bindLong(9, now)
                     stmt.step()
                     stmt.reset()
                 }
@@ -296,21 +310,24 @@ object TestDataGenerator {
 
             // 7. part_notes
             conn.prepare("""
-                INSERT INTO part_notes (id, partId, notes, updatedAt, userId)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO part_notes (uuid, id, partId, partUuid, notes, updatedAt, userId, userUuid, syncStatus, isDeleted)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0)
             """.trimIndent()).use { stmt ->
                 val notes = listOf(
-                    listOf(1L, 1L, "حفظ الشريحة في بيئة تفريغ كهربائي ESD وصناديق مانعة للرطوبة", "2025-01-15 10:00:00", 1L),
-                    listOf(2L, 3L, "وحدة استشعار حرارة دقيقة تمت معايرتها مخبرياً بنجاح", "2025-01-16 09:00:00", 1L),
-                    listOf(3L, 4L, "لوحة متوافقة مع معايير الأمان الصناعية IEC 61080 وتطبيقات 24V", "2025-01-16 11:30:00", 1L),
-                    listOf(4L, 15L, "منتج ذكي نهائي مبرمج بالفرموير الإصدار v3.4.1 للتحكم السحابي", "2025-01-20 14:00:00", 1L)
+                    listOf("note-001", 1L, 1L, "part-uuid-1", "حفظ الشريحة في بيئة تفريغ كهربائي ESD وصناديق مانعة للرطوبة", 1735689600000L, 1L, "usr-001"),
+                    listOf("note-002", 2L, 3L, "part-uuid-3", "وحدة استشعار حرارة دقيقة تمت معايرتها مخبرياً بنجاح", 1735689600000L, 1L, "usr-001"),
+                    listOf("note-003", 3L, 4L, "part-uuid-4", "لوحة متوافقة مع معايير الأمان الصناعية IEC 61080 وتطبيقات 24V", 1735689600000L, 1L, "usr-001"),
+                    listOf("note-004", 4L, 15L, "part-uuid-15", "منتج ذكي نهائي مبرمج بالفرموير الإصدار v3.4.1 للتحكم السحابي", 1735689600000L, 1L, "usr-001")
                 )
                 for (n in notes) {
-                    stmt.bindLong(1, n[0] as Long)
+                    stmt.bindText(1, n[0] as String)
                     stmt.bindLong(2, n[1] as Long)
-                    stmt.bindText(3, n[2] as String)
+                    stmt.bindLong(3, n[2] as Long)
                     stmt.bindText(4, n[3] as String)
-                    stmt.bindLong(5, n[4] as Long)
+                    stmt.bindText(5, n[4] as String)
+                    stmt.bindLong(6, n[5] as Long)
+                    stmt.bindLong(7, n[6] as Long)
+                    stmt.bindText(8, n[7] as String)
                     stmt.step()
                     stmt.reset()
                 }
@@ -318,22 +335,26 @@ object TestDataGenerator {
 
             // 8. part_attachments
             conn.prepare("""
-                INSERT INTO part_attachments (id, partId, attachment, link, comment, uploadDate, userId)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO part_attachments (uuid, id, partId, partUuid, attachment, link, comment, uploadDate, userId, userUuid, syncStatus, isDeleted, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val attachments = listOf(
-                    listOf(1L, 1L, "stm32f407_datasheet.pdf", "https://www.st.com/resource/en/datasheet/stm32f407vg.pdf", "كراسة الشروط والمواصفات الفنية الرسمية", "2025-01-10", 1L),
-                    listOf(2L, 7L, "esp32_wroom_datasheet.pdf", "https://www.espressif.com/esp32_datasheet.pdf", "وثيقة المواصفات الفنية للواي فاي والبلوتوث", "2025-01-12", 1L),
-                    listOf(3L, 15L, "thermostat_manual.pdf", "https://nextstepai.com/docs/thermostat.pdf", "دليل المستخدم والتركيب الهيكلي للمنتج", "2025-01-18", 1L)
+                    listOf("part-att-001", 1L, 1L, "part-uuid-1", "stm32f407_datasheet.pdf", "https://www.st.com/resource/en/datasheet/stm32f407vg.pdf", "كراسة الشروط والمواصفات الفنية الرسمية", "2025-01-10", 1L, "usr-001"),
+                    listOf("part-att-002", 2L, 7L, "part-uuid-7", "esp32_wroom_datasheet.pdf", "https://www.espressif.com/esp32_datasheet.pdf", "وثيقة المواصفات الفنية للواي فاي والبلوتوث", "2025-01-12", 1L, "usr-001"),
+                    listOf("part-att-003", 3L, 15L, "part-uuid-15", "thermostat_manual.pdf", "https://nextstepai.com/docs/thermostat.pdf", "دليل المستخدم والتركيب الهيكلي للمنتج", "2025-01-18", 1L, "usr-001")
                 )
                 for (a in attachments) {
-                    stmt.bindLong(1, a[0] as Long)
+                    stmt.bindText(1, a[0] as String)
                     stmt.bindLong(2, a[1] as Long)
-                    stmt.bindText(3, a[2] as String)
+                    stmt.bindLong(3, a[2] as Long)
                     stmt.bindText(4, a[3] as String)
                     stmt.bindText(5, a[4] as String)
                     stmt.bindText(6, a[5] as String)
-                    stmt.bindLong(7, a[6] as Long)
+                    stmt.bindText(7, a[6] as String)
+                    stmt.bindText(8, a[7] as String)
+                    stmt.bindLong(9, a[8] as Long)
+                    stmt.bindText(10, a[9] as String)
+                    stmt.bindLong(11, now)
                     stmt.step()
                     stmt.reset()
                 }
@@ -341,23 +362,26 @@ object TestDataGenerator {
 
             // 9. part_test_templates
             conn.prepare("""
-                INSERT INTO part_test_templates (id, partId, testName, description, required, requiresValue, requiresAttachment)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO part_test_templates (uuid, id, partId, partUuid, testName, description, required, requiresValue, requiresAttachment, syncStatus, isDeleted, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val testTemplates = listOf(
-                    listOf(1L, 3L, "فحص دقة الاستشعار", "قياس القراءة مقارنة بحرارة المرجع 25°C", 1L, 1L, 0L),
-                    listOf(2L, 4L, "اختبار جهد التغذية 12V", "قياس جهد الخرج والتأكد من استقرار الإشارة", 1L, 1L, 0L),
-                    listOf(3L, 4L, "فحص الاتصال البرمجي SWD", "الاتصال بالمتحكم وقراءة المعرف الوحيد", 1L, 0L, 0L),
-                    listOf(4L, 15L, "اختبار الاتصال اللاسلكي Wi-Fi", "الاتصال بالسيرفر السحابي وتأكيد النبضة", 1L, 1L, 1L)
+                    listOf("test-tmpl-001", 1L, 3L, "part-uuid-3", "فحص دقة الاستشعار", "قياس القراءة مقارنة بحرارة المرجع 25°C", 1L, 1L, 0L),
+                    listOf("test-tmpl-002", 2L, 4L, "part-uuid-4", "اختبار جهد التغذية 12V", "قياس جهد الخرج والتأكد من استقرار الإشارة", 1L, 1L, 0L),
+                    listOf("test-tmpl-003", 3L, 4L, "part-uuid-4", "فحص الاتصال البرمجي SWD", "الاتصال بالمتحكم وقراءة المعرف الوحيد", 1L, 0L, 0L),
+                    listOf("test-tmpl-004", 4L, 15L, "part-uuid-15", "اختبار الاتصال اللاسلكي Wi-Fi", "الاتصال بالسيرفر السحابي وتأكيد النبضة", 1L, 1L, 1L)
                 )
                 for (tt in testTemplates) {
-                    stmt.bindLong(1, tt[0] as Long)
+                    stmt.bindText(1, tt[0] as String)
                     stmt.bindLong(2, tt[1] as Long)
-                    stmt.bindText(3, tt[2] as String)
+                    stmt.bindLong(3, tt[2] as Long)
                     stmt.bindText(4, tt[3] as String)
-                    stmt.bindLong(5, tt[4] as Long)
-                    stmt.bindLong(6, tt[5] as Long)
+                    stmt.bindText(5, tt[4] as String)
+                    stmt.bindText(6, tt[5] as String)
                     stmt.bindLong(7, tt[6] as Long)
+                    stmt.bindLong(8, tt[7] as Long)
+                    stmt.bindLong(9, tt[8] as Long)
+                    stmt.bindLong(10, now)
                     stmt.step()
                     stmt.reset()
                 }
@@ -365,18 +389,22 @@ object TestDataGenerator {
 
             // 10. part_related
             conn.prepare("""
-                INSERT INTO part_related (id, part1Id, part2Id)
-                VALUES (?, ?, ?)
+                INSERT INTO part_related (uuid, id, part1Id, part1Uuid, part2Id, part2Uuid, syncStatus, isDeleted, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val relatedList = listOf(
-                    listOf(1L, 1L, 4L),
-                    listOf(2L, 7L, 15L),
-                    listOf(3L, 11L, 3L)
+                    listOf("rel-001", 1L, 1L, "part-uuid-1", 4L, "part-uuid-4"),
+                    listOf("rel-002", 2L, 7L, "part-uuid-7", 15L, "part-uuid-15"),
+                    listOf("rel-003", 3L, 11L, "part-uuid-11", 3L, "part-uuid-3")
                 )
                 for (r in relatedList) {
-                    stmt.bindLong(1, r[0] as Long)
+                    stmt.bindText(1, r[0] as String)
                     stmt.bindLong(2, r[1] as Long)
                     stmt.bindLong(3, r[2] as Long)
+                    stmt.bindText(4, r[3] as String)
+                    stmt.bindLong(5, r[4] as Long)
+                    stmt.bindText(6, r[5] as String)
+                    stmt.bindLong(7, now)
                     stmt.step()
                     stmt.reset()
                 }
@@ -384,20 +412,24 @@ object TestDataGenerator {
 
             // 11. part_stars
             conn.prepare("""
-                INSERT INTO part_stars (id, partId, userId)
-                VALUES (?, ?, ?)
+                INSERT INTO part_stars (uuid, id, partId, partUuid, userId, userUuid, syncStatus, isDeleted, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val stars = listOf(
-                    listOf(1L, 1L, 1L),
-                    listOf(2L, 3L, 1L),
-                    listOf(3L, 4L, 1L),
-                    listOf(4L, 7L, 1L),
-                    listOf(5L, 15L, 1L)
+                    listOf("star-001", 1L, 1L, "part-uuid-1", 1L, "usr-001"),
+                    listOf("star-002", 2L, 3L, "part-uuid-3", 1L, "usr-001"),
+                    listOf("star-003", 3L, 4L, "part-uuid-4", 1L, "usr-001"),
+                    listOf("star-004", 4L, 7L, "part-uuid-7", 1L, "usr-001"),
+                    listOf("star-005", 5L, 15L, "part-uuid-15", 1L, "usr-001")
                 )
                 for (s in stars) {
-                    stmt.bindLong(1, s[0] as Long)
+                    stmt.bindText(1, s[0] as String)
                     stmt.bindLong(2, s[1] as Long)
                     stmt.bindLong(3, s[2] as Long)
+                    stmt.bindText(4, s[3] as String)
+                    stmt.bindLong(5, s[4] as Long)
+                    stmt.bindText(6, s[5] as String)
+                    stmt.bindLong(7, now)
                     stmt.step()
                     stmt.reset()
                 }
@@ -405,22 +437,25 @@ object TestDataGenerator {
 
             // 12. part_internal_prices
             conn.prepare("""
-                INSERT INTO part_internal_prices (id, partId, quantity, price, currency)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO part_internal_prices (uuid, id, partId, partUuid, quantity, price, currency, syncStatus, isDeleted, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val internalPrices = listOf(
-                    listOf(1L, 1L, 1.0, 8.50, "USD"),
-                    listOf(2L, 3L, 1.0, 45.00, "USD"),
-                    listOf(3L, 4L, 1.0, 120.00, "USD"),
-                    listOf(4L, 7L, 1.0, 3.80, "USD"),
-                    listOf(5L, 15L, 1.0, 140.00, "USD")
+                    listOf("pip-001", 1L, 1L, "part-uuid-1", 1.0, 8.50, "USD"),
+                    listOf("pip-002", 2L, 3L, "part-uuid-3", 1.0, 45.00, "USD"),
+                    listOf("pip-003", 3L, 4L, "part-uuid-4", 1.0, 120.00, "USD"),
+                    listOf("pip-004", 4L, 7L, "part-uuid-7", 1.0, 3.80, "USD"),
+                    listOf("pip-005", 5L, 15L, "part-uuid-15", 1.0, 140.00, "USD")
                 )
                 for (ip in internalPrices) {
-                    stmt.bindLong(1, ip[0] as Long)
+                    stmt.bindText(1, ip[0] as String)
                     stmt.bindLong(2, ip[1] as Long)
-                    stmt.bindDouble(3, ip[2] as Double)
-                    stmt.bindDouble(4, ip[3] as Double)
-                    stmt.bindText(5, ip[4] as String)
+                    stmt.bindLong(3, ip[2] as Long)
+                    stmt.bindText(4, ip[3] as String)
+                    stmt.bindDouble(5, ip[4] as Double)
+                    stmt.bindDouble(6, ip[5] as Double)
+                    stmt.bindText(7, ip[6] as String)
+                    stmt.bindLong(8, now)
                     stmt.step()
                     stmt.reset()
                 }
@@ -428,23 +463,26 @@ object TestDataGenerator {
 
             // 13. part_sale_prices
             conn.prepare("""
-                INSERT INTO part_sale_prices (id, partId, quantity, price, currency)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO part_sale_prices (uuid, id, partId, partUuid, quantity, price, currency, syncStatus, isDeleted, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val salePrices = listOf(
-                    listOf(1L, 3L, 1.0, 85.00, "USD"),
-                    listOf(2L, 4L, 1.0, 250.00, "USD"),
-                    listOf(3L, 4L, 5.0, 220.00, "USD"),
-                    listOf(4L, 6L, 1.0, 25.00, "USD"),
-                    listOf(5L, 15L, 1.0, 280.00, "USD"),
-                    listOf(6L, 15L, 10.0, 250.00, "USD")
+                    listOf("psp-001", 1L, 3L, "part-uuid-3", 1.0, 85.00, "USD"),
+                    listOf("psp-002", 2L, 4L, "part-uuid-4", 1.0, 250.00, "USD"),
+                    listOf("psp-003", 3L, 4L, "part-uuid-4", 5.0, 220.00, "USD"),
+                    listOf("psp-004", 4L, 6L, "part-uuid-6", 1.0, 25.00, "USD"),
+                    listOf("psp-005", 5L, 15L, "part-uuid-15", 1.0, 280.00, "USD"),
+                    listOf("psp-006", 6L, 15L, "part-uuid-15", 10.0, 250.00, "USD")
                 )
                 for (sp in salePrices) {
-                    stmt.bindLong(1, sp[0] as Long)
+                    stmt.bindText(1, sp[0] as String)
                     stmt.bindLong(2, sp[1] as Long)
-                    stmt.bindDouble(3, sp[2] as Double)
-                    stmt.bindDouble(4, sp[3] as Double)
-                    stmt.bindText(5, sp[4] as String)
+                    stmt.bindLong(3, sp[2] as Long)
+                    stmt.bindText(4, sp[3] as String)
+                    stmt.bindDouble(5, sp[4] as Double)
+                    stmt.bindDouble(6, sp[5] as Double)
+                    stmt.bindText(7, sp[6] as String)
+                    stmt.bindLong(8, now)
                     stmt.step()
                     stmt.reset()
                 }
@@ -453,31 +491,33 @@ object TestDataGenerator {
             // 14. part_pricing
             conn.prepare("""
                 INSERT INTO part_pricing (
-                    id, partId, currency, overallMin, overallMax, purchaseCostMin, purchaseCostMax,
-                    bomCostMin, bomCostMax, variantCostMin, variantCostMax, internalCostMin, internalCostMax, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    uuid, id, partId, partUuid, currency, overallMin, overallMax, purchaseCostMin, purchaseCostMax,
+                    bomCostMin, bomCostMax, variantCostMin, variantCostMax, internalCostMin, internalCostMax, syncStatus, isDeleted, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val pricings = listOf(
-                    listOf(1L, 1L, "USD", 7.5, 10.0, 7.5, 9.0, null, null, null, null, 8.5, 8.5, "2025-01-15"),
-                    listOf(2L, 3L, "USD", 65.0, 85.0, null, null, 30.0, 45.0, null, null, 45.0, 45.0, "2025-01-16"),
-                    listOf(3L, 4L, "USD", 180.0, 250.0, null, null, 85.0, 110.0, null, null, 120.0, 120.0, "2025-01-16"),
-                    listOf(4L, 15L, "USD", 220.0, 280.0, null, null, 110.0, 140.0, null, null, 140.0, 140.0, "2025-01-20")
+                    listOf("price-001", 1L, 1L, "part-uuid-1", "USD", 7.5, 10.0, 7.5, 9.0, null, null, null, null, 8.5, 8.5),
+                    listOf("price-002", 2L, 3L, "part-uuid-3", "USD", 65.0, 85.0, null, null, 30.0, 45.0, null, null, 45.0, 45.0),
+                    listOf("price-003", 3L, 4L, "part-uuid-4", "USD", 180.0, 250.0, null, null, 85.0, 110.0, null, null, 120.0, 120.0),
+                    listOf("price-004", 4L, 15L, "part-uuid-15", "USD", 220.0, 280.0, null, null, 110.0, 140.0, null, null, 140.0, 140.0)
                 )
                 for (pr in pricings) {
-                    stmt.bindLong(1, pr[0] as Long)
+                    stmt.bindText(1, pr[0] as String)
                     stmt.bindLong(2, pr[1] as Long)
-                    stmt.bindText(3, pr[2] as String)
-                    stmt.bindDouble(4, pr[3] as Double)
-                    stmt.bindDouble(5, pr[4] as Double)
-                    if (pr[5] == null) stmt.bindNull(6) else stmt.bindDouble(6, pr[5] as Double)
-                    if (pr[6] == null) stmt.bindNull(7) else stmt.bindDouble(7, pr[6] as Double)
+                    stmt.bindLong(3, pr[2] as Long)
+                    stmt.bindText(4, pr[3] as String)
+                    stmt.bindText(5, pr[4] as String)
+                    stmt.bindDouble(6, pr[5] as Double)
+                    stmt.bindDouble(7, pr[6] as Double)
                     if (pr[7] == null) stmt.bindNull(8) else stmt.bindDouble(8, pr[7] as Double)
                     if (pr[8] == null) stmt.bindNull(9) else stmt.bindDouble(9, pr[8] as Double)
                     if (pr[9] == null) stmt.bindNull(10) else stmt.bindDouble(10, pr[9] as Double)
-                    if (pr[10] == null) stmt.bindNull(11) else stmt.bindDouble(11, pr[10] as Double)
-                    if (pr[11] == null) stmt.bindNull(12) else stmt.bindDouble(12, pr[11] as Double)
-                    if (pr[12] == null) stmt.bindNull(13) else stmt.bindDouble(13, pr[12] as Double)
-                    stmt.bindText(14, pr[13] as String)
+                    if (pr[10] == null) stmt.bindNull(11) else stmt.bindDouble(10, pr[10] as Double)
+                    if (pr[11] == null) stmt.bindNull(12) else stmt.bindDouble(11, pr[11] as Double)
+                    if (pr[12] == null) stmt.bindNull(13) else stmt.bindDouble(12, pr[12] as Double)
+                    stmt.bindDouble(14, pr[13] as Double)
+                    stmt.bindDouble(15, pr[14] as Double)
+                    stmt.bindLong(16, now)
                     stmt.step()
                     stmt.reset()
                 }
@@ -530,18 +570,22 @@ object TestDataGenerator {
 
             // 16. bom_item_substitutes
             conn.prepare("""
-                INSERT INTO bom_item_substitutes (id, bomItemId, partId)
-                VALUES (?, ?, ?)
+                INSERT INTO bom_item_substitutes (uuid, id, bomItemId, bomItemUuid, partId, substitutePartUuid, syncStatus, isDeleted, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val substitutes = listOf(
-                    listOf(1L, 1L, 11L),
-                    listOf(2L, 5L, 1L),
-                    listOf(3L, 11L, 7L)
+                    listOf("bom-sub-001", 1L, 1L, "bom-001", 11L, "part-uuid-11"),
+                    listOf("bom-sub-002", 2L, 5L, "bom-005", 1L, "part-uuid-1"),
+                    listOf("bom-sub-003", 3L, 11L, "bom-009", 7L, "part-uuid-7")
                 )
                 for (s in substitutes) {
-                    stmt.bindLong(1, s[0] as Long)
+                    stmt.bindText(1, s[0] as String)
                     stmt.bindLong(2, s[1] as Long)
                     stmt.bindLong(3, s[2] as Long)
+                    stmt.bindText(4, s[3] as String)
+                    stmt.bindLong(5, s[4] as Long)
+                    stmt.bindText(6, s[5] as String)
+                    stmt.bindLong(7, now)
                     stmt.step()
                     stmt.reset()
                 }
@@ -843,12 +887,12 @@ object TestDataGenerator {
             // 28. stock_items (20 وحدة وسجل مخزون مادي)
             conn.prepare("""
                 INSERT INTO stock_items (
-                    uuid, partId, locationId, locationUuid, quantity, serial, batch, statusCode, packaging,
+                    uuid, partId, partUuid, locationId, locationUuid, quantity, serial, batch, statusCode, packaging,
                     purchasePrice, purchasePriceCurrency, purchaseOrderId, supplierPartId, supplierPartUuid,
                     salesOrderId, customerId, customerUuid, buildId, isBuilding, parentId, parentUuid,
                     expiryDate, stocktakeDate, stocktakeUserId, reviewNeeded, deleteOnDeplete, link,
                     notes, metadata, syncStatus, isDeleted, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 1, 0, 0, '', ?, '{}', 'SYNCHRONIZED', 0, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 1, 0, 0, '', ?, '{}', 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val stockList = listOf(
                     listOf("stock-001", 1L, 2L, "loc-002", 320.0, "SN-2025-00101", "BATCH-2025-A1", 10L, "Tray", 7.80, "USD", 1L, 1L, "sup-p-001", null, null, "", null, null, null, "2028-12-31", "2025-01-01", "دفعة شريحات جديدة تم اختبار استقرارها"),
@@ -864,28 +908,29 @@ object TestDataGenerator {
                 for (st in stockList) {
                     stmt.bindText(1, st[0] as String)
                     stmt.bindLong(2, st[1] as Long)
-                    stmt.bindLong(3, st[2] as Long)
-                    stmt.bindText(4, st[3] as String)
-                    stmt.bindDouble(5, st[4] as Double)
-                    stmt.bindText(6, st[5] as String)
-                    stmt.bindText(7, st[6] as String)
-                    stmt.bindLong(8, st[7] as Long)
-                    stmt.bindText(9, st[8] as String)
-                    stmt.bindDouble(10, st[9] as Double)
-                    stmt.bindText(11, st[10] as String)
-                    if (st[11] == null) stmt.bindNull(12) else stmt.bindLong(12, st[11] as Long)
-                    if (st[12] == null) stmt.bindNull(13) else stmt.bindLong(13, st[12] as Long)
-                    stmt.bindText(14, st[13] as String)
-                    if (st[14] == null) stmt.bindNull(15) else stmt.bindLong(15, st[14] as Long)
-                    if (st[15] == null) stmt.bindNull(16) else stmt.bindLong(16, st[15] as Long)
-                    stmt.bindText(17, st[16] as String)
-                    if (st[17] == null) stmt.bindNull(18) else stmt.bindLong(18, st[17] as Long)
-                    if (st[18] == null) stmt.bindNull(19) else stmt.bindLong(19, st[18] as Long)
-                    if (st[19] == null) stmt.bindNull(20) else stmt.bindText(20, st[19] as String)
-                    stmt.bindText(21, st[20] as String)
-                    stmt.bindText(22, st[21] as String)
-                    stmt.bindText(23, st[22] as String)
-                    stmt.bindLong(24, now)
+                    stmt.bindText(3, "part-uuid-${st[1]}")
+                    stmt.bindLong(4, st[2] as Long)
+                    stmt.bindText(5, st[3] as String)
+                    stmt.bindDouble(6, st[4] as Double)
+                    stmt.bindText(7, st[5] as String)
+                    stmt.bindText(8, st[6] as String)
+                    stmt.bindLong(9, st[7] as Long)
+                    stmt.bindText(10, st[8] as String)
+                    stmt.bindDouble(11, st[9] as Double)
+                    stmt.bindText(12, st[10] as String)
+                    if (st[11] == null) stmt.bindNull(13) else stmt.bindLong(13, st[11] as Long)
+                    if (st[12] == null) stmt.bindNull(14) else stmt.bindLong(14, st[12] as Long)
+                    stmt.bindText(15, st[13] as String)
+                    if (st[14] == null) stmt.bindNull(16) else stmt.bindLong(16, st[14] as Long)
+                    if (st[15] == null) stmt.bindNull(17) else stmt.bindLong(17, st[15] as Long)
+                    stmt.bindText(18, st[16] as String)
+                    if (st[17] == null) stmt.bindNull(19) else stmt.bindLong(19, st[17] as Long)
+                    if (st[18] == null) stmt.bindNull(20) else stmt.bindLong(20, st[18] as Long)
+                    if (st[19] == null) stmt.bindNull(21) else stmt.bindText(21, st[19] as String)
+                    stmt.bindText(22, st[20] as String)
+                    stmt.bindText(23, st[21] as String)
+                    stmt.bindText(24, st[22] as String)
+                    stmt.bindLong(25, now)
                     stmt.step()
                     stmt.reset()
                 }
@@ -895,8 +940,8 @@ object TestDataGenerator {
             conn.prepare("""
                 INSERT INTO stock_item_tracking (
                     uuid, trackingId, stockItemId, stockItemUuid, date, trackingTypeCode, userId, label,
-                    notes, deltas, syncStatus, isDeleted, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
+                    notes, deltas, createdAt, syncStatus, isDeleted, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SYNCHRONIZED', 0, ?)
             """.trimIndent()).use { stmt ->
                 val trackings = listOf(
                     listOf("track-001", 1L, 1L, "stock-001", "2025-01-10 09:00:00", 10L, 1L, "إضافة مخزون جديد", "تم استلام 320 قطعة من المورد شركة النور", "{\"quantity\": 320.0}"),
@@ -915,6 +960,7 @@ object TestDataGenerator {
                     stmt.bindText(9, tr[8] as String)
                     stmt.bindText(10, tr[9] as String)
                     stmt.bindLong(11, now)
+                    stmt.bindLong(12, now)
                     stmt.step()
                     stmt.reset()
                 }

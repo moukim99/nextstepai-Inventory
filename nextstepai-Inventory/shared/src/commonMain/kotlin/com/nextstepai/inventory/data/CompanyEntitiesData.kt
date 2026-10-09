@@ -158,6 +158,7 @@ data class SupplierPriceBreak(
 /**
  * جدول محاكاة جهات الاتصال في الذاكرة (Contact Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class ContactTable {
     private val contacts = mutableListOf<Contact>()
     private var nextId = 1L
@@ -235,6 +236,7 @@ class ContactTable {
 /**
  * جدول محاكاة مرفقات الشركات العامة في الذاكرة (CompanyAttachment Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class CompanyAttachmentTable {
     private val attachments = mutableListOf(
         CompanyAttachment(
@@ -277,6 +279,7 @@ class CompanyAttachmentTable {
 /**
  * جدول محاكاة العناوين في الذاكرة (Address Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class AddressTable {
     private val addresses = mutableListOf<Address>()
     private var nextId = 1L
@@ -389,6 +392,7 @@ class AddressTable {
 /**
  * جدول محاكاة قطع المصنّع في الذاكرة (ManufacturerPart Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class ManufacturerPartTable {
     private val parts = mutableListOf<ManufacturerPart>()
     private var nextId = 1L
@@ -459,6 +463,7 @@ class ManufacturerPartTable {
 /**
  * جدول محاكاة الخصائص الفنية لقطعة المصنّع في الذاكرة (ManufacturerPartParameter Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class ManufacturerPartParameterTable {
     private val parameters = mutableListOf<ManufacturerPartParameter>()
     private var nextId = 1L
@@ -491,6 +496,7 @@ class ManufacturerPartParameterTable {
 /**
  * جدول محاكاة مرفقات قطع المصنّع في الذاكرة (ManufacturerPartAttachment Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class ManufacturerPartAttachmentTable {
     private val attachments = mutableListOf<ManufacturerPartAttachment>()
     private var nextId = 1L
@@ -519,6 +525,7 @@ class ManufacturerPartAttachmentTable {
 /**
  * جدول محاكاة قطع الموردين في الذاكرة (SupplierPart Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class SupplierPartTable {
     private val parts = mutableListOf<SupplierPart>()
     private var nextId = 1L
@@ -597,6 +604,7 @@ class SupplierPartTable {
 /**
  * جدول محاكاة شرائح أسعار الموردين في الذاكرة (SupplierPriceBreak Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class SupplierPriceBreakTable {
     private val breaks = mutableListOf<SupplierPriceBreak>()
     private var nextId = 1L
@@ -661,6 +669,7 @@ class SupplierPriceBreakTable {
 /**
  * جدول محاكاة الحسابات البنكية للشركة في الذاكرة (CompanyBankAccount Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class CompanyBankAccountTable {
     private val accounts = mutableListOf<CompanyBankAccount>()
     private var nextId = 1L
@@ -696,6 +705,7 @@ class CompanyBankAccountTable {
 /**
  * جدول محاكاة السجلات والقوانين الترخيصية للشركة في الذاكرة (CompanyLegalRecord Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class CompanyLegalRecordTable {
     private val records = mutableListOf<CompanyLegalRecord>()
     private var nextId = 1L

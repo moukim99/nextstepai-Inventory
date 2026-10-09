@@ -70,6 +70,7 @@ data class SalesOrder(
 /**
  * إدارة وتخزين أوامر البيع وبنودها في الذاكرة ومحاكاتها.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class SalesOrderTable {
     private val orders = mutableListOf<SalesOrder>()
     private val lineItems = mutableListOf<SalesOrderLineItem>()

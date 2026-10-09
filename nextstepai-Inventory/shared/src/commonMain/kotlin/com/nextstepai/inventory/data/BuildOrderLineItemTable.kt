@@ -51,6 +51,7 @@ data class BuildOrderLineItem(
 /**
  * محاكاة جدول بنود أوامر الإنتاج والتصنيع (Build Order Line Items Table).
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class BuildOrderLineItemTable {
     private val lineItems = mutableListOf<BuildOrderLineItem>()
     private var nextLineItemId = 1L

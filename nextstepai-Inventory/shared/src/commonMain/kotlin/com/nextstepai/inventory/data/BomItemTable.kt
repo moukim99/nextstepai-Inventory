@@ -56,6 +56,7 @@ data class BomItemSubstituteView(
 /**
  * محاكاة جدول بنود قائمة المواد (BOM Table) وحفظ الشروط والقيود المنطقية.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class BomItemTable {
     private val bomItems = mutableListOf<BomItem>()
     private val substitutes = mutableListOf<BomItemSubstitute>()

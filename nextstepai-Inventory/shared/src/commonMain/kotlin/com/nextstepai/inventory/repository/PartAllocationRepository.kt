@@ -25,7 +25,7 @@ class PartAllocationRepository(
     /**
      * جلب كافة الحجوزات النشطة لقطعة محددة مع البذر التلقائي لبيانات العرض التوضيحي إذا لم توجد حجوزات.
      */
-    suspend fun getActiveAllocationsForPart(partId: Long): List<PartAllocationEntity> {
+    fun getActiveAllocationsForPart(partId: Long): List<PartAllocationEntity> {
         seedSampleAllocationsIfEmpty(partId)
         return allocationDao.getActiveAllocationsForPart(partId)
     }
@@ -33,7 +33,7 @@ class PartAllocationRepository(
     /**
      * حساب إجمالي الكمية المحجوزة حجزاً مؤكداً (Committed HARD) لقطعة.
      */
-    suspend fun getCommittedQuantity(partId: Long): Double {
+    fun getCommittedQuantity(partId: Long): Double {
         seedSampleAllocationsIfEmpty(partId)
         return allocationDao.getTotalCommittedQuantity(partId)
     }
@@ -41,7 +41,7 @@ class PartAllocationRepository(
     /**
      * حساب إجمالي الكمية المحجوزة حجزاً مبدئياً (Reserved SOFT) لقطعة.
      */
-    suspend fun getSoftQuantity(partId: Long): Double {
+    fun getSoftQuantity(partId: Long): Double {
         seedSampleAllocationsIfEmpty(partId)
         return allocationDao.getTotalSoftQuantity(partId)
     }
@@ -177,7 +177,7 @@ class PartAllocationRepository(
         private val seededPartIds = mutableSetOf<Long>()
     }
 
-    private suspend fun seedSampleAllocationsIfEmpty(partId: Long) {
+    private fun seedSampleAllocationsIfEmpty(partId: Long) {
         if (seededPartIds.contains(partId)) return
         seededPartIds.add(partId)
 

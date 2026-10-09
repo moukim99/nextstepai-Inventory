@@ -10,7 +10,7 @@ import kotlin.time.Clock
  */
 @Dao
 class ContactDao {
-    suspend fun getContactsForCompany(companyUuid: String): List<ContactEntity> {
+    fun getContactsForCompany(companyUuid: String): List<ContactEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<ContactEntity>()
         conn.prepare("""
@@ -30,7 +30,7 @@ class ContactDao {
                         email = stmt.getText(4),
                         role = stmt.getText(5),
                         isPrimary = stmt.getLong(6) != 0L,
-                        syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(7)) }.getOrDefault(SyncStatus.PENDING),
+                        syncStatus = SyncStatus.fromString(stmt.getText(7)),
                         isDeleted = stmt.getLong(8) != 0L,
                         updatedAt = stmt.getLong(9)
                     )
@@ -40,7 +40,7 @@ class ContactDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: ContactEntity) {
+    fun insertOrUpdate(entity: ContactEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         if (entity.isPrimary) {
             conn.prepare("UPDATE contacts SET isPrimary = 0 WHERE companyUuid = ?").use { stmt ->
@@ -66,14 +66,21 @@ class ContactDao {
         }
     }
 
-    suspend fun delete(uuid: String) {
+    fun delete(uuid: String): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         val now = Clock.System.now().toEpochMilliseconds()
-        conn.prepare("UPDATE contacts SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?").use { stmt ->
+        conn.prepare("UPDATE contacts SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ? AND isDeleted = 0").use { stmt ->
             stmt.bindLong(1, now)
             stmt.bindText(2, uuid)
             stmt.step()
         }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 }
 
@@ -82,7 +89,7 @@ class ContactDao {
  */
 @Dao
 class CompanyAttachmentDao {
-    suspend fun getForCompany(companyUuid: String): List<CompanyAttachmentEntity> {
+    fun getForCompany(companyUuid: String): List<CompanyAttachmentEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<CompanyAttachmentEntity>()
         runCatching {
@@ -107,7 +114,7 @@ class CompanyAttachmentDao {
                             expiryDate = runCatching { stmt.getText(8) }.getOrDefault(""),
                             notifyOnExpiry = runCatching { stmt.getLong(9) != 0L }.getOrDefault(true),
                             notificationDaysBefore = runCatching { stmt.getLong(10).toInt() }.getOrDefault(30),
-                            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(11)) }.getOrDefault(SyncStatus.PENDING),
+                            syncStatus = SyncStatus.fromString(stmt.getText(11)),
                             isDeleted = stmt.getLong(12) != 0L,
                             updatedAt = stmt.getLong(13)
                         )
@@ -118,7 +125,7 @@ class CompanyAttachmentDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: CompanyAttachmentEntity) {
+    fun insertOrUpdate(entity: CompanyAttachmentEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         runCatching {
             conn.prepare("""
@@ -144,14 +151,21 @@ class CompanyAttachmentDao {
         }
     }
 
-    suspend fun delete(uuid: String) {
+    fun delete(uuid: String): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         val now = Clock.System.now().toEpochMilliseconds()
-        conn.prepare("UPDATE company_attachments SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?").use { stmt ->
+        conn.prepare("UPDATE company_attachments SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ? AND isDeleted = 0").use { stmt ->
             stmt.bindLong(1, now)
             stmt.bindText(2, uuid)
             stmt.step()
         }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 }
 
@@ -160,7 +174,7 @@ class CompanyAttachmentDao {
  */
 @Dao
 class AddressDao {
-    suspend fun getAddressesForCompany(companyUuid: String): List<AddressEntity> {
+    fun getAddressesForCompany(companyUuid: String): List<AddressEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<AddressEntity>()
         conn.prepare("""
@@ -184,7 +198,7 @@ class AddressDao {
                         province = stmt.getText(8),
                         country = stmt.getText(9),
                         shippingNotes = stmt.getText(10),
-                        syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(11)) }.getOrDefault(SyncStatus.PENDING),
+                        syncStatus = SyncStatus.fromString(stmt.getText(11)),
                         isDeleted = stmt.getLong(12) != 0L,
                         updatedAt = stmt.getLong(13)
                     )
@@ -194,7 +208,7 @@ class AddressDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: AddressEntity) {
+    fun insertOrUpdate(entity: AddressEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         if (entity.isPrimary) {
             conn.prepare("UPDATE addresses SET isPrimary = 0 WHERE companyUuid = ?").use { stmt ->
@@ -225,14 +239,21 @@ class AddressDao {
         }
     }
 
-    suspend fun delete(uuid: String) {
+    fun delete(uuid: String): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         val now = Clock.System.now().toEpochMilliseconds()
-        conn.prepare("UPDATE addresses SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?").use { stmt ->
+        conn.prepare("UPDATE addresses SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ? AND isDeleted = 0").use { stmt ->
             stmt.bindLong(1, now)
             stmt.bindText(2, uuid)
             stmt.step()
         }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 }
 
@@ -241,7 +262,7 @@ class AddressDao {
  */
 @Dao
 class CompanyBankAccountDao {
-    suspend fun getForCompany(companyUuid: String): List<CompanyBankAccountEntity> {
+    fun getForCompany(companyUuid: String): List<CompanyBankAccountEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<CompanyBankAccountEntity>()
         conn.prepare("""
@@ -258,7 +279,7 @@ class CompanyBankAccountDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: CompanyBankAccountEntity) {
+    fun insertOrUpdate(entity: CompanyBankAccountEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         if (entity.isPrimary) {
             conn.prepare("UPDATE company_bank_accounts SET isPrimary = 0 WHERE companyUuid = ?").use { stmt ->
@@ -287,14 +308,21 @@ class CompanyBankAccountDao {
         }
     }
 
-    suspend fun delete(uuid: String) {
+    fun delete(uuid: String): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         val now = Clock.System.now().toEpochMilliseconds()
-        conn.prepare("UPDATE company_bank_accounts SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?").use { stmt ->
+        conn.prepare("UPDATE company_bank_accounts SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ? AND isDeleted = 0").use { stmt ->
             stmt.bindLong(1, now)
             stmt.bindText(2, uuid)
             stmt.step()
         }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 
     private fun mapEntity(stmt: SQLiteStatement): CompanyBankAccountEntity {
@@ -309,7 +337,7 @@ class CompanyBankAccountDao {
             currency = stmt.getText(7),
             branchName = stmt.getText(8),
             isPrimary = stmt.getLong(9) == 1L,
-            syncStatus = SyncStatus.valueOf(stmt.getText(10)),
+            syncStatus = SyncStatus.fromString(stmt.getText(10)),
             isDeleted = stmt.getLong(11) == 1L,
             updatedAt = stmt.getLong(12)
         )
@@ -321,7 +349,7 @@ class CompanyBankAccountDao {
  */
 @Dao
 class CompanyLegalRecordDao {
-    suspend fun getForCompany(companyUuid: String): CompanyLegalRecordEntity? {
+    fun getForCompany(companyUuid: String): CompanyLegalRecordEntity? {
         val conn = SqliteDatabaseManager.getConnection()
         var result: CompanyLegalRecordEntity? = null
         conn.prepare("""
@@ -338,7 +366,7 @@ class CompanyLegalRecordDao {
         return result
     }
 
-    suspend fun insertOrUpdate(entity: CompanyLegalRecordEntity) {
+    fun insertOrUpdate(entity: CompanyLegalRecordEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO company_legal_records (uuid, companyUuid, commercialRegisterNumber, taxId, nationalIdNumber, importLicenseNumber, manufacturingLicenseNumber, activityCodes, issuingAuthority, issueDate, expiryDate, syncStatus, isDeleted, updatedAt)
@@ -362,14 +390,21 @@ class CompanyLegalRecordDao {
         }
     }
 
-    suspend fun delete(uuid: String) {
+    fun delete(uuid: String): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         val now = Clock.System.now().toEpochMilliseconds()
-        conn.prepare("UPDATE company_legal_records SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?").use { stmt ->
+        conn.prepare("UPDATE company_legal_records SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ? AND isDeleted = 0").use { stmt ->
             stmt.bindLong(1, now)
             stmt.bindText(2, uuid)
             stmt.step()
         }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 
     private fun mapEntity(stmt: SQLiteStatement): CompanyLegalRecordEntity {
@@ -385,7 +420,7 @@ class CompanyLegalRecordDao {
             issuingAuthority = stmt.getText(8),
             issueDate = stmt.getText(9),
             expiryDate = stmt.getText(10),
-            syncStatus = SyncStatus.valueOf(stmt.getText(11)),
+            syncStatus = SyncStatus.fromString(stmt.getText(11)),
             isDeleted = stmt.getLong(12) == 1L,
             updatedAt = stmt.getLong(13)
         )
@@ -397,7 +432,7 @@ class CompanyLegalRecordDao {
  */
 @Dao
 class ManufacturerPartDao {
-    suspend fun getForCompany(manufacturerUuid: String): List<ManufacturerPartEntity> {
+    fun getForCompany(manufacturerUuid: String): List<ManufacturerPartEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<ManufacturerPartEntity>()
         conn.prepare("""
@@ -414,7 +449,7 @@ class ManufacturerPartDao {
         return results
     }
 
-    suspend fun getForPart(partUuid: String): List<ManufacturerPartEntity> {
+    fun getForPart(partUuid: String): List<ManufacturerPartEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<ManufacturerPartEntity>()
         conn.prepare("""
@@ -431,7 +466,7 @@ class ManufacturerPartDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: ManufacturerPartEntity) {
+    fun insertOrUpdate(entity: ManufacturerPartEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO manufacturer_parts (uuid, partUuid, manufacturerUuid, mpn, description, link, metadata, syncStatus, isDeleted, updatedAt)
@@ -451,14 +486,21 @@ class ManufacturerPartDao {
         }
     }
 
-    suspend fun delete(uuid: String) {
+    fun delete(uuid: String): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         val now = Clock.System.now().toEpochMilliseconds()
-        conn.prepare("UPDATE manufacturer_parts SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?").use { stmt ->
+        conn.prepare("UPDATE manufacturer_parts SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ? AND isDeleted = 0").use { stmt ->
             stmt.bindLong(1, now)
             stmt.bindText(2, uuid)
             stmt.step()
         }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 
     private fun mapEntity(stmt: SQLiteStatement): ManufacturerPartEntity {
@@ -470,7 +512,7 @@ class ManufacturerPartDao {
             description = stmt.getText(4),
             link = stmt.getText(5),
             metadata = stmt.getText(6),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(7)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(7)),
             isDeleted = stmt.getLong(8) != 0L,
             updatedAt = stmt.getLong(9)
         )
@@ -482,7 +524,7 @@ class ManufacturerPartDao {
  */
 @Dao
 class ManufacturerPartParameterDao {
-    suspend fun getForManufacturerPart(manufacturerPartUuid: String): List<ManufacturerPartParameterEntity> {
+    fun getForManufacturerPart(manufacturerPartUuid: String): List<ManufacturerPartParameterEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<ManufacturerPartParameterEntity>()
         conn.prepare("""
@@ -500,7 +542,7 @@ class ManufacturerPartParameterDao {
                         name = stmt.getText(2),
                         value = stmt.getText(3),
                         units = stmt.getText(4),
-                        syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(5)) }.getOrDefault(SyncStatus.PENDING),
+                        syncStatus = SyncStatus.fromString(stmt.getText(5)),
                         isDeleted = stmt.getLong(6) != 0L,
                         updatedAt = stmt.getLong(7)
                     )
@@ -510,7 +552,7 @@ class ManufacturerPartParameterDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: ManufacturerPartParameterEntity) {
+    fun insertOrUpdate(entity: ManufacturerPartParameterEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO manufacturer_part_parameters (uuid, manufacturerPartUuid, name, value, units, syncStatus, isDeleted, updatedAt)
@@ -528,14 +570,21 @@ class ManufacturerPartParameterDao {
         }
     }
 
-    suspend fun delete(uuid: String) {
+    fun delete(uuid: String): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         val now = Clock.System.now().toEpochMilliseconds()
-        conn.prepare("UPDATE manufacturer_part_parameters SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?").use { stmt ->
+        conn.prepare("UPDATE manufacturer_part_parameters SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ? AND isDeleted = 0").use { stmt ->
             stmt.bindLong(1, now)
             stmt.bindText(2, uuid)
             stmt.step()
         }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 }
 
@@ -544,7 +593,7 @@ class ManufacturerPartParameterDao {
  */
 @Dao
 class ManufacturerPartAttachmentDao {
-    suspend fun getForManufacturerPart(manufacturerPartUuid: String): List<ManufacturerPartAttachmentEntity> {
+    fun getForManufacturerPart(manufacturerPartUuid: String): List<ManufacturerPartAttachmentEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<ManufacturerPartAttachmentEntity>()
         conn.prepare("""
@@ -564,7 +613,7 @@ class ManufacturerPartAttachmentDao {
                         comment = stmt.getText(4),
                         uploadDate = stmt.getLong(5),
                         userId = if (stmt.isNull(6)) null else stmt.getLong(6),
-                        syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(7)) }.getOrDefault(SyncStatus.PENDING),
+                        syncStatus = SyncStatus.fromString(stmt.getText(7)),
                         isDeleted = stmt.getLong(8) != 0L,
                         updatedAt = stmt.getLong(9)
                     )
@@ -574,7 +623,7 @@ class ManufacturerPartAttachmentDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: ManufacturerPartAttachmentEntity) {
+    fun insertOrUpdate(entity: ManufacturerPartAttachmentEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO manufacturer_part_attachments (uuid, manufacturerPartUuid, attachmentPath, link, comment, uploadDate, userId, syncStatus, isDeleted, updatedAt)
@@ -594,14 +643,21 @@ class ManufacturerPartAttachmentDao {
         }
     }
 
-    suspend fun delete(uuid: String) {
+    fun delete(uuid: String): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         val now = Clock.System.now().toEpochMilliseconds()
-        conn.prepare("UPDATE manufacturer_part_attachments SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?").use { stmt ->
+        conn.prepare("UPDATE manufacturer_part_attachments SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ? AND isDeleted = 0").use { stmt ->
             stmt.bindLong(1, now)
             stmt.bindText(2, uuid)
             stmt.step()
         }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 }
 
@@ -610,7 +666,7 @@ class ManufacturerPartAttachmentDao {
  */
 @Dao
 class SupplierPartDao {
-    suspend fun getForCompany(supplierUuid: String): List<SupplierPartEntity> {
+    fun getForCompany(supplierUuid: String): List<SupplierPartEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<SupplierPartEntity>()
         conn.prepare("""
@@ -627,7 +683,7 @@ class SupplierPartDao {
         return results
     }
 
-    suspend fun getForPart(partUuid: String): List<SupplierPartEntity> {
+    fun getForPart(partUuid: String): List<SupplierPartEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<SupplierPartEntity>()
         conn.prepare("""
@@ -644,7 +700,7 @@ class SupplierPartDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: SupplierPartEntity) {
+    fun insertOrUpdate(entity: SupplierPartEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO supplier_parts (uuid, partUuid, supplierUuid, sku, manufacturerPartUuid, description, link, note, packaging, packQuantity, availableForPurchase, active, metadata, syncStatus, isDeleted, updatedAt)
@@ -670,14 +726,21 @@ class SupplierPartDao {
         }
     }
 
-    suspend fun delete(uuid: String) {
+    fun delete(uuid: String): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         val now = Clock.System.now().toEpochMilliseconds()
-        conn.prepare("UPDATE supplier_parts SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?").use { stmt ->
+        conn.prepare("UPDATE supplier_parts SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ? AND isDeleted = 0").use { stmt ->
             stmt.bindLong(1, now)
             stmt.bindText(2, uuid)
             stmt.step()
         }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 
     private fun mapEntity(stmt: SQLiteStatement): SupplierPartEntity {
@@ -695,7 +758,7 @@ class SupplierPartDao {
             availableForPurchase = stmt.getLong(10) != 0L,
             active = stmt.getLong(11) != 0L,
             metadata = stmt.getText(12),
-            syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(13)) }.getOrDefault(SyncStatus.PENDING),
+            syncStatus = SyncStatus.fromString(stmt.getText(13)),
             isDeleted = stmt.getLong(14) != 0L,
             updatedAt = stmt.getLong(15)
         )
@@ -707,7 +770,7 @@ class SupplierPartDao {
  */
 @Dao
 class SupplierPriceBreakDao {
-    suspend fun getForSupplierPart(supplierPartUuid: String): List<SupplierPriceBreakEntity> {
+    fun getForSupplierPart(supplierPartUuid: String): List<SupplierPriceBreakEntity> {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<SupplierPriceBreakEntity>()
         conn.prepare("""
@@ -726,7 +789,7 @@ class SupplierPriceBreakDao {
                         price = stmt.getDouble(3),
                         priceCurrency = stmt.getText(4),
                         packQuantity = stmt.getText(5),
-                        syncStatus = runCatching { SyncStatus.valueOf(stmt.getText(6)) }.getOrDefault(SyncStatus.PENDING),
+                        syncStatus = SyncStatus.fromString(stmt.getText(6)),
                         isDeleted = stmt.getLong(7) != 0L,
                         updatedAt = stmt.getLong(8)
                     )
@@ -736,7 +799,7 @@ class SupplierPriceBreakDao {
         return results
     }
 
-    suspend fun insertOrUpdate(entity: SupplierPriceBreakEntity) {
+    fun insertOrUpdate(entity: SupplierPriceBreakEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT OR REPLACE INTO supplier_price_breaks (uuid, supplierPartUuid, quantity, price, priceCurrency, packQuantity, syncStatus, isDeleted, updatedAt)
@@ -755,13 +818,20 @@ class SupplierPriceBreakDao {
         }
     }
 
-    suspend fun delete(uuid: String) {
+    fun delete(uuid: String): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         val now = Clock.System.now().toEpochMilliseconds()
-        conn.prepare("UPDATE supplier_price_breaks SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ?").use { stmt ->
+        conn.prepare("UPDATE supplier_price_breaks SET isDeleted = 1, syncStatus = 'PENDING', updatedAt = ? WHERE uuid = ? AND isDeleted = 0").use { stmt ->
             stmt.bindLong(1, now)
             stmt.bindText(2, uuid)
             stmt.step()
         }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 }

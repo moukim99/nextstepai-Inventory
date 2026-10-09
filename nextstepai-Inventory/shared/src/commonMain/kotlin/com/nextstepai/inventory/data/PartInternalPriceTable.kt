@@ -5,6 +5,7 @@ import com.nextstepai.inventory.data.db.PartInternalPriceEntity
 /**
  * إدارة وتخزين شرائح أسعار البيع والتكلفة الداخلية (PartInternalPriceTable) في الذاكرة مع الشروط والقيود المنطقية.
  */
+@Deprecated("Legacy in-memory storage table. Scheduled for migration to SQLite DAOs.")
 class PartInternalPriceTable(
     private val partTable: PartTable = PartTable()
 ) {
