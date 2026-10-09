@@ -710,14 +710,8 @@ class SingleSourceOfTruthVerificationTest {
             val thread1 = Thread {
                 try {
                     for (i in 0 until totalPerConn) {
-                        conn1.prepare("BEGIN IMMEDIATE;").use { it.step() }
-                        conn1.prepare("UPDATE id_sequences SET last_id = last_id + 1 WHERE table_name = 'parts'").use { it.step() }
-                        var allocatedId = 0L
-                        conn1.prepare("SELECT last_id FROM id_sequences WHERE table_name = 'parts'").use {
-                            if (it.step()) allocatedId = it.getLong(0)
-                        }
-                        conn1.prepare("COMMIT;").use { it.step() }
-                        allocatedConn1.add(allocatedId)
+                        val id = SqliteNumericIdAllocator.nextId("parts", "part-", connection = conn1)
+                        allocatedConn1.add(id)
                     }
                 } finally {
                     latch.countDown()
@@ -727,14 +721,8 @@ class SingleSourceOfTruthVerificationTest {
             val thread2 = Thread {
                 try {
                     for (i in 0 until totalPerConn) {
-                        conn2.prepare("BEGIN IMMEDIATE;").use { it.step() }
-                        conn2.prepare("UPDATE id_sequences SET last_id = last_id + 1 WHERE table_name = 'parts'").use { it.step() }
-                        var allocatedId = 0L
-                        conn2.prepare("SELECT last_id FROM id_sequences WHERE table_name = 'parts'").use {
-                            if (it.step()) allocatedId = it.getLong(0)
-                        }
-                        conn2.prepare("COMMIT;").use { it.step() }
-                        allocatedConn2.add(allocatedId)
+                        val id = SqliteNumericIdAllocator.nextId("parts", "part-", connection = conn2)
+                        allocatedConn2.add(id)
                     }
                 } finally {
                     latch.countDown()

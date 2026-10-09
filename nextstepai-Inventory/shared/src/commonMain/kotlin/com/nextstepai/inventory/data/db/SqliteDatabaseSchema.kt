@@ -918,6 +918,8 @@ internal object SqliteDatabaseSchema {
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS part_pricing (
                 uuid TEXT PRIMARY KEY NOT NULL,
+                id INTEGER NOT NULL DEFAULT 0,
+                partId INTEGER NOT NULL DEFAULT 0,
                 partUuid TEXT NOT NULL UNIQUE,
                 currency TEXT NOT NULL DEFAULT 'USD',
                 overallMin REAL,
@@ -1218,28 +1220,28 @@ internal object SqliteDatabaseSchema {
                 }
 
                 if (table == "parts") {
-                    runCatching {
+                    if (hasColumn(conn, "bom_items", "partId")) {
                         conn.prepare("UPDATE bom_items SET partId = ? WHERE partUuid = ?").use { stmt ->
                             stmt.bindLong(1, newId)
                             stmt.bindText(2, uuid)
                             stmt.step()
                         }
                     }
-                    runCatching {
+                    if (hasColumn(conn, "bom_items", "subPartId")) {
                         conn.prepare("UPDATE bom_items SET subPartId = ? WHERE subPartUuid = ?").use { stmt ->
                             stmt.bindLong(1, newId)
                             stmt.bindText(2, uuid)
                             stmt.step()
                         }
                     }
-                    runCatching {
+                    if (hasColumn(conn, "stock_items", "partId")) {
                         conn.prepare("UPDATE stock_items SET partId = ? WHERE partUuid = ?").use { stmt ->
                             stmt.bindLong(1, newId)
                             stmt.bindText(2, uuid)
                             stmt.step()
                         }
                     }
-                    runCatching {
+                    if (hasColumn(conn, "part_pricing", "partId")) {
                         conn.prepare("UPDATE part_pricing SET partId = ? WHERE partUuid = ?").use { stmt ->
                             stmt.bindLong(1, newId)
                             stmt.bindText(2, uuid)
@@ -1247,14 +1249,14 @@ internal object SqliteDatabaseSchema {
                         }
                     }
                 } else if (table == "companies") {
-                    runCatching {
+                    if (hasColumn(conn, "contacts", "companyId")) {
                         conn.prepare("UPDATE contacts SET companyId = ? WHERE companyUuid = ?").use { stmt ->
                             stmt.bindLong(1, newId)
                             stmt.bindText(2, uuid)
                             stmt.step()
                         }
                     }
-                    runCatching {
+                    if (hasColumn(conn, "addresses", "companyId")) {
                         conn.prepare("UPDATE addresses SET companyId = ? WHERE companyUuid = ?").use { stmt ->
                             stmt.bindLong(1, newId)
                             stmt.bindText(2, uuid)
@@ -1263,6 +1265,25 @@ internal object SqliteDatabaseSchema {
                     }
                 }
             }
+        }
+    }
+
+    private fun hasColumn(conn: SQLiteConnection, tableName: String, columnName: String): Boolean {
+        if (!tableExists(conn, tableName)) return false
+        conn.prepare("PRAGMA table_info($tableName)").use { stmt ->
+            while (stmt.step()) {
+                if (stmt.getText(1).equals(columnName, ignoreCase = true)) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private fun tableExists(conn: SQLiteConnection, tableName: String): Boolean {
+        conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1").use { stmt ->
+            stmt.bindText(1, tableName)
+            return stmt.step()
         }
     }
 }

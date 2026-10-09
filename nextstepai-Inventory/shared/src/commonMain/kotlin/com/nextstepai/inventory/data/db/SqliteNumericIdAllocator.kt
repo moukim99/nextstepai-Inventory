@@ -46,14 +46,20 @@ object SqliteNumericIdAllocator {
     /**
      * Returns the next numeric id persisted in SQLite for the requested entity family.
      * Guaranteed to be strictly monotonic and thread-safe.
+     * Allows passing an explicit connection for multi-connection / multi-process environments.
      */
-    fun nextId(table: String, prefix: String): Long = synchronized(lock) {
-        require(Key(table, prefix) in allowed) {
-            "Unsupported numeric-id allocation target: $table / $prefix"
-        }
+    fun nextId(
+        table: String,
+        prefix: String,
+        connection: androidx.sqlite.SQLiteConnection? = null
+    ): Long {
+        val allocate = {
+            require(Key(table, prefix) in allowed) {
+                "Unsupported numeric-id allocation target: $table / $prefix"
+            }
 
-        val suffixStart = prefix.length + 1
-        val conn = SqliteDatabaseManager.getConnection()
+            val suffixStart = prefix.length + 1
+            val conn = connection ?: SqliteDatabaseManager.getConnection()
         // Parts and companies now persist numeric IDs independently of the UUID, so
         // their sequence must consider both custom-UUID rows and legacy prefixed UUIDs.
         val maxIdQuery = if (table == "parts" || table == "companies") {
@@ -124,4 +130,6 @@ object SqliteNumericIdAllocator {
             throw failure
         }
     }
+    return if (connection != null) allocate() else synchronized(lock) { allocate() }
+}
 }
