@@ -208,8 +208,28 @@ class CompanyDao {
     fun insertOrUpdate(entity: CompanyEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
-            INSERT OR REPLACE INTO companies (uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt, id)
+            INSERT INTO companies (uuid, name, description, website, phone, email, isSupplier, isManufacturer, isCustomer, active, currency, logoPath, notes, metadata, parentUuid, syncStatus, isDeleted, updatedAt, id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(uuid) DO UPDATE SET
+                name = excluded.name,
+                description = excluded.description,
+                website = excluded.website,
+                phone = excluded.phone,
+                email = excluded.email,
+                isSupplier = excluded.isSupplier,
+                isManufacturer = excluded.isManufacturer,
+                isCustomer = excluded.isCustomer,
+                active = excluded.active,
+                currency = excluded.currency,
+                logoPath = excluded.logoPath,
+                notes = excluded.notes,
+                metadata = excluded.metadata,
+                parentUuid = excluded.parentUuid,
+                syncStatus = excluded.syncStatus,
+                isDeleted = excluded.isDeleted,
+                updatedAt = excluded.updatedAt,
+                version = companies.version + 1,
+                id = CASE WHEN excluded.id > 0 THEN excluded.id ELSE companies.id END
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
             stmt.bindText(2, entity.name)
