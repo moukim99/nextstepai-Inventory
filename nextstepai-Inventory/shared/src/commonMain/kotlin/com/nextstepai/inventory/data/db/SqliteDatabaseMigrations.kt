@@ -26,9 +26,19 @@ internal object SqliteDatabaseMigrations {
     val optionalTables: Set<String>
         get() = synchronized(dynamicOptionalTables) { dynamicOptionalTables.toSet() }
 
+    /**
+     * تسجيل جدول كاختياري في بيئة الاختبارات أو الوحدات الإضافية المعتمدة.
+     * يفرض حماية صارمة لمنع تسجيل أي جدول أساسي (Essential) كجدول اختياري،
+     * حفاظاً على صلابة المخطط وتفادي تجاوز أخطاء ترحيل الجداول الحيوية.
+     */
     fun registerOptionalTable(tableName: String) {
+        val normalized = tableName.lowercase().trim()
+        require(normalized.isNotEmpty()) { "Table name cannot be empty." }
+        require(normalized !in essentialTables) {
+            "Security/Integrity violation: Cannot register essential core table '$tableName' as an optional table."
+        }
         synchronized(dynamicOptionalTables) {
-            dynamicOptionalTables.add(tableName.lowercase().trim())
+            dynamicOptionalTables.add(normalized)
         }
     }
 

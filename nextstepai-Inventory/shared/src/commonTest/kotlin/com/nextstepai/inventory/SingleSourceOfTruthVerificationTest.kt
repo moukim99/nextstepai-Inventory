@@ -916,6 +916,23 @@ class SingleSourceOfTruthVerificationTest {
             } finally {
                 SqliteDatabaseMigrations.unregisterOptionalTable("test_optional_table")
             }
+
+            // Guard check: cannot register essential table (or uppercase) as optional
+            val guardErr1 = assertFailsWith<IllegalArgumentException>("لا يمكن تسجيل جدول أساسي كاختياري") {
+                SqliteDatabaseMigrations.registerOptionalTable("parts")
+            }
+            assertTrue(guardErr1.message.orEmpty().contains("Cannot register essential core table", ignoreCase = true))
+
+            val guardErr2 = assertFailsWith<IllegalArgumentException>("لا يمكن تسجيل جدول أساسي بأحرف كبيرة كاختياري") {
+                SqliteDatabaseMigrations.registerOptionalTable("COMPANIES")
+            }
+            assertTrue(guardErr2.message.orEmpty().contains("Cannot register essential core table", ignoreCase = true))
+
+            val guardErr3 = assertFailsWith<IllegalArgumentException>("لا يمكن تسجيل اسم فارغ") {
+                SqliteDatabaseMigrations.registerOptionalTable("   ")
+            }
+            assertTrue(guardErr3.message.orEmpty().contains("cannot be empty", ignoreCase = true))
+
             conn.close()
 
             // Verify extractTableName unit tests
