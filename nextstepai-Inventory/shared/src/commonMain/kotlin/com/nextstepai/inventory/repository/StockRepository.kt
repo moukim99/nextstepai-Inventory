@@ -509,6 +509,9 @@ class StockRepository(
 internal fun StockLocation.toEntity(): StockLocationEntity {
     return StockLocationEntity(
         uuid = if (uuid.isNotBlank() && !uuid.startsWith("location-")) uuid else "loc-$id",
+        id = id,
+        parentId = parentId,
+        ownerId = ownerId,
         name = name,
         description = description,
         parentUuid = parentId?.let { "loc-$it" },

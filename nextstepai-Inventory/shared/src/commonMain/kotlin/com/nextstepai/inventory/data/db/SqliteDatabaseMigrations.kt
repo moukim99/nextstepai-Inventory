@@ -250,10 +250,104 @@ internal object SqliteDatabaseMigrations {
             "ALTER TABLE part_allocations ADD COLUMN createdByUserId TEXT NOT NULL DEFAULT '1';"
         )
 
+        // Core tables UUID and numeric ID migrations
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN uuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
+        if (tableExists(conn, "parts") && hasColumn(conn, "parts", "uuid") && hasColumn(conn, "parts", "id")) {
+            conn.prepare("UPDATE parts SET uuid = 'part-' || id WHERE (uuid IS NULL OR uuid = '') AND id > 0;").use { it.step() }
+            conn.prepare("UPDATE parts SET uuid = 'part-' || rowid WHERE (uuid IS NULL OR uuid = '');").use { it.step() }
+        }
+
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN uuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN phone TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN email TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN isSupplier INTEGER NOT NULL DEFAULT 1;")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN isManufacturer INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN isCustomer INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD';")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN logoPath TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN parentUuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN website TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN active INTEGER NOT NULL DEFAULT 1;")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN notes TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}';")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN version INTEGER NOT NULL DEFAULT 1;")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN syncStatus TEXT NOT NULL DEFAULT 'PENDING_PUSH';")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN lastModifiedByDeviceUuid TEXT;")
+        if (tableExists(conn, "companies") && hasColumn(conn, "companies", "uuid") && hasColumn(conn, "companies", "id")) {
+            conn.prepare("UPDATE companies SET uuid = 'company-' || id WHERE (uuid IS NULL OR uuid = '') AND id > 0;").use { it.step() }
+            conn.prepare("UPDATE companies SET uuid = 'company-' || rowid WHERE (uuid IS NULL OR uuid = '');").use { it.step() }
+        }
+
+        addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN uuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN locationId INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN parentId INTEGER;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN ownerId INTEGER;")
+        if (tableExists(conn, "stock_locations") && hasColumn(conn, "stock_locations", "uuid") && hasColumn(conn, "stock_locations", "id")) {
+            conn.prepare("UPDATE stock_locations SET uuid = 'loc-' || id WHERE (uuid IS NULL OR uuid = '') AND id > 0;").use { it.step() }
+            conn.prepare("UPDATE stock_locations SET uuid = 'loc-' || rowid WHERE (uuid IS NULL OR uuid = '');").use { it.step() }
+        }
+
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN uuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN parentId INTEGER;")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN defaultLocationId INTEGER;")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN parentUuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN defaultLocationUuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN structural INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN description TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN icon TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN lft INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN rght INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN treeId INTEGER NOT NULL DEFAULT 1;")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}';")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN version INTEGER NOT NULL DEFAULT 1;")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN syncStatus TEXT NOT NULL DEFAULT 'PENDING';")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE part_categories ADD COLUMN lastModifiedByDeviceUuid TEXT;")
+        if (tableExists(conn, "part_categories") && hasColumn(conn, "part_categories", "uuid") && hasColumn(conn, "part_categories", "id")) {
+            conn.prepare("UPDATE part_categories SET uuid = 'cat-' || id WHERE (uuid IS NULL OR uuid = '') AND id > 0;").use { it.step() }
+            conn.prepare("UPDATE part_categories SET uuid = 'cat-' || rowid WHERE (uuid IS NULL OR uuid = '');").use { it.step() }
+        }
+
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN uuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
+        if (tableExists(conn, "stock_items") && hasColumn(conn, "stock_items", "uuid") && hasColumn(conn, "stock_items", "id")) {
+            conn.prepare("UPDATE stock_items SET uuid = 'stock-' || id WHERE (uuid IS NULL OR uuid = '') AND id > 0;").use { it.step() }
+            conn.prepare("UPDATE stock_items SET uuid = 'stock-' || rowid WHERE (uuid IS NULL OR uuid = '');").use { it.step() }
+        }
+
         // Parts table migrations
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN categoryId INTEGER;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN defaultLocationId INTEGER;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN variantOfId INTEGER;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN ipn TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN description TEXT NOT NULL DEFAULT '';")
         addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN categoryUuid TEXT;")
-        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN defaultLocationUuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN units TEXT NOT NULL DEFAULT 'pcs';")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN minimumStock REAL NOT NULL DEFAULT 0.0;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN maximumStock REAL;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN totalInStock REAL NOT NULL DEFAULT 0.0;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN revision TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN keywords TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN assembly INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN component INTEGER NOT NULL DEFAULT 1;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN isTemplate INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN variantOfUuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN trackable INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN purchaseable INTEGER NOT NULL DEFAULT 1;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN salable INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN virtual INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN active INTEGER NOT NULL DEFAULT 1;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN locked INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN defaultLocationUuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN defaultExpiryDays INTEGER;")
+        addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN link TEXT NOT NULL DEFAULT '';")
         addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN localImagePath TEXT;")
         addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}';")
         addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN version INTEGER NOT NULL DEFAULT 1;")
@@ -263,7 +357,10 @@ internal object SqliteDatabaseMigrations {
         addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN lastModifiedByDeviceUuid TEXT;")
 
         // Stock locations table migrations
+        addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN description TEXT NOT NULL DEFAULT '';")
         addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN parentUuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN structural INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN external INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN locationTypeUuid TEXT;")
         addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN locationType TEXT NOT NULL DEFAULT 'SHELF';")
         addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN customCapacity REAL;")
@@ -271,6 +368,10 @@ internal object SqliteDatabaseMigrations {
         addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN address TEXT NOT NULL DEFAULT '';")
         addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN icon TEXT NOT NULL DEFAULT 'warehouse';")
         addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN customIcon TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN level INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN lft INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN rght INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN treeId INTEGER NOT NULL DEFAULT 1;")
         addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}';")
         addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN version INTEGER NOT NULL DEFAULT 1;")
         addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN syncStatus TEXT NOT NULL DEFAULT 'PENDING';")
@@ -279,9 +380,25 @@ internal object SqliteDatabaseMigrations {
         addColumnIfMissing(conn, "ALTER TABLE stock_locations ADD COLUMN lastModifiedByDeviceUuid TEXT;")
 
         // Stock items table migrations
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN partId INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN locationId INTEGER;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN purchaseOrderId INTEGER;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN supplierPartId INTEGER;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN salesOrderId INTEGER;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN customerId INTEGER;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN buildId INTEGER;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN parentId INTEGER;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN parentUuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN stocktakeUserId INTEGER;")
         addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN partUuid TEXT NOT NULL DEFAULT '';")
         addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN locationUuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN quantity REAL NOT NULL DEFAULT 1.0;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN serial TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN batch TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN statusCode INTEGER NOT NULL DEFAULT 10;")
         addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN packaging TEXT NOT NULL DEFAULT 'Box';")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN expiryDate TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN notes TEXT NOT NULL DEFAULT '';")
         addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN purchasePrice REAL NOT NULL DEFAULT 0.0;")
         addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN purchasePriceCurrency TEXT NOT NULL DEFAULT 'USD';")
         addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN purchaseOrderUuid TEXT;")
@@ -291,6 +408,11 @@ internal object SqliteDatabaseMigrations {
         addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN buildUuid TEXT;")
         addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN isBuilding INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN parentStockItemUuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN stocktakeDate TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN stocktakeUserUuid TEXT;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN reviewNeeded INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN deleteOnDeplete INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN link TEXT NOT NULL DEFAULT '';")
         addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}';")
         addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN version INTEGER NOT NULL DEFAULT 1;")
         addColumnIfMissing(conn, "ALTER TABLE stock_items ADD COLUMN syncStatus TEXT NOT NULL DEFAULT 'PENDING_PUSH';")
@@ -333,10 +455,38 @@ internal object SqliteDatabaseMigrations {
         addColumnIfMissing(conn, "ALTER TABLE stock_item_tracking ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE stock_item_tracking ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE contacts ADD COLUMN uuid TEXT;")
         addColumnIfMissing(conn, "ALTER TABLE contacts ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE contacts ADD COLUMN companyId INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE contacts ADD COLUMN companyUuid TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE contacts ADD COLUMN phone TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE contacts ADD COLUMN email TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE contacts ADD COLUMN role TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE contacts ADD COLUMN isPrimary INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE contacts ADD COLUMN version INTEGER NOT NULL DEFAULT 1;")
+        addColumnIfMissing(conn, "ALTER TABLE contacts ADD COLUMN syncStatus TEXT NOT NULL DEFAULT 'PENDING';")
+        addColumnIfMissing(conn, "ALTER TABLE contacts ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE contacts ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE contacts ADD COLUMN lastModifiedByDeviceUuid TEXT;")
+
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN uuid TEXT;")
         addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN companyId INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN companyUuid TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN title TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN isPrimary INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN line1 TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN line2 TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN postalCode TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN city TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN province TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN country TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN shippingNotes TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN version INTEGER NOT NULL DEFAULT 1;")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN syncStatus TEXT NOT NULL DEFAULT 'PENDING';")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE addresses ADD COLUMN lastModifiedByDeviceUuid TEXT;")
         addColumnIfMissing(conn, "ALTER TABLE manufacturer_parts ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE manufacturer_parts ADD COLUMN partId INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE manufacturer_parts ADD COLUMN manufacturerId INTEGER NOT NULL DEFAULT 0;")
@@ -397,5 +547,17 @@ internal object SqliteDatabaseMigrations {
             stmt.bindText(1, tableName)
             return stmt.step()
         }
+    }
+
+    fun hasColumn(conn: SQLiteConnection, tableName: String, columnName: String): Boolean {
+        if (!tableExists(conn, tableName)) return false
+        conn.prepare("PRAGMA table_info($tableName)").use { stmt ->
+            while (stmt.step()) {
+                if (stmt.getText(1).equals(columnName, ignoreCase = true)) {
+                    return true
+                }
+            }
+        }
+        return false
     }
 }

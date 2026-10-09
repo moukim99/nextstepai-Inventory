@@ -1,4 +1,4 @@
-﻿package com.nextstepai.inventory.data.db
+package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -12,7 +12,7 @@ import kotlin.time.Clock
 class StockLocationDao {
 
     private val selectColumns = """
-        uuid, name, description, parentUuid, structural, external, locationTypeUuid,
+        uuid, id, parentId, ownerId, name, description, parentUuid, structural, external, locationTypeUuid,
         locationType, customCapacity, isBulkGenerated, address, icon, customIcon, level,
         lft, rght, treeId, metadata, version, syncStatus, isDeleted, updatedAt, lastModifiedByDeviceUuid
     """.trimIndent()
@@ -54,11 +54,15 @@ class StockLocationDao {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""
             INSERT INTO stock_locations (
-                uuid, name, description, parentUuid, structural, external, locationTypeUuid,
+                uuid, id, locationId, parentId, ownerId, name, description, parentUuid, structural, external, locationTypeUuid,
                 locationType, customCapacity, isBulkGenerated, address, icon, customIcon, level,
                 lft, rght, treeId, metadata, version, syncStatus, isDeleted, updatedAt, lastModifiedByDeviceUuid
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(uuid) DO UPDATE SET
+                id = CASE WHEN excluded.id > 0 THEN excluded.id ELSE stock_locations.id END,
+                locationId = CASE WHEN excluded.locationId > 0 THEN excluded.locationId ELSE stock_locations.locationId END,
+                parentId = CASE WHEN excluded.parentId IS NOT NULL THEN excluded.parentId ELSE stock_locations.parentId END,
+                ownerId = CASE WHEN excluded.ownerId IS NOT NULL THEN excluded.ownerId ELSE stock_locations.ownerId END,
                 name = excluded.name,
                 description = excluded.description,
                 parentUuid = excluded.parentUuid,
@@ -92,11 +96,15 @@ class StockLocationDao {
         var insertedCount = 0
         conn.prepare("""
             INSERT INTO stock_locations (
-                uuid, name, description, parentUuid, structural, external, locationTypeUuid,
+                uuid, id, locationId, parentId, ownerId, name, description, parentUuid, structural, external, locationTypeUuid,
                 locationType, customCapacity, isBulkGenerated, address, icon, customIcon, level,
                 lft, rght, treeId, metadata, version, syncStatus, isDeleted, updatedAt, lastModifiedByDeviceUuid
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(uuid) DO UPDATE SET
+                id = CASE WHEN excluded.id > 0 THEN excluded.id ELSE stock_locations.id END,
+                locationId = CASE WHEN excluded.locationId > 0 THEN excluded.locationId ELSE stock_locations.locationId END,
+                parentId = CASE WHEN excluded.parentId IS NOT NULL THEN excluded.parentId ELSE stock_locations.parentId END,
+                ownerId = CASE WHEN excluded.ownerId IS NOT NULL THEN excluded.ownerId ELSE stock_locations.ownerId END,
                 name = excluded.name,
                 description = excluded.description,
                 parentUuid = excluded.parentUuid,
@@ -196,56 +204,74 @@ class StockLocationDao {
     }
 
     private fun bindLocationEntity(stmt: SQLiteStatement, entity: StockLocationEntity) {
+        val locId = if (entity.id > 0L) entity.id else {
+            entity.uuid.removePrefix("location-").removePrefix("loc-").toLongOrNull() ?: 0L
+        }
         stmt.bindText(1, entity.uuid)
-        stmt.bindText(2, entity.name)
-        stmt.bindText(3, entity.description)
-        if (entity.parentUuid != null) stmt.bindText(4, entity.parentUuid) else stmt.bindNull(4)
-        stmt.bindLong(5, if (entity.structural) 1L else 0L)
-        stmt.bindLong(6, if (entity.external) 1L else 0L)
-        if (entity.locationTypeUuid != null) stmt.bindText(7, entity.locationTypeUuid) else stmt.bindNull(7)
-        stmt.bindText(8, entity.locationType)
-        if (entity.customCapacity != null) stmt.bindDouble(9, entity.customCapacity) else stmt.bindNull(9)
-        stmt.bindLong(10, if (entity.isBulkGenerated) 1L else 0L)
-        stmt.bindText(11, entity.address)
-        stmt.bindText(12, entity.icon)
-        stmt.bindText(13, entity.customIcon)
-        stmt.bindLong(14, entity.level.toLong())
-        stmt.bindLong(15, entity.lft.toLong())
-        stmt.bindLong(16, entity.rght.toLong())
-        stmt.bindLong(17, entity.treeId.toLong())
-        stmt.bindText(18, entity.metadata)
-        stmt.bindLong(19, entity.version.toLong())
-        stmt.bindText(20, entity.syncStatus.name)
-        stmt.bindLong(21, if (entity.isDeleted) 1L else 0L)
-        stmt.bindLong(22, entity.updatedAt)
-        if (entity.lastModifiedByDeviceUuid != null) stmt.bindText(23, entity.lastModifiedByDeviceUuid) else stmt.bindNull(23)
+        stmt.bindLong(2, locId)
+        stmt.bindLong(3, locId)
+        if (entity.parentId != null) stmt.bindLong(4, entity.parentId) else stmt.bindNull(4)
+        if (entity.ownerId != null) stmt.bindLong(5, entity.ownerId) else stmt.bindNull(5)
+        stmt.bindText(6, entity.name)
+        stmt.bindText(7, entity.description)
+        if (entity.parentUuid != null) stmt.bindText(8, entity.parentUuid) else stmt.bindNull(8)
+        stmt.bindLong(9, if (entity.structural) 1L else 0L)
+        stmt.bindLong(10, if (entity.external) 1L else 0L)
+        if (entity.locationTypeUuid != null) stmt.bindText(11, entity.locationTypeUuid) else stmt.bindNull(11)
+        stmt.bindText(12, entity.locationType)
+        if (entity.customCapacity != null) stmt.bindDouble(13, entity.customCapacity) else stmt.bindNull(13)
+        stmt.bindLong(14, if (entity.isBulkGenerated) 1L else 0L)
+        stmt.bindText(15, entity.address)
+        stmt.bindText(16, entity.icon)
+        stmt.bindText(17, entity.customIcon)
+        stmt.bindLong(18, entity.level.toLong())
+        stmt.bindLong(19, entity.lft.toLong())
+        stmt.bindLong(20, entity.rght.toLong())
+        stmt.bindLong(21, entity.treeId.toLong())
+        stmt.bindText(22, entity.metadata)
+        stmt.bindLong(23, entity.version.toLong())
+        stmt.bindText(24, entity.syncStatus.name)
+        stmt.bindLong(25, if (entity.isDeleted) 1L else 0L)
+        stmt.bindLong(26, entity.updatedAt)
+        if (entity.lastModifiedByDeviceUuid != null) stmt.bindText(27, entity.lastModifiedByDeviceUuid) else stmt.bindNull(27)
     }
 
     private fun mapStockLocationEntity(stmt: SQLiteStatement): StockLocationEntity {
+        val u = runCatching { stmt.getText(0) }.getOrDefault("")
+        val rawId = runCatching { stmt.getLong(1) }.getOrDefault(0L)
+        val finalId = if (rawId > 0L) rawId else {
+            u.removePrefix("location-").removePrefix("loc-").toLongOrNull() ?: 0L
+        }
+        val pId = runCatching { if (stmt.isNull(2)) null else stmt.getLong(2) }.getOrNull()
+        val oId = runCatching { if (stmt.isNull(3)) null else stmt.getLong(3) }.getOrNull()
+
         return StockLocationEntity(
-            uuid = runCatching { stmt.getText(0) }.getOrDefault(""),
-            name = runCatching { stmt.getText(1) }.getOrDefault(""),
-            description = runCatching { stmt.getText(2) }.getOrDefault(""),
-            parentUuid = runCatching { if (stmt.isNull(3)) null else stmt.getText(3) }.getOrNull(),
-            structural = runCatching { stmt.getLong(4) != 0L }.getOrDefault(false),
-            external = runCatching { stmt.getLong(5) != 0L }.getOrDefault(false),
-            locationTypeUuid = runCatching { if (stmt.isNull(6)) null else stmt.getText(6) }.getOrNull(),
-            locationType = runCatching { stmt.getText(7) }.getOrDefault("SHELF"),
-            customCapacity = runCatching { if (stmt.isNull(8)) null else stmt.getDouble(8) }.getOrNull(),
-            isBulkGenerated = runCatching { stmt.getLong(9) != 0L }.getOrDefault(false),
-            address = runCatching { stmt.getText(10) }.getOrDefault(""),
-            icon = runCatching { stmt.getText(11) }.getOrDefault("warehouse"),
-            customIcon = runCatching { stmt.getText(12) }.getOrDefault(""),
-            level = runCatching { stmt.getLong(13).toInt() }.getOrDefault(0),
-            lft = runCatching { stmt.getLong(14).toInt() }.getOrDefault(0),
-            rght = runCatching { stmt.getLong(15).toInt() }.getOrDefault(0),
-            treeId = runCatching { stmt.getLong(16).toInt() }.getOrDefault(1),
-            metadata = runCatching { stmt.getText(17) }.getOrDefault("{}"),
-            version = runCatching { stmt.getLong(18).toInt() }.getOrDefault(1),
-            syncStatus = SyncStatus.fromString(stmt.getText(19)),
-            isDeleted = runCatching { stmt.getLong(20) != 0L }.getOrDefault(false),
-            updatedAt = runCatching { stmt.getLong(21) }.getOrDefault(0L),
-            lastModifiedByDeviceUuid = runCatching { if (stmt.isNull(22)) null else stmt.getText(22) }.getOrNull()
+            uuid = u,
+            id = finalId,
+            parentId = pId,
+            ownerId = oId,
+            name = runCatching { stmt.getText(4) }.getOrDefault(""),
+            description = runCatching { stmt.getText(5) }.getOrDefault(""),
+            parentUuid = runCatching { if (stmt.isNull(6)) null else stmt.getText(6) }.getOrNull(),
+            structural = runCatching { stmt.getLong(7) != 0L }.getOrDefault(false),
+            external = runCatching { stmt.getLong(8) != 0L }.getOrDefault(false),
+            locationTypeUuid = runCatching { if (stmt.isNull(9)) null else stmt.getText(9) }.getOrNull(),
+            locationType = runCatching { stmt.getText(10) }.getOrDefault("SHELF"),
+            customCapacity = runCatching { if (stmt.isNull(11)) null else stmt.getDouble(11) }.getOrNull(),
+            isBulkGenerated = runCatching { stmt.getLong(12) != 0L }.getOrDefault(false),
+            address = runCatching { stmt.getText(13) }.getOrDefault(""),
+            icon = runCatching { stmt.getText(14) }.getOrDefault("warehouse"),
+            customIcon = runCatching { stmt.getText(15) }.getOrDefault(""),
+            level = runCatching { stmt.getLong(16).toInt() }.getOrDefault(0),
+            lft = runCatching { stmt.getLong(17).toInt() }.getOrDefault(0),
+            rght = runCatching { stmt.getLong(18).toInt() }.getOrDefault(0),
+            treeId = runCatching { stmt.getLong(19).toInt() }.getOrDefault(1),
+            metadata = runCatching { stmt.getText(20) }.getOrDefault("{}"),
+            version = runCatching { stmt.getLong(21).toInt() }.getOrDefault(1),
+            syncStatus = SyncStatus.fromString(stmt.getText(22)),
+            isDeleted = runCatching { stmt.getLong(23) != 0L }.getOrDefault(false),
+            updatedAt = runCatching { stmt.getLong(24) }.getOrDefault(0L),
+            lastModifiedByDeviceUuid = runCatching { if (stmt.isNull(25)) null else stmt.getText(25) }.getOrNull()
         )
     }
 }

@@ -20,6 +20,8 @@ object SqliteNumericIdAllocator {
     private val allowed = setOf(
         Key("parts", "part-"),
         Key("companies", "company-"),
+        Key("stock_locations", "loc-"),
+        Key("stock_locations", "location-"),
         Key("company_attachments", "company-att-"),
         Key("contacts", "contact-"),
         Key("addresses", "address-"),
@@ -60,9 +62,9 @@ object SqliteNumericIdAllocator {
 
             val suffixStart = prefix.length + 1
             val conn = connection ?: SqliteDatabaseManager.getConnection()
-        // Parts and companies now persist numeric IDs independently of the UUID, so
-        // their sequence must consider both custom-UUID rows and legacy prefixed UUIDs.
-        val maxIdQuery = if (table == "parts" || table == "companies") {
+        // Parts, companies, and stock locations persist numeric IDs independently of the UUID,
+        // so their sequence must consider both custom-UUID rows and legacy prefixed UUIDs.
+        val maxIdQuery = if (table == "parts" || table == "companies" || table == "stock_locations") {
             """
             SELECT MAX(
                 COALESCE((SELECT MAX(id) FROM $table), 0),

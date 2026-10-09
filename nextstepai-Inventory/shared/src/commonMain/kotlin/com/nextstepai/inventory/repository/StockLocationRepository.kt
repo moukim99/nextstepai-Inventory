@@ -1,6 +1,7 @@
 package com.nextstepai.inventory.repository
 
 import com.nextstepai.inventory.data.*
+import com.nextstepai.inventory.data.db.SqliteNumericIdAllocator
 import com.nextstepai.inventory.data.db.StockLocationDao
 import com.nextstepai.inventory.data.db.StockLocationTypeDao
 import java.io.File
@@ -23,17 +24,20 @@ class StockLocationRepository(
         val entities = runCatching { locationDao.getAllLocations() }.getOrDefault(emptyList())
         if (entities.isNotEmpty()) {
             return entities.map { entity ->
-                val parsedId = entity.uuid.removePrefix("location-").removePrefix("loc-").toLongOrNull() ?: 1L
+                val resolvedId = if (entity.id > 0L) entity.id else {
+                    entity.uuid.removePrefix("location-").removePrefix("loc-").toLongOrNull() ?: 1L
+                }
+                val resolvedParentId = entity.parentId ?: entity.parentUuid?.removePrefix("location-")?.removePrefix("loc-")?.toLongOrNull()
                 StockLocation(
-                    id = parsedId,
+                    id = resolvedId,
                     uuid = entity.uuid,
                     name = entity.name,
                     description = entity.description,
-                    parentId = entity.parentUuid?.removePrefix("location-")?.removePrefix("loc-")?.toLongOrNull(),
+                    parentId = resolvedParentId,
                     structural = entity.structural,
                     external = entity.external,
                     locationType = entity.locationType,
-                    ownerId = null,
+                    ownerId = entity.ownerId,
                     icon = entity.icon,
                     customIcon = entity.customIcon,
                     address = entity.address,
@@ -131,11 +135,22 @@ class StockLocationRepository(
     fun addLocation(location: StockLocation): StockLocation {
         val existingLocs = getLocations()
         val maxExistingId = maxOf(stockTable.getAllLocations().maxOfOrNull { it.id } ?: 0L, existingLocs.maxOfOrNull { it.id } ?: 0L)
-        val locationWithId = if (location.id == 0L) {
-            location.copy(id = maxExistingId + 1L)
+        val allocatedId = if (location.id == 0L) {
+            runCatching {
+                SqliteNumericIdAllocator.nextId("stock_locations", "loc-")
+            }.getOrElse { maxExistingId + 1L }
         } else {
-            location
+            location.id
         }
+        val finalUuid = if (location.uuid.isNotBlank() && !location.uuid.startsWith("location-")) {
+            location.uuid
+        } else {
+            "loc-$allocatedId"
+        }
+        val locationWithId = location.copy(
+            id = allocatedId,
+            uuid = finalUuid
+        )
         var finalLocation = locationWithId
 
         if (location.isPrimary) {
@@ -220,7 +235,17 @@ class StockLocationRepository(
      * إضافة دفعة مواقع تخزينية متسلسلة جديدة (Bulk Location Generator).
      */
     fun addBatchLocations(locations: List<StockLocation>): List<StockLocation> {
-        val insertedList = stockTable.insertBatchLocations(locations)
+        val allocatedLocations = locations.map { loc ->
+            if (loc.id <= 0L) {
+                val nextId = runCatching {
+                    SqliteNumericIdAllocator.nextId("stock_locations", "loc-")
+                }.getOrElse { (getLocations().maxOfOrNull { it.id } ?: 0L) + 1L }
+                loc.copy(id = nextId, uuid = loc.uuid.ifBlank { "loc-$nextId" })
+            } else {
+                loc
+            }
+        }
+        val insertedList = stockTable.insertBatchLocations(allocatedLocations)
         locationDao.insertBatchLocations(insertedList.map { it.toEntity() })
         return insertedList
     }

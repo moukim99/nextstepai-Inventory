@@ -105,21 +105,7 @@ internal object SqliteDatabaseSchema {
             );
         """.trimIndent()).use { it.step() }
 
-        // Upgrade existing databases where the compatibility ID column is absent.
-        val partColumns = mutableSetOf<String>()
-        conn.prepare("PRAGMA table_info(parts)").use { stmt ->
-            while (stmt.step()) partColumns.add(stmt.getText(1))
-        }
-        if ("id" !in partColumns) {
-            conn.prepare("ALTER TABLE parts ADD COLUMN id INTEGER NOT NULL DEFAULT 0").use { it.step() }
-        }
-
-        // Backfill legacy/domain IDs for existing rows before repositories map them.
-        conn.prepare("UPDATE parts SET id = CAST(SUBSTR(uuid, 6) AS INTEGER) WHERE id = 0 AND uuid LIKE 'part-%' AND SUBSTR(uuid, 6) GLOB '[0-9]*'").use { it.step() }
-        backfillMissingNumericIds(conn, "parts", "part-")
-
-
-        // 3. Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ù…ÙˆØ§Ø¯ ÙˆØ§Ù„ØªØµÙ†ÙŠØ¹ (BOM)
+        // 3. قائمة المواد والتصنيع (BOM)
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS bom_items (
                 uuid TEXT PRIMARY KEY NOT NULL,
@@ -352,18 +338,6 @@ internal object SqliteDatabaseSchema {
                 lastModifiedByDeviceUuid TEXT
             );
         """.trimIndent()).use { it.step() }
-
-        // Upgrade databases created before companies carried a stable numeric ID.
-        val companyColumns = mutableSetOf<String>()
-        conn.prepare("PRAGMA table_info(companies)").use { stmt ->
-            while (stmt.step()) companyColumns.add(stmt.getText(1))
-        }
-        if ("id" !in companyColumns) {
-            conn.prepare("ALTER TABLE companies ADD COLUMN id INTEGER NOT NULL DEFAULT 0").use { it.step() }
-        }
-        conn.prepare("UPDATE companies SET id = CAST(SUBSTR(uuid, 9) AS INTEGER) WHERE id = 0 AND uuid LIKE 'company-%' AND SUBSTR(uuid, 9) GLOB '[0-9]*'").use { it.step() }
-        backfillMissingNumericIds(conn, "companies", "company-")
-
 
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS company_attachments (
@@ -1036,17 +1010,127 @@ internal object SqliteDatabaseSchema {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_triggered_schedule ON notifications_history(isTriggered, scheduledDate);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications_history(isRead);").use { it.step() } }
 
-        // 9. Centralized schema migrations and relational backfills
+        // 9. Centralized schema migrations and column additions
         SqliteDatabaseMigrations.applyMigrations(conn)
 
-        // 10. Enforce strict uniqueness constraints, reconcile duplicate IDs, and build unique indexes
+        // 10. Relational and numeric ID backfills (run only AFTER migrations ensure all columns exist)
+        applyDataRepairsAndBackfills(conn)
+
+        // 11. Enforce strict uniqueness constraints, reconcile duplicate IDs, and build unique indexes
         enforceUniqueConstraintsAndIndexes(conn)
     }
 
     fun enforceUniqueConstraintsAndIndexes(conn: SQLiteConnection) {
+        ensureUuidUniqueIndex(conn, "parts", "part-")
+        ensureUuidUniqueIndex(conn, "companies", "company-")
+        ensureUuidUniqueIndex(conn, "stock_locations", "loc-")
+        ensureUuidUniqueIndex(conn, "stock_items", "stock-")
+        ensureUuidUniqueIndex(conn, "part_categories", "cat-")
+        ensureUuidUniqueIndex(conn, "app_settings", "settings-")
         ensurePartIdUniqueIndex(conn)
         ensureCompanyNameUniqueIndex(conn)
         ensureCompanyIdUniqueIndex(conn)
+        ensureStockLocationIdUniqueIndex(conn)
+    }
+
+    private fun ensureUuidUniqueIndex(conn: SQLiteConnection, table: String, prefix: String) {
+        if (!tableExists(conn, table) || !hasColumn(conn, table, "uuid")) return
+
+        conn.prepare("UPDATE $table SET uuid = '$prefix' || rowid WHERE uuid IS NULL OR uuid = ''").use { it.step() }
+
+        val duplicateUuids = mutableListOf<String>()
+        conn.prepare("""
+            SELECT uuid
+            FROM $table
+            WHERE uuid IS NOT NULL AND uuid != ''
+            GROUP BY uuid
+            HAVING COUNT(*) > 1
+        """.trimIndent()).use { stmt ->
+            while (stmt.step()) {
+                duplicateUuids.add(stmt.getText(0))
+            }
+        }
+
+        for (dupUuid in duplicateUuids) {
+            val duplicateRowIds = mutableListOf<Long>()
+            conn.prepare("""
+                SELECT rowid
+                FROM $table
+                WHERE uuid = ?
+                ORDER BY rowid ASC
+            """.trimIndent()).use { stmt ->
+                stmt.bindText(1, dupUuid)
+                if (stmt.step()) {
+                    // Skip first canonical occurrence
+                    while (stmt.step()) {
+                        duplicateRowIds.add(stmt.getLong(0))
+                    }
+                }
+            }
+            for (rowId in duplicateRowIds) {
+                conn.prepare("UPDATE $table SET uuid = ? WHERE rowid = ?").use { stmt ->
+                    stmt.bindText(1, "$prefix$rowId")
+                    stmt.bindLong(2, rowId)
+                    stmt.step()
+                }
+            }
+        }
+
+        conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_uuid ON $table(uuid);").use { it.step() }
+    }
+
+    /**
+     * Executes relational backfills and legacy ID repair safely after all schema migrations have finished.
+     */
+    fun applyDataRepairsAndBackfills(conn: SQLiteConnection) {
+        // Backfill legacy/domain IDs for parts
+        if (tableExists(conn, "parts") && hasColumn(conn, "parts", "uuid") && hasColumn(conn, "parts", "id")) {
+            conn.prepare("UPDATE parts SET id = CAST(SUBSTR(uuid, 6) AS INTEGER) WHERE id = 0 AND uuid LIKE 'part-%' AND SUBSTR(uuid, 6) GLOB '[0-9]*'").use { it.step() }
+            backfillMissingNumericIds(conn, "parts", "part-")
+        }
+
+        // Backfill legacy/domain IDs for companies
+        if (tableExists(conn, "companies") && hasColumn(conn, "companies", "uuid") && hasColumn(conn, "companies", "id")) {
+            conn.prepare("UPDATE companies SET id = CAST(SUBSTR(uuid, 9) AS INTEGER) WHERE id = 0 AND uuid LIKE 'company-%' AND SUBSTR(uuid, 9) GLOB '[0-9]*'").use { it.step() }
+            backfillMissingNumericIds(conn, "companies", "company-")
+        }
+
+        // Backfill legacy/domain IDs and parent relations for stock_locations
+        if (tableExists(conn, "stock_locations") && hasColumn(conn, "stock_locations", "uuid") && hasColumn(conn, "stock_locations", "id")) {
+            conn.prepare("UPDATE stock_locations SET id = CAST(SUBSTR(uuid, 5) AS INTEGER) WHERE id = 0 AND uuid LIKE 'loc-%' AND SUBSTR(uuid, 5) GLOB '[0-9]*'").use { it.step() }
+            conn.prepare("UPDATE stock_locations SET id = CAST(SUBSTR(uuid, 10) AS INTEGER) WHERE id = 0 AND uuid LIKE 'location-%' AND SUBSTR(uuid, 10) GLOB '[0-9]*'").use { it.step() }
+            backfillMissingNumericIds(conn, "stock_locations", "loc-")
+            if (hasColumn(conn, "stock_locations", "locationId")) {
+                conn.prepare("UPDATE stock_locations SET locationId = id WHERE (locationId = 0 OR locationId IS NULL) AND id > 0").use { it.step() }
+            }
+            if (hasColumn(conn, "stock_locations", "parentId") && hasColumn(conn, "stock_locations", "parentUuid")) {
+                conn.prepare("UPDATE stock_locations SET parentId = CAST(SUBSTR(parentUuid, 5) AS INTEGER) WHERE parentId IS NULL AND parentUuid LIKE 'loc-%' AND SUBSTR(parentUuid, 5) GLOB '[0-9]*'").use { it.step() }
+                conn.prepare("UPDATE stock_locations SET parentId = CAST(SUBSTR(parentUuid, 10) AS INTEGER) WHERE parentId IS NULL AND parentUuid LIKE 'location-%' AND SUBSTR(parentUuid, 10) GLOB '[0-9]*'").use { it.step() }
+                conn.prepare("UPDATE stock_locations SET parentUuid = 'loc-' || parentId WHERE (parentUuid IS NULL OR parentUuid = '') AND parentId IS NOT NULL AND parentId > 0").use { it.step() }
+            }
+        }
+
+        // Backfill stock_items foreign keys to stock_locations and parts
+        if (tableExists(conn, "stock_items")) {
+            if (hasColumn(conn, "stock_items", "locationId") && hasColumn(conn, "stock_items", "locationUuid") && tableExists(conn, "stock_locations")) {
+                conn.prepare("""
+                    UPDATE stock_items
+                    SET locationId = (SELECT stock_locations.id FROM stock_locations WHERE stock_locations.uuid = stock_items.locationUuid)
+                    WHERE (locationId IS NULL OR locationId = 0)
+                      AND EXISTS (SELECT 1 FROM stock_locations WHERE stock_locations.uuid = stock_items.locationUuid AND stock_locations.id > 0);
+                """.trimIndent()).use { it.step() }
+                conn.prepare("UPDATE stock_items SET locationUuid = 'loc-' || locationId WHERE (locationUuid IS NULL OR locationUuid = '') AND locationId IS NOT NULL AND locationId > 0").use { it.step() }
+            }
+            if (hasColumn(conn, "stock_items", "partId") && hasColumn(conn, "stock_items", "partUuid") && tableExists(conn, "parts")) {
+                conn.prepare("""
+                    UPDATE stock_items
+                    SET partId = (SELECT parts.id FROM parts WHERE parts.uuid = stock_items.partUuid)
+                    WHERE (partId IS NULL OR partId = 0)
+                      AND EXISTS (SELECT 1 FROM parts WHERE parts.uuid = stock_items.partUuid AND parts.id > 0);
+                """.trimIndent()).use { it.step() }
+                conn.prepare("UPDATE stock_items SET partUuid = 'part-' || partId WHERE (partUuid IS NULL OR partUuid = '') AND partId IS NOT NULL AND partId > 0").use { it.step() }
+            }
+        }
     }
 
     /**
@@ -1055,7 +1139,8 @@ internal object SqliteDatabaseSchema {
      */
     private fun backfillMissingNumericIds(conn: SQLiteConnection, table: String, prefix: String) {
         require((table == "parts" && prefix == "part-") ||
-                (table == "companies" && prefix == "company-")) {
+                (table == "companies" && prefix == "company-") ||
+                (table == "stock_locations" && (prefix == "loc-" || prefix == "location-"))) {
             "Unsupported ID backfill target: $table / $prefix"
         }
         val pendingRowIds = mutableListOf<Long>()
@@ -1067,10 +1152,19 @@ internal object SqliteDatabaseSchema {
             conn.prepare("SELECT COALESCE(MAX(id), 0) + 1 FROM $table").use { stmt ->
                 if (stmt.step()) nextId = stmt.getLong(0)
             }
-            conn.prepare("UPDATE $table SET id = ? WHERE rowid = ? AND id = 0").use { stmt ->
-                stmt.bindLong(1, nextId)
-                stmt.bindLong(2, rowId)
-                stmt.step()
+            if (table == "stock_locations" && hasColumn(conn, "stock_locations", "locationId")) {
+                conn.prepare("UPDATE stock_locations SET id = ?, locationId = ? WHERE rowid = ? AND id = 0").use { stmt ->
+                    stmt.bindLong(1, nextId)
+                    stmt.bindLong(2, nextId)
+                    stmt.bindLong(3, rowId)
+                    stmt.step()
+                }
+            } else {
+                conn.prepare("UPDATE $table SET id = ? WHERE rowid = ? AND id = 0").use { stmt ->
+                    stmt.bindLong(1, nextId)
+                    stmt.bindLong(2, rowId)
+                    stmt.step()
+                }
             }
         }
     }
@@ -1080,11 +1174,16 @@ internal object SqliteDatabaseSchema {
      * useful diagnostic instead of silently running without the database constraint.
      */
     private fun ensureCompanyNameUniqueIndex(conn: SQLiteConnection) {
+        if (!tableExists(conn, "companies")) return
+        val hasDeleted = hasColumn(conn, "companies", "isDeleted")
+        val whereClause = if (hasDeleted) "WHERE isDeleted = 0" else ""
+        val indexWhereClause = if (hasDeleted) " WHERE isDeleted = 0" else ""
+
         val duplicates = mutableListOf<String>()
         conn.prepare("""
             SELECT LOWER(TRIM(name)), COUNT(*)
             FROM companies
-            WHERE isDeleted = 0
+            $whereClause
             GROUP BY LOWER(TRIM(name))
             HAVING COUNT(*) > 1
             ORDER BY LOWER(TRIM(name))
@@ -1098,7 +1197,7 @@ internal object SqliteDatabaseSchema {
             "Database migration blocked: duplicate active company names must be resolved before adding idx_companies_unique_name: ${duplicates.joinToString()}"
         }
 
-        conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_unique_name ON companies(LOWER(TRIM(name))) WHERE isDeleted = 0;").use { it.step() }
+        conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_unique_name ON companies(LOWER(TRIM(name)))$indexWhereClause;").use { it.step() }
 
         var indexExists = false
         conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_companies_unique_name' LIMIT 1").use { stmt ->
@@ -1114,13 +1213,18 @@ internal object SqliteDatabaseSchema {
      * automatically reconciling any historical duplicates before creating the index.
      */
     private fun ensurePartIdUniqueIndex(conn: SQLiteConnection) {
+        if (!tableExists(conn, "parts") || !hasColumn(conn, "parts", "id")) return
         reconcileDuplicateNumericIds(conn, "parts")
+
+        val hasDeleted = hasColumn(conn, "parts", "isDeleted")
+        val whereClause = if (hasDeleted) "WHERE isDeleted = 0 AND id > 0" else "WHERE id > 0"
+        val indexWhereClause = if (hasDeleted) " WHERE isDeleted = 0 AND id > 0" else " WHERE id > 0"
 
         val duplicates = mutableListOf<String>()
         conn.prepare("""
             SELECT id, COUNT(*)
             FROM parts
-            WHERE isDeleted = 0 AND id > 0
+            $whereClause
             GROUP BY id
             HAVING COUNT(*) > 1
             LIMIT 10
@@ -1133,7 +1237,7 @@ internal object SqliteDatabaseSchema {
             "Database migration blocked: duplicate active part IDs must be resolved before adding idx_parts_unique_id: ${duplicates.joinToString()}"
         }
 
-        conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_parts_unique_id ON parts(id) WHERE isDeleted = 0 AND id > 0;").use { it.step() }
+        conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_parts_unique_id ON parts(id)$indexWhereClause;").use { it.step() }
 
         var indexExists = false
         conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_parts_unique_id' LIMIT 1").use { stmt ->
@@ -1149,13 +1253,18 @@ internal object SqliteDatabaseSchema {
      * automatically reconciling any historical duplicates before creating the index.
      */
     private fun ensureCompanyIdUniqueIndex(conn: SQLiteConnection) {
+        if (!tableExists(conn, "companies") || !hasColumn(conn, "companies", "id")) return
         reconcileDuplicateNumericIds(conn, "companies")
+
+        val hasDeleted = hasColumn(conn, "companies", "isDeleted")
+        val whereClause = if (hasDeleted) "WHERE isDeleted = 0 AND id > 0" else "WHERE id > 0"
+        val indexWhereClause = if (hasDeleted) " WHERE isDeleted = 0 AND id > 0" else " WHERE id > 0"
 
         val duplicates = mutableListOf<String>()
         conn.prepare("""
             SELECT id, COUNT(*)
             FROM companies
-            WHERE isDeleted = 0 AND id > 0
+            $whereClause
             GROUP BY id
             HAVING COUNT(*) > 1
             LIMIT 10
@@ -1168,7 +1277,7 @@ internal object SqliteDatabaseSchema {
             "Database migration blocked: duplicate active company IDs must be resolved before adding idx_companies_unique_id: ${duplicates.joinToString()}"
         }
 
-        conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_unique_id ON companies(id) WHERE isDeleted = 0 AND id > 0;").use { it.step() }
+        conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_unique_id ON companies(id)$indexWhereClause;").use { it.step() }
 
         var indexExists = false
         conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_companies_unique_id' LIMIT 1").use { stmt ->
@@ -1180,16 +1289,60 @@ internal object SqliteDatabaseSchema {
     }
 
     /**
+     * Enforce strict uniqueness for active persisted stock location numeric IDs,
+     * automatically reconciling any historical duplicates before creating the index.
+     */
+    private fun ensureStockLocationIdUniqueIndex(conn: SQLiteConnection) {
+        if (!tableExists(conn, "stock_locations") || !hasColumn(conn, "stock_locations", "id")) return
+        reconcileDuplicateNumericIds(conn, "stock_locations")
+
+        val hasDeleted = hasColumn(conn, "stock_locations", "isDeleted")
+        val whereClause = if (hasDeleted) "WHERE isDeleted = 0 AND id > 0" else "WHERE id > 0"
+        val indexWhereClause = if (hasDeleted) " WHERE isDeleted = 0 AND id > 0" else " WHERE id > 0"
+
+        val duplicates = mutableListOf<String>()
+        conn.prepare("""
+            SELECT id, COUNT(*)
+            FROM stock_locations
+            $whereClause
+            GROUP BY id
+            HAVING COUNT(*) > 1
+            LIMIT 10
+        """.trimIndent()).use { stmt ->
+            while (stmt.step()) {
+                duplicates += "id ${stmt.getLong(0)} (${stmt.getLong(1)} occurrences)"
+            }
+        }
+        check(duplicates.isEmpty()) {
+            "Database migration blocked: duplicate active stock location IDs must be resolved before adding idx_stock_locations_unique_id: ${duplicates.joinToString()}"
+        }
+
+        conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_locations_unique_id ON stock_locations(id)$indexWhereClause;").use { it.step() }
+
+        var indexExists = false
+        conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_stock_locations_unique_id' LIMIT 1").use { stmt ->
+            indexExists = stmt.step()
+        }
+        check(indexExists) {
+            "Database migration failed: idx_stock_locations_unique_id could not be verified."
+        }
+    }
+
+    /**
      * Safely and deterministically resolves any historical duplicate numeric IDs in legacy tables.
      * Keeps the original row with the ID, and reallocates colliding rows to a new unique ID,
      * simultaneously cascading the updated ID to dependent tables.
      */
     private fun reconcileDuplicateNumericIds(conn: SQLiteConnection, table: String) {
+        val hasDeleted = hasColumn(conn, table, "isDeleted")
+        val whereClause = if (hasDeleted) "WHERE isDeleted = 0 AND id > 0" else "WHERE id > 0"
+        val whereRowidClause = if (hasDeleted) "WHERE id = ? AND isDeleted = 0" else "WHERE id = ?"
+
         val collidingIds = mutableListOf<Long>()
         conn.prepare("""
             SELECT id
             FROM $table
-            WHERE isDeleted = 0 AND id > 0
+            $whereClause
             GROUP BY id
             HAVING COUNT(*) > 1
             ORDER BY id
@@ -1205,7 +1358,7 @@ internal object SqliteDatabaseSchema {
             conn.prepare("""
                 SELECT rowid, uuid
                 FROM $table
-                WHERE id = ? AND isDeleted = 0
+                $whereRowidClause
                 ORDER BY rowid ASC
             """.trimIndent()).use { stmt ->
                 stmt.bindLong(1, collidingId)
@@ -1284,6 +1437,19 @@ internal object SqliteDatabaseSchema {
                             conn.prepare("ALTER TABLE addresses ADD COLUMN companyId INTEGER NOT NULL DEFAULT 0").use { it.step() }
                         }
                         conn.prepare("UPDATE addresses SET companyId = ? WHERE companyUuid = ?").use { stmt ->
+                            stmt.bindLong(1, newId)
+                            stmt.bindText(2, uuid)
+                            stmt.step()
+                        }
+                    }
+                } else if (table == "stock_locations") {
+                    conn.prepare("UPDATE stock_locations SET parentId = ? WHERE parentUuid = ?").use { stmt ->
+                        stmt.bindLong(1, newId)
+                        stmt.bindText(2, uuid)
+                        stmt.step()
+                    }
+                    if (tableExists(conn, "stock_items") && hasColumn(conn, "stock_items", "locationId")) {
+                        conn.prepare("UPDATE stock_items SET locationId = ? WHERE locationUuid = ?").use { stmt ->
                             stmt.bindLong(1, newId)
                             stmt.bindText(2, uuid)
                             stmt.step()

@@ -1,4 +1,4 @@
-﻿package com.nextstepai.inventory.data.db
+package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -89,15 +89,22 @@ class StockItemDao {
 
     fun insertOrUpdate(entity: StockItemEntity) {
         val conn = SqliteDatabaseManager.getConnection()
+        val numericId = entity.uuid.removePrefix("stock-").toLongOrNull() ?: 0L
+        val numericPartId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 0L
+        val numericLocationId = entity.locationUuid?.removePrefix("loc-")?.removePrefix("location-")?.toLongOrNull()
+
         conn.prepare("""
             INSERT INTO stock_items (
-                uuid, partUuid, locationUuid, quantity, serial, batch, statusCode, packaging,
+                uuid, id, partId, locationId, partUuid, locationUuid, quantity, serial, batch, statusCode, packaging,
                 expiryDate, notes, purchasePrice, purchasePriceCurrency, purchaseOrderUuid, supplierPartUuid,
                 salesOrderUuid, customerUuid, buildUuid, isBuilding, parentStockItemUuid, stocktakeDate,
                 stocktakeUserUuid, reviewNeeded, deleteOnDeplete, link, metadata, version, syncStatus, isDeleted,
                 updatedAt, lastModifiedByDeviceUuid
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(uuid) DO UPDATE SET
+                id = CASE WHEN excluded.id > 0 THEN excluded.id ELSE stock_items.id END,
+                partId = CASE WHEN excluded.partId > 0 THEN excluded.partId ELSE stock_items.partId END,
+                locationId = CASE WHEN excluded.locationId IS NOT NULL THEN excluded.locationId ELSE stock_items.locationId END,
                 partUuid = excluded.partUuid,
                 locationUuid = excluded.locationUuid,
                 quantity = excluded.quantity,
@@ -129,35 +136,38 @@ class StockItemDao {
                 lastModifiedByDeviceUuid = excluded.lastModifiedByDeviceUuid
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, entity.uuid)
-            stmt.bindText(2, entity.partUuid)
-            if (entity.locationUuid != null) stmt.bindText(3, entity.locationUuid) else stmt.bindNull(3)
-            stmt.bindDouble(4, entity.quantity)
-            stmt.bindText(5, entity.serial)
-            stmt.bindText(6, entity.batch)
-            stmt.bindLong(7, entity.statusCode.toLong())
-            stmt.bindText(8, entity.packaging)
-            stmt.bindText(9, entity.expiryDate)
-            stmt.bindText(10, entity.notes)
-            stmt.bindDouble(11, entity.purchasePrice)
-            stmt.bindText(12, entity.purchasePriceCurrency)
-            if (entity.purchaseOrderUuid != null) stmt.bindText(13, entity.purchaseOrderUuid) else stmt.bindNull(13)
-            stmt.bindText(14, entity.supplierPartUuid)
-            if (entity.salesOrderUuid != null) stmt.bindText(15, entity.salesOrderUuid) else stmt.bindNull(15)
-            stmt.bindText(16, entity.customerUuid)
-            if (entity.buildUuid != null) stmt.bindText(17, entity.buildUuid) else stmt.bindNull(17)
-            stmt.bindLong(18, if (entity.isBuilding) 1L else 0L)
-            if (entity.parentStockItemUuid != null) stmt.bindText(19, entity.parentStockItemUuid) else stmt.bindNull(19)
-            stmt.bindText(20, entity.stocktakeDate)
-            if (entity.stocktakeUserUuid != null) stmt.bindText(21, entity.stocktakeUserUuid) else stmt.bindNull(21)
-            stmt.bindLong(22, if (entity.reviewNeeded) 1L else 0L)
-            stmt.bindLong(23, if (entity.deleteOnDeplete) 1L else 0L)
-            stmt.bindText(24, entity.link)
-            stmt.bindText(25, entity.metadata)
-            stmt.bindLong(26, entity.version.toLong())
-            stmt.bindText(27, entity.syncStatus.name)
-            stmt.bindLong(28, if (entity.isDeleted) 1L else 0L)
-            stmt.bindLong(29, entity.updatedAt)
-            if (entity.lastModifiedByDeviceUuid != null) stmt.bindText(30, entity.lastModifiedByDeviceUuid) else stmt.bindNull(30)
+            stmt.bindLong(2, numericId)
+            stmt.bindLong(3, numericPartId)
+            if (numericLocationId != null) stmt.bindLong(4, numericLocationId) else stmt.bindNull(4)
+            stmt.bindText(5, entity.partUuid)
+            if (entity.locationUuid != null) stmt.bindText(6, entity.locationUuid) else stmt.bindNull(6)
+            stmt.bindDouble(7, entity.quantity)
+            stmt.bindText(8, entity.serial)
+            stmt.bindText(9, entity.batch)
+            stmt.bindLong(10, entity.statusCode.toLong())
+            stmt.bindText(11, entity.packaging)
+            stmt.bindText(12, entity.expiryDate)
+            stmt.bindText(13, entity.notes)
+            stmt.bindDouble(14, entity.purchasePrice)
+            stmt.bindText(15, entity.purchasePriceCurrency)
+            if (entity.purchaseOrderUuid != null) stmt.bindText(16, entity.purchaseOrderUuid) else stmt.bindNull(16)
+            stmt.bindText(17, entity.supplierPartUuid)
+            if (entity.salesOrderUuid != null) stmt.bindText(18, entity.salesOrderUuid) else stmt.bindNull(18)
+            stmt.bindText(19, entity.customerUuid)
+            if (entity.buildUuid != null) stmt.bindText(20, entity.buildUuid) else stmt.bindNull(20)
+            stmt.bindLong(21, if (entity.isBuilding) 1L else 0L)
+            if (entity.parentStockItemUuid != null) stmt.bindText(22, entity.parentStockItemUuid) else stmt.bindNull(22)
+            stmt.bindText(23, entity.stocktakeDate)
+            if (entity.stocktakeUserUuid != null) stmt.bindText(24, entity.stocktakeUserUuid) else stmt.bindNull(24)
+            stmt.bindLong(25, if (entity.reviewNeeded) 1L else 0L)
+            stmt.bindLong(26, if (entity.deleteOnDeplete) 1L else 0L)
+            stmt.bindText(27, entity.link)
+            stmt.bindText(28, entity.metadata)
+            stmt.bindLong(29, entity.version.toLong())
+            stmt.bindText(30, entity.syncStatus.name)
+            stmt.bindLong(31, if (entity.isDeleted) 1L else 0L)
+            stmt.bindLong(32, entity.updatedAt)
+            if (entity.lastModifiedByDeviceUuid != null) stmt.bindText(33, entity.lastModifiedByDeviceUuid) else stmt.bindNull(33)
             stmt.step()
         }
     }
