@@ -336,6 +336,53 @@ class SingleSourceOfTruthVerificationTest {
     }
 
     @Test
+    fun testDeletedParameterRowsCannotReturnFromLegacyMemoryCache() {
+        val repo = PartRepository()
+        val part = repo.addPart(Part(name = "قطعة اختبار معاملات SQLite فقط"))
+        val saved = repo.addPartParameter(part.id, templateId = 1L, data = "777")
+        assertTrue(repo.getPartParameters(part.id).any { it.id == saved.id })
+
+        assertTrue(PartParameterDao().delete("part-param-${saved.id}"))
+        assertTrue(
+            repo.getPartParameters(part.id).isEmpty(),
+            "يجب ألا يعيد المستودع معاملات تقنية حُذفت من SQLite من نسخة الذاكرة"
+        )
+    }
+
+    @Test
+    fun testCategoryTemplateReadsDoNotFallBackToSeededMemoryRows() {
+        val repo = PartRepository()
+        val categoryId = repo.getCategories().first().id
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("UPDATE part_category_parameter_templates SET isDeleted = 1").use { it.step() }
+        conn.prepare("UPDATE part_parameter_templates SET isDeleted = 1").use { it.step() }
+
+        assertTrue(
+            repo.getCategoryParameterTemplates(categoryId).isEmpty(),
+            "يجب أن تكون نتيجة DAO الفارغة فارغة حتى لو كانت الجداول القديمة تحتوي قوالب تجريبية في الذاكرة"
+        )
+        assertTrue(repo.getAllParameterTemplates().isEmpty())
+    }
+
+    @Test
+    fun testPricingRecalculationUsesCurrentSQLitePricesNotStaleMemory() {
+        val repo = PartRepository()
+        val part = repo.addPart(
+            Part(name = "قطعة اختبار إعادة حساب السعر", purchaseable = false)
+        )
+        val savedPrice = repo.addPartInternalPrice(part.id, quantity = 1.0, price = 12.5)
+        assertEquals(12.5, repo.getPartInternalPrices(part.id).single().price)
+
+        // إزالة السجل من SQLite مباشرة مع ترك PartInternalPriceTable دون تحديث.
+        assertTrue(PartInternalPriceDao().delete("part-iprice-${savedPrice.id}"))
+        assertTrue(repo.getPartInternalPrices(part.id).isEmpty())
+
+        val pricing = repo.recalculatePartPricing(part)
+        assertNull(pricing.internalCostMin)
+        assertNull(pricing.internalCostMax)
+    }
+
+    @Test
     fun testCustomCompanyUuidKeepsNumericIdentityAndChildRelationsAfterRestart() {
         val companyRepo = CompanyRepository()
         val customUuid = "018f3a5b-7c8d-7e9f-a0b1-c2d3e4f5a6c8"
