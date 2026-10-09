@@ -29,7 +29,7 @@ Previously, deleting the last row in SQLite could make an old, cached row visibl
 - `nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/PartEntitiesDaos.kt`
 
 **Change**
-The `parts.id` and `companies.id` compatibility columns are now included in entity mapping and explicit DAO reads/writes. Existing databases are checked for the column before backfill. Existing prefixed UUIDs recover their numeric suffix; rows with custom UUIDs and no numeric ID receive a stable ID once. Company child lookups resolve the company's persisted UUID from its numeric ID, so custom company UUIDs remain usable in child relations.
+The `parts.id` and `companies.id` compatibility columns are now included in entity mapping and explicit DAO reads/writes. Existing databases are checked for the column before backfill. Existing prefixed UUIDs recover their numeric suffix; rows with custom UUIDs and no numeric ID receive a stable ID once. DAO reads and upserts preserve the stored ID, including when an upsert payload omits a positive ID. Company child lookups resolve the company's persisted UUID from its numeric ID, so custom company UUIDs remain usable in child relations.
 
 **Why**
 Parsing a UUIDv7/custom UUID as a numeric suffix produced ID `0` after reload. Multiple unrelated domain objects could then collide in numeric-ID-based APIs.
