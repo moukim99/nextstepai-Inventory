@@ -105,6 +105,15 @@ internal object SqliteDatabaseSchema {
             );
         """.trimIndent()).use { it.step() }
 
+        // Upgrade existing databases where the compatibility ID column is absent.
+        val partColumns = mutableSetOf<String>()
+        conn.prepare("PRAGMA table_info(parts)").use { stmt ->
+            while (stmt.step()) partColumns.add(stmt.getText(1))
+        }
+        if ("id" !in partColumns) {
+            conn.prepare("ALTER TABLE parts ADD COLUMN id INTEGER NOT NULL DEFAULT 0").use { it.step() }
+        }
+
         // Backfill legacy/domain IDs for existing rows before repositories map them.
         conn.prepare("UPDATE parts SET id = CAST(SUBSTR(uuid, 6) AS INTEGER) WHERE id = 0 AND uuid LIKE 'part-%' AND SUBSTR(uuid, 6) GLOB '[0-9]*'").use { it.step() }
         backfillMissingNumericIds(conn, "parts", "part-")
