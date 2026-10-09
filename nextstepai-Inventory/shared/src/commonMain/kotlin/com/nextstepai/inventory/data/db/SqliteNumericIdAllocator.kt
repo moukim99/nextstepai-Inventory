@@ -116,4 +116,5 @@ object SqliteNumericIdAllocator {
             runCatching { conn.prepare("ROLLBACK").use { it.step() } }
             throw failure
         }
-    }}
+    }
+}
