@@ -107,6 +107,11 @@ internal object SqliteDatabaseSchema {
 
         // 3. Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ù…ÙˆØ§Ø¯ ÙˆØ§Ù„ØªØµÙ†ÙŠØ¹ (BOM)
         conn.prepare("""
+
+        // Backfill legacy/domain IDs for existing rows before repositories map them.
+        conn.prepare("UPDATE parts SET id = CAST(SUBSTR(uuid, 6) AS INTEGER) WHERE id = 0 AND uuid LIKE 'part-%' AND SUBSTR(uuid, 6) GLOB '[0-9]*'").use { it.step() }
+        backfillMissingNumericIds(conn, "parts", "part-")
+
             CREATE TABLE IF NOT EXISTS bom_items (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 partUuid TEXT NOT NULL DEFAULT '',
@@ -316,6 +321,7 @@ internal object SqliteDatabaseSchema {
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS companies (
                 uuid TEXT PRIMARY KEY NOT NULL,
+                id INTEGER NOT NULL DEFAULT 0,
                 name TEXT NOT NULL,
                 description TEXT NOT NULL DEFAULT '',
                 phone TEXT NOT NULL DEFAULT '',
@@ -339,6 +345,18 @@ internal object SqliteDatabaseSchema {
         """.trimIndent()).use { it.step() }
 
         conn.prepare("""
+
+        // Upgrade databases created before companies carried a stable numeric ID.
+        val companyColumns = mutableSetOf<String>()
+        conn.prepare("PRAGMA table_info(companies)").use { stmt ->
+            while (stmt.step()) companyColumns.add(stmt.getText(1))
+        }
+        if ("id" !in companyColumns) {
+            conn.prepare("ALTER TABLE companies ADD COLUMN id INTEGER NOT NULL DEFAULT 0").use { it.step() }
+        }
+        conn.prepare("UPDATE companies SET id = CAST(SUBSTR(uuid, 9) AS INTEGER) WHERE id = 0 AND uuid LIKE 'company-%' AND SUBSTR(uuid, 9) GLOB '[0-9]*'").use { it.step() }
+        backfillMissingNumericIds(conn, "companies", "company-")
+
             CREATE TABLE IF NOT EXISTS company_attachments (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 companyUuid TEXT NOT NULL,
@@ -966,7 +984,7 @@ internal object SqliteDatabaseSchema {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_items_stockItemUuid ON build_items(stockItemUuid);").use { it.step() } }
 
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_companies_sync ON companies(syncStatus, isDeleted, updatedAt);").use { it.step() } }
-        runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_unique_name ON companies(LOWER(TRIM(name))) WHERE isDeleted = 0;").use { it.step() } }
+        ensureCompanyNameUniqueIndex(conn)
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_company_att_compUuid ON company_attachments(companyUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_contacts_companyUuid ON contacts(companyUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_primary_contact ON contacts(companyUuid) WHERE isPrimary = 1;").use { it.step() } }
@@ -1006,5 +1024,63 @@ internal object SqliteDatabaseSchema {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_triggered_schedule ON notifications_history(isTriggered, scheduledDate);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications_history(isRead);").use { it.step() } }
 
+    }
+
+    /**
+     * Assign a stable numeric compatibility ID to custom UUID rows that predate id persistence.
+     * Only zero/missing IDs are touched, so reopening the database cannot change assigned IDs.
+     */
+    private fun backfillMissingNumericIds(conn: SQLiteConnection, table: String, prefix: String) {
+        require(table == "parts" || table == "companies")
+        val suffixStart = prefix.length + 1
+        val pending = mutableListOf<Pair<String, Long>>()
+        conn.prepare("SELECT uuid, rowid FROM $table WHERE id = 0 ORDER BY rowid").use { stmt ->
+            while (stmt.step()) pending += stmt.getText(0) to stmt.getLong(1)
+        }
+        for ((uuid, rowId) in pending) {
+            var nextId = 1L
+            conn.prepare("SELECT COALESCE(MAX(id), 0) + 1 FROM $table").use { stmt ->
+                if (stmt.step()) nextId = stmt.getLong(0)
+            }
+            conn.prepare("UPDATE $table SET id = ? WHERE rowid = ? AND id = 0").use { stmt ->
+                stmt.bindLong(1, nextId)
+                stmt.bindLong(2, rowId)
+                stmt.step()
+            }
+        }
+    }
+
+    /**
+     * Keep the uniqueness invariant explicit: legacy duplicate names stop migration with a
+     * useful diagnostic instead of silently running without the database constraint.
+     */
+    private fun ensureCompanyNameUniqueIndex(conn: SQLiteConnection) {
+        val duplicates = mutableListOf<String>()
+        conn.prepare("""
+            SELECT LOWER(TRIM(name)), COUNT(*)
+            FROM companies
+            WHERE isDeleted = 0
+            GROUP BY LOWER(TRIM(name))
+            HAVING COUNT(*) > 1
+            ORDER BY LOWER(TRIM(name))
+            LIMIT 10
+        """.trimIndent()).use { stmt ->
+            while (stmt.step()) {
+                duplicates += "${stmt.getText(0)} (${stmt.getLong(1)})"
+            }
+        }
+        check(duplicates.isEmpty()) {
+            "Database migration blocked: duplicate active company names must be resolved before adding idx_companies_unique_name: ${duplicates.joinToString()}"
+        }
+
+        conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_unique_name ON companies(LOWER(TRIM(name))) WHERE isDeleted = 0;").use { it.step() }
+
+        var indexExists = false
+        conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_companies_unique_name' LIMIT 1").use { stmt ->
+            indexExists = stmt.step()
+        }
+        check(indexExists) {
+            "Database migration failed: idx_companies_unique_name could not be verified."
+        }
     }
 }
