@@ -475,7 +475,32 @@ class PartRepository(
      * جلب قوالب المعاملات المرتبطة بتصنيف محدد مع دعم التوريث من التصنيف الأب.
      */
     fun getCategoryParameterTemplates(categoryId: Long): List<CategoryParameterTemplateView> {
-        return categoryParameterTable.getCategoryParameterTemplatesForCategory(categoryId)
+        val categoriesById = categoryRepository.getCategories().associateBy { it.id }
+        val result = mutableListOf<CategoryParameterTemplateView>()
+        val visitedTemplateIds = mutableSetOf<Long>()
+        var currentCategoryId: Long? = categoryId
+        var inherited = false
+        var depth = 0
+
+        // Bound traversal to the known category count so malformed parent cycles cannot loop forever.
+        while (currentCategoryId != null && depth <= categoriesById.size) {
+            val category = categoriesById[currentCategoryId] ?: break
+            val categoryUuid = "cat-${currentCategoryId.toString().padStart(3, '0')}"
+            for (link in partCategoryParameterTemplateDao.getForCategory(categoryUuid)) {
+                if (!visitedTemplateIds.add(link.parameterTemplateId)) continue
+                val template = partParameterTemplateDao.getById(link.parameterTemplateId) ?: continue
+                result += CategoryParameterTemplateView(
+                    categoryTemplate = link,
+                    template = template,
+                    isInherited = inherited,
+                    sourceCategoryName = category.name
+                )
+            }
+            currentCategoryId = category.parentId
+            inherited = true
+            depth++
+        }
+        return result
     }
 
     /**
@@ -580,7 +605,7 @@ class PartRepository(
         val p2 = getPartById(part2Id) ?: throw IllegalArgumentException("القطعة الثانية غير موجودة")
         val saved = partRelatedDao.insert(p1.effectiveUuid, p2.effectiveUuid)
         runCatching { partRelatedTable.insertPartRelated(part1Id, part2Id) }
-        return saved
+        return saved.copy(part1Id = part1Id, part2Id = part2Id)
     }
 
     /**
@@ -696,16 +721,43 @@ class PartRepository(
      */
     fun getPartPricing(partId: Long): PartPricingEntity? {
         val targetPart = getPartById(partId) ?: return null
-        return partPricingDao.getForPart(targetPart.effectiveUuid)
+        return partPricingDao.getForPart(targetPart.effectiveUuid)?.copy(partId = partId)
     }
 
     /**
      * إعادة حساب وتحديث التكاليف المجمعة لقطعة معينة في PartPricing وحفظها في SQLite.
      */
     fun recalculatePartPricing(part: Part, bomItems: List<BomItem> = emptyList()): PartPricingEntity {
-        val calculated = partPricingTable.recalculatePricingForPart(part, bomItems)
+        // Recalculate from the current SQLite price rows rather than a possibly stale price cache.
+        val internalPrices = partInternalPriceDao.getForPart(part.effectiveUuid)
+        val bomCost = bomItems.sumOf { item ->
+            val subPart = getPartById(item.subPartId)
+            val internal = subPart?.let { partInternalPriceDao.getForPart(it.effectiveUuid) }
+                ?.filter { it.quantity <= item.quantity }
+                ?.maxByOrNull { it.quantity }
+            (internal?.price ?: 0.0) * item.quantity
+        }
+        val internalCost = internalPrices.minOfOrNull { it.price } ?: 0.0
+        val internalCostMax = internalPrices.maxOfOrNull { it.price } ?: 0.0
+        val now = Clock.System.now().toEpochMilliseconds()
+        val calculated = PartPricingEntity(
+            id = 0L,
+            partId = part.id,
+            currency = internalPrices.firstOrNull()?.currency ?: "USD",
+            overallMin = internalCost + bomCost,
+            overallMax = internalCostMax + bomCost,
+            purchaseCostMin = null,
+            purchaseCostMax = null,
+            bomCostMin = bomCost,
+            bomCostMax = bomCost,
+            variantCostMin = null,
+            variantCostMax = null,
+            internalCostMin = internalCost,
+            internalCostMax = internalCostMax,
+            updatedAt = now
+        )
         val saved = partPricingDao.saveOrUpdate(calculated, part.effectiveUuid)
-        return saved
+        return saved.copy(partId = part.id)
     }
 
     /**
@@ -741,7 +793,7 @@ class PartRepository(
      */
     fun getPartInternalPrices(partId: Long): List<PartInternalPriceEntity> {
         val targetPart = getPartById(partId) ?: return emptyList()
-        return partInternalPriceDao.getForPart(targetPart.effectiveUuid)
+        return partInternalPriceDao.getForPart(targetPart.effectiveUuid).map { it.copy(partId = partId) }
     }
 
     /**
@@ -788,7 +840,7 @@ class PartRepository(
      */
     fun getPartSalePrices(partId: Long): List<PartSalePriceEntity> {
         val targetPart = getPartById(partId) ?: return emptyList()
-        return partSalePriceDao.getForPart(targetPart.effectiveUuid)
+        return partSalePriceDao.getForPart(targetPart.effectiveUuid).map { it.copy(partId = partId) }
     }
 
     /**
