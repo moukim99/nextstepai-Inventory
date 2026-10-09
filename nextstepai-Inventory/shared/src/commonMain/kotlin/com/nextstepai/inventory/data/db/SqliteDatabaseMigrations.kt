@@ -8,16 +8,33 @@ import androidx.sqlite.SQLiteConnection
  */
 internal object SqliteDatabaseMigrations {
 
+    val essentialTables = setOf(
+        "parts", "companies", "stock_items", "bom_items", "part_pricing",
+        "contacts", "addresses", "build_orders"
+    )
+
     fun addColumnIfMissing(conn: SQLiteConnection, sql: String) {
+        val tableName = Regex("""ALTER\s+TABLE\s+(\w+)""", RegexOption.IGNORE_CASE)
+            .find(sql)?.groupValues?.get(1).orEmpty()
+
         try {
             conn.prepare(sql).use { it.step() }
         } catch (e: Throwable) {
             val msg = e.message.orEmpty()
             val isDuplicate = msg.contains("duplicate column name", ignoreCase = true)
-            val isNoSuchTable = msg.contains("no such table", ignoreCase = true)
-            if (!isDuplicate && !isNoSuchTable) {
-                throw e
+            if (isDuplicate) {
+                // Column already exists - migration already completed for this column
+                return
             }
+            val isNoSuchTable = msg.contains("no such table", ignoreCase = true)
+            if (isNoSuchTable) {
+                if (tableName in essentialTables) {
+                    throw IllegalStateException("Migration halted: required essential table '$tableName' is missing from schema.", e)
+                }
+                // Optional table that may not be present in legacy variant
+                return
+            }
+            throw e
         }
     }
 

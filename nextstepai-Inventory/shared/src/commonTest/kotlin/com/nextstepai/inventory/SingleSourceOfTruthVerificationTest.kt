@@ -821,7 +821,7 @@ class SingleSourceOfTruthVerificationTest {
                 SqliteDatabaseManager.getConnection()
             }
 
-            // 4. Verify that the rollback was clean and original data is uncorrupted
+            // 4. Verify that the rollback was clean and uncommitted DDL was reverted from schema
             val rawCheck = driver.open(tempFile.absolutePath)
             var partCount = 0L
             rawCheck.prepare("SELECT COUNT(*) FROM parts WHERE uuid = 'part-fail-1'").use {
@@ -835,15 +835,30 @@ class SingleSourceOfTruthVerificationTest {
             }
             assertEquals(1L, pricingCount, "البيانات الأصلية لجدول الأسعار لم تُمس بعد التراجع الذري")
 
+            // Verify via PRAGMA table_info that uncommitted migration columns were rolled back completely
+            val columnsAfterRollback = mutableSetOf<String>()
+            rawCheck.prepare("PRAGMA table_info(part_pricing)").use { stmt ->
+                while (stmt.step()) columnsAfterRollback.add(stmt.getText(1))
+            }
+            assertFalse("partId" in columnsAfterRollback, "عمود partId غير المعتمد يجب ألا يبقى في المخطط بعد التراجع الذري")
+            assertFalse("id" in columnsAfterRollback, "عمود id غير المعتمد يجب ألا يبقى في المخطط بعد التراجع الذري")
+
             // 5. Heal the simulated failure by removing the failing trigger
             rawCheck.prepare("DROP TRIGGER fail_on_pricing_update;").use { it.step() }
             rawCheck.close()
 
-            // 6. Re-attempt opening: migration should now succeed and backfill relations
+            // 6. Re-attempt opening: migration should now succeed, commit columns, and backfill relations
             SqliteDatabaseManager.closeDatabase()
             val recoveredConn = SqliteDatabaseManager.getConnection()
             assertNotNull(recoveredConn)
             assertTrue(SqliteDatabaseManager.isDatabaseOpen())
+
+            val columnsAfterRecovery = mutableSetOf<String>()
+            recoveredConn.prepare("PRAGMA table_info(part_pricing)").use { stmt ->
+                while (stmt.step()) columnsAfterRecovery.add(stmt.getText(1))
+            }
+            assertTrue("partId" in columnsAfterRecovery, "بعد التعافي، عمود partId تم اعتماده في المخطط بنجاح")
+            assertTrue("id" in columnsAfterRecovery, "بعد التعافي، عمود id تم اعتماده في المخطط بنجاح")
 
             var recoveredPartId = 0L
             recoveredConn.prepare("SELECT partId FROM part_pricing WHERE uuid = 'pp-fail-1'").use {
@@ -853,6 +868,30 @@ class SingleSourceOfTruthVerificationTest {
         } finally {
             SqliteDatabaseManager.closeDatabase()
             SqliteDatabaseManager.setCustomDatabasePath(tempDbFile.absolutePath)
+            runCatching { tempFile.delete() }
+        }
+    }
+
+    @Test
+    fun testMigrationHaltsWhenEssentialTableIsMissing() {
+        val runToken = Clock.System.now().toEpochMilliseconds().toString().takeLast(6)
+        val tempFile = File(System.getProperty("java.io.tmpdir"), "essential_table_test_$runToken.db")
+        tempFile.deleteOnExit()
+
+        try {
+            val driver = androidx.sqlite.driver.bundled.BundledSQLiteDriver()
+            val conn = driver.open(tempFile.absolutePath)
+
+            // Essential table missing: must throw IllegalStateException
+            val err = assertFailsWith<IllegalStateException>("الترحيل يجب أن يتوقف إذا كان الجدول الأساسي مفقوداً") {
+                SqliteDatabaseMigrations.addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN testCol INTEGER NOT NULL DEFAULT 0;")
+            }
+            assertTrue(err.message.orEmpty().contains("essential table 'parts'", ignoreCase = true))
+
+            // Non-essential / optional table missing: must safely ignore without throwing
+            SqliteDatabaseMigrations.addColumnIfMissing(conn, "ALTER TABLE some_optional_future_table ADD COLUMN testCol INTEGER NOT NULL DEFAULT 0;")
+            conn.close()
+        } finally {
             runCatching { tempFile.delete() }
         }
     }
