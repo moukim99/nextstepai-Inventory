@@ -1098,9 +1098,12 @@ internal object SqliteDatabaseSchema {
     }
 
     /**
-     * Enforce strict uniqueness for active persisted part numeric IDs.
+     * Enforce strict uniqueness for active persisted part numeric IDs,
+     * automatically reconciling any historical duplicates before creating the index.
      */
     private fun ensurePartIdUniqueIndex(conn: SQLiteConnection) {
+        reconcileDuplicateNumericIds(conn, "parts")
+
         val duplicates = mutableListOf<String>()
         conn.prepare("""
             SELECT id, COUNT(*)
@@ -1130,9 +1133,12 @@ internal object SqliteDatabaseSchema {
     }
 
     /**
-     * Enforce strict uniqueness for active persisted company numeric IDs.
+     * Enforce strict uniqueness for active persisted company numeric IDs,
+     * automatically reconciling any historical duplicates before creating the index.
      */
     private fun ensureCompanyIdUniqueIndex(conn: SQLiteConnection) {
+        reconcileDuplicateNumericIds(conn, "companies")
+
         val duplicates = mutableListOf<String>()
         conn.prepare("""
             SELECT id, COUNT(*)
@@ -1158,6 +1164,105 @@ internal object SqliteDatabaseSchema {
         }
         check(indexExists) {
             "Database migration failed: idx_companies_unique_id could not be verified."
+        }
+    }
+
+    /**
+     * Safely and deterministically resolves any historical duplicate numeric IDs in legacy tables.
+     * Keeps the original row with the ID, and reallocates colliding rows to a new unique ID,
+     * simultaneously cascading the updated ID to dependent tables.
+     */
+    private fun reconcileDuplicateNumericIds(conn: SQLiteConnection, table: String) {
+        val collidingIds = mutableListOf<Long>()
+        conn.prepare("""
+            SELECT id
+            FROM $table
+            WHERE isDeleted = 0 AND id > 0
+            GROUP BY id
+            HAVING COUNT(*) > 1
+            ORDER BY id
+        """.trimIndent()).use { stmt ->
+            while (stmt.step()) {
+                collidingIds.add(stmt.getLong(0))
+            }
+        }
+        if (collidingIds.isEmpty()) return
+
+        for (collidingId in collidingIds) {
+            val duplicateRows = mutableListOf<Pair<Long, String>>() // rowid, uuid
+            conn.prepare("""
+                SELECT rowid, uuid
+                FROM $table
+                WHERE id = ? AND isDeleted = 0
+                ORDER BY rowid ASC
+            """.trimIndent()).use { stmt ->
+                stmt.bindLong(1, collidingId)
+                if (stmt.step()) {
+                    // First row is kept as canonical
+                    while (stmt.step()) {
+                        duplicateRows.add(Pair(stmt.getLong(0), stmt.getText(1)))
+                    }
+                }
+            }
+
+            for ((rowId, uuid) in duplicateRows) {
+                var newId = 1L
+                conn.prepare("SELECT COALESCE(MAX(id), 0) + 1 FROM $table").use { stmt ->
+                    if (stmt.step()) newId = stmt.getLong(0)
+                }
+
+                conn.prepare("UPDATE $table SET id = ? WHERE rowid = ?").use { stmt ->
+                    stmt.bindLong(1, newId)
+                    stmt.bindLong(2, rowId)
+                    stmt.step()
+                }
+
+                if (table == "parts") {
+                    runCatching {
+                        conn.prepare("UPDATE bom_items SET partId = ? WHERE partUuid = ?").use { stmt ->
+                            stmt.bindLong(1, newId)
+                            stmt.bindText(2, uuid)
+                            stmt.step()
+                        }
+                    }
+                    runCatching {
+                        conn.prepare("UPDATE bom_items SET subPartId = ? WHERE subPartUuid = ?").use { stmt ->
+                            stmt.bindLong(1, newId)
+                            stmt.bindText(2, uuid)
+                            stmt.step()
+                        }
+                    }
+                    runCatching {
+                        conn.prepare("UPDATE stock_items SET partId = ? WHERE partUuid = ?").use { stmt ->
+                            stmt.bindLong(1, newId)
+                            stmt.bindText(2, uuid)
+                            stmt.step()
+                        }
+                    }
+                    runCatching {
+                        conn.prepare("UPDATE part_pricing SET partId = ? WHERE partUuid = ?").use { stmt ->
+                            stmt.bindLong(1, newId)
+                            stmt.bindText(2, uuid)
+                            stmt.step()
+                        }
+                    }
+                } else if (table == "companies") {
+                    runCatching {
+                        conn.prepare("UPDATE contacts SET companyId = ? WHERE companyUuid = ?").use { stmt ->
+                            stmt.bindLong(1, newId)
+                            stmt.bindText(2, uuid)
+                            stmt.step()
+                        }
+                    }
+                    runCatching {
+                        conn.prepare("UPDATE addresses SET companyId = ? WHERE companyUuid = ?").use { stmt ->
+                            stmt.bindLong(1, newId)
+                            stmt.bindText(2, uuid)
+                            stmt.step()
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -138,4 +138,42 @@ class PartPricingCalculatorTest {
         // allMaxs = [2.70, 3.80, 4.2] -> max is 4.2
         assertEquals(4.2, pricing.overallMax)
     }
+
+    @Test
+    fun testMultiCurrencyPicksFirstInternalPriceCurrencyOrFallback() {
+        val part = createBasePart(purchaseable = false)
+        val mixedPrices = listOf(
+            PartInternalPriceEntity(id = 1L, partId = 100L, price = 10.0, currency = "GBP"),
+            PartInternalPriceEntity(id = 2L, partId = 100L, price = 15.0, currency = "EUR")
+        )
+        val pricing = PartPricingCalculator.calculate(part, internalPrices = mixedPrices, defaultCurrency = "USD")
+        assertEquals("GBP", pricing.currency, "يجب اعتماد عملة أول شريحة سعرية داخلية مسجلة")
+
+        val emptyPricesPricing = PartPricingCalculator.calculate(part, internalPrices = emptyList(), defaultCurrency = "JPY")
+        assertEquals("JPY", emptyPricesPricing.currency, "عند غياب الأسعار الداخلية يتم اعتماد العملة الافتراضية المحددة")
+    }
+
+    @Test
+    fun testLegacyParityForFractionalStockAndAssemblyCombinations() {
+        // Case 1: fractional minimumStock (0.5 pcs)
+        val fractionalPart = createBasePart(purchaseable = true, minimumStock = 0.5)
+        val fractionalPricing = PartPricingCalculator.calculate(fractionalPart)
+        assertEquals(0.5 * 0.05, fractionalPricing.purchaseCostMin)
+        assertEquals(0.5 * 0.05 * 1.35, fractionalPricing.purchaseCostMax)
+
+        // Case 2: assembly = true but empty bom items -> bom costs must be null
+        val emptyBomAssembly = createBasePart(purchaseable = false, assembly = true)
+        val emptyBomPricing = PartPricingCalculator.calculate(emptyBomAssembly, bomItems = emptyList())
+        assertNull(emptyBomPricing.bomCostMin)
+        assertNull(emptyBomPricing.bomCostMax)
+
+        // Case 3: assembly = false but bomItems passed -> bom costs must be null
+        val nonAssemblyWithBom = createBasePart(purchaseable = false, assembly = false)
+        val nonAssemblyPricing = PartPricingCalculator.calculate(
+            nonAssemblyWithBom,
+            bomItems = listOf(BomItem(id = 1L, partId = 100L, subPartId = 2L, quantity = 5.0))
+        )
+        assertNull(nonAssemblyPricing.bomCostMin)
+        assertNull(nonAssemblyPricing.bomCostMax)
+    }
 }

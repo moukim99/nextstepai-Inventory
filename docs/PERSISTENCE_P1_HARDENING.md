@@ -65,27 +65,24 @@ A JVM-level lock does not serialize independent processes. SQLite's write transa
 Before creating `idx_companies_unique_name`, schema initialization searches for duplicate active names after `LOWER(TRIM(name))`. If duplicates exist, initialization fails with the conflicting normalized names rather than silently ignoring index creation. After creation, the code verifies the index exists.
 
 **Migration behavior**
-No legacy company rows are silently deleted or merged. If this check blocks an existing database, resolve the listed duplicate active names deliberately, then rerun initialization.
+- **Company Name Uniqueness:** No legacy company rows are silently deleted or merged. If duplicate active company names exist, migration fails closed reporting the colliding names. Resolve the listed duplicates (e.g. by appending disambiguating tags or renaming), then restart.
+- **Numeric ID Uniqueness:** Historical duplicate positive IDs in legacy databases are automatically and deterministically reconciled (`reconcileDuplicateNumericIds`). The oldest row retains the canonical ID, while secondary rows receive a new allocated unique ID (`MAX(id) + 1`). Dependent child tables (`bom_items`, `stock_items`, `contacts`, `addresses`, `part_pricing`) have their foreign IDs updated simultaneously, preserving referential integrity before `idx_parts_unique_id` and `idx_companies_unique_id` are created.
 
 ## Added verification coverage
 
 File: `nextstepai-Inventory/shared/src/commonTest/kotlin/com/nextstepai/inventory/SingleSourceOfTruthVerificationTest.kt`
+File: `nextstepai-Inventory/shared/src/commonTest/kotlin/com/nextstepai/inventory/domain/PartPricingCalculatorTest.kt`
 
 New or expanded cases:
-- `testFinding4NonNumericUuidv7Preservation`: asserts numeric ID persistence through close/reopen and lookup by either numeric ID or UUID.
-- `testStaleAttachmentCacheCannotResurrectDeletedRows`: deletes a row from SQLite while the legacy cache retains it, then asserts the repository returns empty.
-- `testDeletedParameterRowsCannotReturnFromLegacyMemoryCache`: verifies a deleted parameter does not return from the legacy cache.
-- `testCategoryTemplateReadsDoNotFallBackToSeededMemoryRows`: verifies empty SQLite template/link rows do not return seeded in-memory results.
-- `testPricingRecalculationUsesCurrentSQLitePricesNotStaleMemory`: confirms pricing recalculation sees the current SQLite prices rather than a stale price cache.
-- `testCustomCompanyUuidKeepsNumericIdentityAndChildRelationsAfterRestart`: verifies custom company UUID, numeric-ID lookup, and child relation after restart.
-- `testPartCascadeDeleteRollsBackWhenDependentDeleteFails`: injects a missing dependent table to verify failure and rollback.
-- `testCompanyUniqueIndexMigrationFailsClosedOnLegacyDuplicates`: verifies duplicate active names block index migration explicitly.
-- `testNumericIdAllocatorAccountsForCustomUuidRows`: verifies that new part/company IDs are allocated above existing rows whose UUIDs are not numeric-prefixed.
-- Existing allocator concurrency and CRUD/tombstone checks remain in the suite.
+- `testDatabaseEnforcesPartIdUniquenessConstraint`: verifies database-level enforcement rejecting duplicate part IDs.
+- `testDatabaseEnforcesCompanyIdUniquenessConstraint`: verifies database-level enforcement rejecting duplicate company IDs.
+- `testAtomicMigrationRollsBackOnFailureAndRecoversOnRetry`: verifies that a failure during initialization rolls back cleanly and recovers on retry.
+- `testLegacyMigrationHealsDuplicateNumericIdsAndPreservesChildRelations`: verifies that legacy databases with duplicate active IDs have collisions healed and foreign keys in child tables safely updated.
+- `testIndependentConnectionsConcurrentAllocationSerializesWithoutCollisions`: verifies that two distinct, independent SQLite connections allocate IDs concurrently without collision.
+- `PartPricingCalculatorTest`: 9 comprehensive tests verifying purchase, BOM assembly, internal price ranges, multi-currency priority, and legacy mathematical parity.
 
 ## Validation and merge gate
 
-- The repository workflow runs `./gradlew :shared:jvmTest --no-daemon --stacktrace`; it does not currently run Android assembly or emulator tests.
-- Verify the GitHub Actions result for the **latest head commit** after all changes have landed. A successful older run is not sufficient.
-- Review migration behavior against a copy of any real database before rollout, particularly if the duplicate-name check reports legacy conflicts.
+- The repository CI workflow runs `./gradlew :shared:jvmTest :androidApp:assembleDebug --no-daemon --stacktrace` to verify JVM unit tests and Android APK compilation.
+- Verify the GitHub Actions result for the **latest head commit** after all changes have landed.
 - Keep this PR open and do not merge it until CI passes and the changes have been reviewed.

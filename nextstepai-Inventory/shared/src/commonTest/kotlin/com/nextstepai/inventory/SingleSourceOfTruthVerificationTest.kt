@@ -601,4 +601,162 @@ class SingleSourceOfTruthVerificationTest {
         assertNotNull(c2)
         assertEquals(companyName, c2.name)
     }
+
+    @Test
+    fun testLegacyMigrationHealsDuplicateNumericIdsAndPreservesChildRelations() {
+        val runToken = Clock.System.now().toEpochMilliseconds().toString().takeLast(6)
+        val tempFile = File(System.getProperty("java.io.tmpdir"), "legacy_heal_test_$runToken.db")
+        tempFile.deleteOnExit()
+
+        try {
+            val driver = androidx.sqlite.driver.bundled.BundledSQLiteDriver()
+            val raw = driver.open(tempFile.absolutePath)
+
+            // Create schema manually with duplicate IDs to simulate legacy state before index enforcement
+            raw.prepare("""
+                CREATE TABLE parts (
+                    uuid TEXT PRIMARY KEY NOT NULL,
+                    id INTEGER NOT NULL DEFAULT 0,
+                    name TEXT NOT NULL,
+                    isDeleted INTEGER NOT NULL DEFAULT 0
+                );
+            """.trimIndent()).use { it.step() }
+            raw.prepare("""
+                CREATE TABLE bom_items (
+                    uuid TEXT PRIMARY KEY NOT NULL,
+                    partUuid TEXT NOT NULL,
+                    subPartUuid TEXT NOT NULL DEFAULT '',
+                    partId INTEGER NOT NULL DEFAULT 0,
+                    subPartId INTEGER NOT NULL DEFAULT 0
+                );
+            """.trimIndent()).use { it.step() }
+            raw.prepare("""
+                CREATE TABLE stock_items (
+                    uuid TEXT PRIMARY KEY NOT NULL,
+                    partUuid TEXT NOT NULL,
+                    partId INTEGER NOT NULL DEFAULT 0,
+                    isDeleted INTEGER NOT NULL DEFAULT 0
+                );
+            """.trimIndent()).use { it.step() }
+
+            // Insert two colliding active parts with identical id = 10
+            raw.prepare("INSERT INTO parts (uuid, id, name, isDeleted) VALUES ('part-collision-1', 10, 'Part 1', 0)").use { it.step() }
+            raw.prepare("INSERT INTO parts (uuid, id, name, isDeleted) VALUES ('part-collision-2', 10, 'Part 2', 0)").use { it.step() }
+
+            // Insert child records for both
+            raw.prepare("INSERT INTO bom_items (uuid, partUuid, partId) VALUES ('bom-c1', 'part-collision-1', 10)").use { it.step() }
+            raw.prepare("INSERT INTO bom_items (uuid, partUuid, partId) VALUES ('bom-c2', 'part-collision-2', 10)").use { it.step() }
+            raw.prepare("INSERT INTO stock_items (uuid, partUuid, partId) VALUES ('stock-c1', 'part-collision-1', 10)").use { it.step() }
+            raw.prepare("INSERT INTO stock_items (uuid, partUuid, partId) VALUES ('stock-c2', 'part-collision-2', 10)").use { it.step() }
+            raw.close()
+
+            SqliteDatabaseManager.setCustomDatabasePath(tempFile.absolutePath)
+            val healedConn = SqliteDatabaseManager.getConnection()
+
+            // Verify both parts have distinct IDs
+            var id1 = 0L
+            var id2 = 0L
+            healedConn.prepare("SELECT id FROM parts WHERE uuid = 'part-collision-1'").use {
+                if (it.step()) id1 = it.getLong(0)
+            }
+            healedConn.prepare("SELECT id FROM parts WHERE uuid = 'part-collision-2'").use {
+                if (it.step()) id2 = it.getLong(0)
+            }
+            assertEquals(10L, id1, "القطعة الأولى الأصلية تحتفظ بمعرفها الرقمي 10")
+            assertTrue(id2 > 10L, "القطعة المكررة تم حل تعارضها وأخذت معرفاً جديداً أكبر من 10")
+            assertNotEquals(id1, id2, "المعرفات يجب أن تكون مختلفة ومميزة تماماً")
+
+            // Verify child relations were cascaded properly
+            var childBomPartId2 = 0L
+            var childStockPartId2 = 0L
+            healedConn.prepare("SELECT partId FROM bom_items WHERE partUuid = 'part-collision-2'").use {
+                if (it.step()) childBomPartId2 = it.getLong(0)
+            }
+            healedConn.prepare("SELECT partId FROM stock_items WHERE partUuid = 'part-collision-2'").use {
+                if (it.step()) childStockPartId2 = it.getLong(0)
+            }
+            assertEquals(id2, childBomPartId2, "بند BOM التابع للقطعة الثانية تم تحديثه لمعرف القطعة الجديد")
+            assertEquals(id2, childStockPartId2, "عنصر المخزون التابع للقطعة الثانية تم تحديثه لمعرف القطعة الجديد")
+        } finally {
+            SqliteDatabaseManager.closeDatabase()
+            SqliteDatabaseManager.setCustomDatabasePath(tempDbFile.absolutePath)
+            runCatching { tempFile.delete() }
+        }
+    }
+
+    @Test
+    fun testIndependentConnectionsConcurrentAllocationSerializesWithoutCollisions() {
+        val runToken = Clock.System.now().toEpochMilliseconds().toString().takeLast(6)
+        val multiConnDb = File(System.getProperty("java.io.tmpdir"), "multi_conn_$runToken.db")
+        multiConnDb.deleteOnExit()
+
+        try {
+            SqliteDatabaseManager.setCustomDatabasePath(multiConnDb.absolutePath)
+            val initConn = SqliteDatabaseManager.getConnection() // Initialize schema and tables
+            initConn.prepare("INSERT OR REPLACE INTO id_sequences (table_name, last_id) VALUES ('parts', 0);").use { it.step() }
+            SqliteDatabaseManager.closeDatabase()
+
+            val driver = androidx.sqlite.driver.bundled.BundledSQLiteDriver()
+            val conn1 = driver.open(multiConnDb.absolutePath)
+            val conn2 = driver.open(multiConnDb.absolutePath)
+            conn1.prepare("PRAGMA busy_timeout = 10000;").use { it.step() }
+            conn2.prepare("PRAGMA busy_timeout = 10000;").use { it.step() }
+
+            val totalPerConn = 25
+            val latch = CountDownLatch(2)
+            val allocatedConn1 = Collections.synchronizedList(mutableListOf<Long>())
+            val allocatedConn2 = Collections.synchronizedList(mutableListOf<Long>())
+
+            val thread1 = Thread {
+                try {
+                    for (i in 0 until totalPerConn) {
+                        conn1.prepare("BEGIN IMMEDIATE;").use { it.step() }
+                        conn1.prepare("UPDATE id_sequences SET last_id = last_id + 1 WHERE table_name = 'parts'").use { it.step() }
+                        var allocatedId = 0L
+                        conn1.prepare("SELECT last_id FROM id_sequences WHERE table_name = 'parts'").use {
+                            if (it.step()) allocatedId = it.getLong(0)
+                        }
+                        conn1.prepare("COMMIT;").use { it.step() }
+                        allocatedConn1.add(allocatedId)
+                    }
+                } finally {
+                    latch.countDown()
+                }
+            }
+
+            val thread2 = Thread {
+                try {
+                    for (i in 0 until totalPerConn) {
+                        conn2.prepare("BEGIN IMMEDIATE;").use { it.step() }
+                        conn2.prepare("UPDATE id_sequences SET last_id = last_id + 1 WHERE table_name = 'parts'").use { it.step() }
+                        var allocatedId = 0L
+                        conn2.prepare("SELECT last_id FROM id_sequences WHERE table_name = 'parts'").use {
+                            if (it.step()) allocatedId = it.getLong(0)
+                        }
+                        conn2.prepare("COMMIT;").use { it.step() }
+                        allocatedConn2.add(allocatedId)
+                    }
+                } finally {
+                    latch.countDown()
+                }
+            }
+
+            thread1.start()
+            thread2.start()
+
+            assertTrue(latch.await(15, TimeUnit.SECONDS), "انتهت مهلة التزامن بين اتصالين مستقلين")
+            conn1.close()
+            conn2.close()
+
+            assertEquals(totalPerConn, allocatedConn1.size)
+            assertEquals(totalPerConn, allocatedConn2.size)
+
+            val allAllocated = (allocatedConn1 + allocatedConn2).toSet()
+            assertEquals(totalPerConn * 2, allAllocated.size, "لا يجوز حدوث أي تصادم بين معرفات الاتصالين المستقلين")
+        } finally {
+            SqliteDatabaseManager.closeDatabase()
+            SqliteDatabaseManager.setCustomDatabasePath(tempDbFile.absolutePath)
+            runCatching { multiConnDb.delete() }
+        }
+    }
 }
