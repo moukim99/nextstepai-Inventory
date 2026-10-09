@@ -969,6 +969,7 @@ internal object SqliteDatabaseSchema {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_parts_categoryUuid ON parts(categoryUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_parts_defaultLocationUuid ON parts(defaultLocationUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_parts_sync ON parts(syncStatus, isDeleted, updatedAt);").use { it.step() } }
+        ensurePartIdUniqueIndex(conn)
 
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_bom_items_partUuid ON bom_items(partUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_bom_items_subPartUuid ON bom_items(subPartUuid);").use { it.step() } }
@@ -994,6 +995,7 @@ internal object SqliteDatabaseSchema {
 
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_companies_sync ON companies(syncStatus, isDeleted, updatedAt);").use { it.step() } }
         ensureCompanyNameUniqueIndex(conn)
+        ensureCompanyIdUniqueIndex(conn)
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_company_att_compUuid ON company_attachments(companyUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_contacts_companyUuid ON contacts(companyUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_primary_contact ON contacts(companyUuid) WHERE isPrimary = 1;").use { it.step() } }
@@ -1092,6 +1094,70 @@ internal object SqliteDatabaseSchema {
         }
         check(indexExists) {
             "Database migration failed: idx_companies_unique_name could not be verified."
+        }
+    }
+
+    /**
+     * Enforce strict uniqueness for active persisted part numeric IDs.
+     */
+    private fun ensurePartIdUniqueIndex(conn: SQLiteConnection) {
+        val duplicates = mutableListOf<String>()
+        conn.prepare("""
+            SELECT id, COUNT(*)
+            FROM parts
+            WHERE isDeleted = 0 AND id > 0
+            GROUP BY id
+            HAVING COUNT(*) > 1
+            LIMIT 10
+        """.trimIndent()).use { stmt ->
+            while (stmt.step()) {
+                duplicates += "id ${stmt.getLong(0)} (${stmt.getLong(1)} occurrences)"
+            }
+        }
+        check(duplicates.isEmpty()) {
+            "Database migration blocked: duplicate active part IDs must be resolved before adding idx_parts_unique_id: ${duplicates.joinToString()}"
+        }
+
+        conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_parts_unique_id ON parts(id) WHERE isDeleted = 0 AND id > 0;").use { it.step() }
+
+        var indexExists = false
+        conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_parts_unique_id' LIMIT 1").use { stmt ->
+            indexExists = stmt.step()
+        }
+        check(indexExists) {
+            "Database migration failed: idx_parts_unique_id could not be verified."
+        }
+    }
+
+    /**
+     * Enforce strict uniqueness for active persisted company numeric IDs.
+     */
+    private fun ensureCompanyIdUniqueIndex(conn: SQLiteConnection) {
+        val duplicates = mutableListOf<String>()
+        conn.prepare("""
+            SELECT id, COUNT(*)
+            FROM companies
+            WHERE isDeleted = 0 AND id > 0
+            GROUP BY id
+            HAVING COUNT(*) > 1
+            LIMIT 10
+        """.trimIndent()).use { stmt ->
+            while (stmt.step()) {
+                duplicates += "id ${stmt.getLong(0)} (${stmt.getLong(1)} occurrences)"
+            }
+        }
+        check(duplicates.isEmpty()) {
+            "Database migration blocked: duplicate active company IDs must be resolved before adding idx_companies_unique_id: ${duplicates.joinToString()}"
+        }
+
+        conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_unique_id ON companies(id) WHERE isDeleted = 0 AND id > 0;").use { it.step() }
+
+        var indexExists = false
+        conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_companies_unique_id' LIMIT 1").use { stmt ->
+            indexExists = stmt.step()
+        }
+        check(indexExists) {
+            "Database migration failed: idx_companies_unique_id could not be verified."
         }
     }
 }

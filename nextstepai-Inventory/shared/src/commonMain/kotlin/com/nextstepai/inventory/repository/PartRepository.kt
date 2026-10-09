@@ -43,6 +43,7 @@ import com.nextstepai.inventory.data.db.PartAttachmentDao
 import com.nextstepai.inventory.data.db.PartNotesDao
 import com.nextstepai.inventory.data.db.PartInternalPriceDao
 import com.nextstepai.inventory.data.db.PartSalePriceDao
+import com.nextstepai.inventory.domain.PartPricingCalculator
 import com.nextstepai.inventory.data.db.PartStarDao
 import com.nextstepai.inventory.data.db.PartPricingDao
 import com.nextstepai.inventory.data.db.PartTestTemplateDao
@@ -728,37 +729,11 @@ class PartRepository(
      * إعادة حساب وتحديث التكاليف المجمعة لقطعة معينة في PartPricing وحفظها في SQLite.
      */
     fun recalculatePartPricing(part: Part, bomItems: List<BomItem> = emptyList()): PartPricingEntity {
-        // Keep the existing pricing rules, but source internal prices from SQLite rather than
-        // the legacy PartInternalPriceTable cache.
-        val purchaseMin = if (part.purchaseable) {
-            if (part.minimumStock > 0) part.minimumStock * 0.05 else 1.25
-        } else null
-        val purchaseMax = purchaseMin?.times(1.35)
-
-        val bomTotalQuantity = bomItems.sumOf { it.quantity }
-        val bomMin = if (part.assembly && bomItems.isNotEmpty()) bomTotalQuantity * 2.50 else null
-        val bomMax = if (part.assembly && bomItems.isNotEmpty()) bomTotalQuantity * 3.80 else null
-
         val internalPrices = partInternalPriceDao.getForPart(part.effectiveUuid)
-        val internalMin = internalPrices.minOfOrNull { it.price }
-        val internalMax = internalPrices.maxOfOrNull { it.price }
-        val allMins = listOfNotNull(purchaseMin, bomMin, internalMin)
-        val allMaxs = listOfNotNull(purchaseMax, bomMax, internalMax)
-        val overallMin = allMins.minOrNull() ?: 0.0
-        val overallMax = allMaxs.maxOrNull() ?: overallMin
-
-        val calculated = PartPricingEntity(
-            partId = part.id,
-            currency = internalPrices.firstOrNull()?.currency ?: "USD",
-            overallMin = overallMin,
-            overallMax = overallMax,
-            purchaseCostMin = purchaseMin,
-            purchaseCostMax = purchaseMax,
-            bomCostMin = bomMin,
-            bomCostMax = bomMax,
-            internalCostMin = internalMin,
-            internalCostMax = internalMax,
-            updatedAt = Clock.System.now().toString()
+        val calculated = PartPricingCalculator.calculate(
+            part = part,
+            bomItems = bomItems,
+            internalPrices = internalPrices
         )
         return partPricingDao.saveOrUpdate(calculated, part.effectiveUuid).copy(partId = part.id)
     }

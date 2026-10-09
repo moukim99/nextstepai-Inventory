@@ -150,6 +150,110 @@ class SingleSourceOfTruthVerificationTest {
     }
 
     @Test
+    fun testDatabaseEnforcesPartIdUniquenessConstraint() {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("INSERT INTO parts (uuid, id, name) VALUES ('unique-test-part-1', 77777, 'Unique Part 1')").use { it.step() }
+
+        assertFailsWith<Throwable>("يجب أن ترفض قاعدة البيانات إدراج قطعة بمعرف رقمي مكرر عبر قيد idx_parts_unique_id") {
+            conn.prepare("INSERT INTO parts (uuid, id, name) VALUES ('unique-test-part-2', 77777, 'Duplicate Part ID')").use { it.step() }
+        }
+    }
+
+    @Test
+    fun testDatabaseEnforcesCompanyIdUniquenessConstraint() {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("INSERT INTO companies (uuid, id, name) VALUES ('unique-test-comp-1', 88888, 'Unique Comp 1')").use { it.step() }
+
+        assertFailsWith<Throwable>("يجب أن ترفض قاعدة البيانات إدراج شركة بمعرف رقمي مكرر عبر قيد idx_companies_unique_id") {
+            conn.prepare("INSERT INTO companies (uuid, id, name) VALUES ('unique-test-comp-2', 88888, 'Duplicate Comp ID')").use { it.step() }
+        }
+    }
+
+    @Test
+    fun testAtomicMigrationRollsBackOnFailureAndRecoversOnRetry() {
+        val runToken = Clock.System.now().toEpochMilliseconds().toString().takeLast(6)
+        val tempFile = File(System.getProperty("java.io.tmpdir"), "atomic_mig_test_$runToken.db")
+        tempFile.deleteOnExit()
+
+        try {
+            // Seed a raw DB with duplicated active company names to trigger ensureCompanyNameUniqueIndex failure
+            val driver = androidx.sqlite.driver.bundled.BundledSQLiteDriver()
+            val raw = driver.open(tempFile.absolutePath)
+            raw.prepare("CREATE TABLE companies (uuid TEXT PRIMARY KEY, id INTEGER DEFAULT 0, name TEXT, isDeleted INTEGER DEFAULT 0);").use { it.step() }
+            raw.prepare("INSERT INTO companies (uuid, name, isDeleted) VALUES ('c1', 'Conflicting Corp', 0)").use { it.step() }
+            raw.prepare("INSERT INTO companies (uuid, name, isDeleted) VALUES ('c2', 'Conflicting Corp', 0)").use { it.step() }
+            raw.close()
+
+            SqliteDatabaseManager.setCustomDatabasePath(tempFile.absolutePath)
+
+            // Opening via manager must fail closed atomically
+            assertFailsWith<IllegalStateException>("يجب أن تفشل التهيئة لوجود تعارض في البيانات يمنع الفهرس الفريد") {
+                SqliteDatabaseManager.getConnection()
+            }
+
+            // Verify original data is preserved and not left corrupted
+            val rawCheck = driver.open(tempFile.absolutePath)
+            var count = 0L
+            rawCheck.prepare("SELECT COUNT(*) FROM companies").use { stmt ->
+                if (stmt.step()) count = stmt.getLong(0)
+            }
+            assertEquals(2L, count, "البيانات الأصلية يجب أن تظل محفوظة ولم تُفقد بعد التراجع الذري")
+
+            // Heal the conflict
+            rawCheck.prepare("UPDATE companies SET name = 'Conflicting Corp Healed' WHERE uuid = 'c2'").use { it.step() }
+            rawCheck.close()
+
+            // Re-open: manager should now succeed completely and apply migration
+            SqliteDatabaseManager.closeDatabase()
+            val healedConn = SqliteDatabaseManager.getConnection()
+            assertNotNull(healedConn)
+            assertTrue(SqliteDatabaseManager.isDatabaseOpen())
+        } finally {
+            SqliteDatabaseManager.closeDatabase()
+            SqliteDatabaseManager.setCustomDatabasePath(tempDbFile.absolutePath)
+            runCatching { tempFile.delete() }
+        }
+    }
+
+    @Test
+    fun testMultiThreadedConcurrentAllocationsMaintainStrictUniquenessAndContiguity() {
+        val threadCount = 8
+        val allocationsPerThread = 30
+        val totalAllocations = threadCount * allocationsPerThread
+        val executor = Executors.newFixedThreadPool(threadCount)
+        val latch = CountDownLatch(threadCount)
+        val allocatedIds = Collections.synchronizedList(mutableListOf<Long>())
+
+        val startBaseId = SqliteNumericIdAllocator.nextId("parts", "part-")
+        allocatedIds.add(startBaseId)
+
+        for (i in 0 until threadCount) {
+            executor.submit {
+                try {
+                    for (j in 0 until allocationsPerThread) {
+                        val id = SqliteNumericIdAllocator.nextId("parts", "part-")
+                        allocatedIds.add(id)
+                    }
+                } finally {
+                    latch.countDown()
+                }
+            }
+        }
+
+        assertTrue(latch.await(15, TimeUnit.SECONDS), "مهلة اختبار التزامن المتعدد انتهت")
+        executor.shutdown()
+
+        assertEquals(totalAllocations + 1, allocatedIds.size)
+        val uniqueIds = allocatedIds.toSet()
+        assertEquals(totalAllocations + 1, uniqueIds.size, "كل المعرفات يجب أن تكون فريدة تماماً دون أي تكرار")
+
+        val sorted = allocatedIds.sorted()
+        for (k in 1 until sorted.size) {
+            assertEquals(sorted[k - 1] + 1, sorted[k], "تسلسل المعرفات يجب أن يكون متتالياً وصارماً")
+        }
+    }
+
+    @Test
     fun testFinding4NonNumericUuidv7Preservation() {
         val partRepo = PartRepository()
         val customUuid = "018f3a5b-7c8d-7e9f-a0b1-c2d3e4f5a6b7"
