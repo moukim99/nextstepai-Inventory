@@ -840,15 +840,23 @@ class PartViewModel(
      * تبديل حالة تفضيل ومتابعة قطعة معينة في PartStar (تفاعل زر النجمة ⭐).
      */
     fun togglePartStar(partId: Long) {
-        val isStarred = repository.togglePartStar(partId, 1L)
-        val updatedStarredIds = repository.getStarredPartIdsForUser(1L).toSet()
-        _uiState.update {
-            it.copy(
-                starredPartIds = updatedStarredIds,
-                message = if (isStarred) "تمت إضافة القطعة للمفضلة ⭐" else "تمت إزالة القطعة من المفضلة"
-            )
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val isStarred = repository.togglePartStar(partId, 1L)
+                val updatedStarredIds = repository.getStarredPartIdsForUser(1L).toSet()
+                _uiState.update {
+                    it.copy(
+                        starredPartIds = updatedStarredIds,
+                        message = if (isStarred) "تمت إضافة القطعة للمفضلة ⭐" else "تمت إزالة القطعة من المفضلة"
+                    )
+                }
+                refreshFilteredParts()
+            }.onFailure { e ->
+                _uiState.update {
+                    it.copy(message = "حدث خطأ أثناء تحديث المفضلة: ${e.message}")
+                }
+            }
         }
-        refreshFilteredParts()
     }
 
     fun setFilterBottomSheetOpen(isOpen: Boolean) {
