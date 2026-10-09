@@ -826,9 +826,11 @@ class PartRelatedDao {
         val conn = SqliteDatabaseManager.getConnection()
         val results = mutableListOf<PartRelated>()
         conn.prepare("""
-            SELECT uuid, part1Uuid, part2Uuid
-            FROM part_related
-            WHERE (part1Uuid = ? OR part2Uuid = ?) AND isDeleted = 0
+            SELECT rel.uuid, rel.part1Uuid, rel.part2Uuid, p1.id, p2.id
+            FROM part_related rel
+            LEFT JOIN parts p1 ON p1.uuid = rel.part1Uuid
+            LEFT JOIN parts p2 ON p2.uuid = rel.part2Uuid
+            WHERE (rel.part1Uuid = ? OR rel.part2Uuid = ?) AND rel.isDeleted = 0
         """.trimIndent()).use { stmt ->
             stmt.bindText(1, partUuid)
             stmt.bindText(2, partUuid)
@@ -837,8 +839,10 @@ class PartRelatedDao {
                 val p1 = stmt.getText(1)
                 val p2 = stmt.getText(2)
                 val id = uuid.removePrefix("part-rel-").toLongOrNull() ?: 0L
-                val part1Id = p1.removePrefix("part-").toLongOrNull() ?: 0L
-                val part2Id = p2.removePrefix("part-").toLongOrNull() ?: 0L
+                val part1Id = stmt.getLong(3).takeIf { it > 0L }
+                    ?: p1.removePrefix("part-").toLongOrNull() ?: 0L
+                val part2Id = stmt.getLong(4).takeIf { it > 0L }
+                    ?: p2.removePrefix("part-").toLongOrNull() ?: 0L
                 results.add(PartRelated(id = id, part1Id = part1Id, part2Id = part2Id))
             }
         }
