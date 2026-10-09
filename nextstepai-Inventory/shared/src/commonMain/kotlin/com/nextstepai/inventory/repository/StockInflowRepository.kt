@@ -1,5 +1,6 @@
 package com.nextstepai.inventory.repository
 
+import com.nextstepai.inventory.data.POStatus
 import com.nextstepai.inventory.data.ScannedInflowItem
 import com.nextstepai.inventory.data.StockInflowSessionState
 import com.nextstepai.inventory.data.db.PartDao
@@ -217,22 +218,30 @@ class StockInflowRepository(
     private suspend fun updatePoLinesReceivedQuantities(poId: Long, items: List<ScannedInflowItem>) {
         val conn = SqliteDatabaseManager.getConnection()
         val partQtyMap = items.groupBy { it.partId }.mapValues { entry -> entry.value.sumOf { it.quantity } }
+        val now = Clock.System.now().toEpochMilliseconds()
+        val orderUuid = "po-$poId"
 
         partQtyMap.forEach { (partId, totalQty) ->
             if (partId != null) {
                 val sql = """
                     UPDATE purchase_order_lines
                     SET receivedQuantity = receivedQuantity + ?, updatedAt = ?
-                    WHERE orderUuid IN (SELECT uuid FROM purchase_orders WHERE supplierUuid = ? OR uuid = ?)
+                    WHERE orderUuid = ? AND supplierPartId = ?
                 """.trimIndent()
                 conn.prepare(sql).use { stmt ->
                     stmt.bindDouble(1, totalQty)
-                    stmt.bindLong(2, Clock.System.now().toEpochMilliseconds())
-                    stmt.bindText(3, "po-$poId")
-                    stmt.bindText(4, "po-$poId")
+                    stmt.bindLong(2, now)
+                    stmt.bindText(3, orderUuid)
+                    stmt.bindLong(4, partId)
                     stmt.step()
                 }
             }
+        }
+
+        // فحص اكتمال أمر الشراء تلقائياً عند استيفاء كامل البنود
+        val lines = purchaseOrderDao.getLinesForOrder(orderUuid)
+        if (lines.isNotEmpty() && lines.all { it.receivedQuantity >= it.quantity }) {
+            purchaseOrderDao.updateOrderStatus(orderUuid, POStatus.COMPLETE.code, now)
         }
     }
 }

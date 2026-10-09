@@ -4,12 +4,16 @@ import com.nextstepai.inventory.data.POStatus
 import com.nextstepai.inventory.data.PurchaseOrder
 import com.nextstepai.inventory.data.PurchaseOrderLineItem
 import com.nextstepai.inventory.data.PurchaseOrderTable
+import com.nextstepai.inventory.data.StockTrackingType
 import com.nextstepai.inventory.data.db.PurchaseOrderDao
 import com.nextstepai.inventory.data.db.PurchaseOrderEntity
 import com.nextstepai.inventory.data.db.PurchaseOrderLineEntity
 import com.nextstepai.inventory.data.db.PartDao
+import com.nextstepai.inventory.data.db.SqliteDatabaseManager
 import com.nextstepai.inventory.data.db.StockItemDao
 import com.nextstepai.inventory.data.db.StockItemEntity
+import com.nextstepai.inventory.data.db.StockItemTrackingDao
+import com.nextstepai.inventory.data.db.StockItemTrackingEntity
 import com.nextstepai.inventory.util.AppUuid
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
@@ -26,6 +30,7 @@ class PurchaseOrderRepository(
     private val orderDao: PurchaseOrderDao = PurchaseOrderDao(),
     private val stockDao: StockItemDao = StockItemDao(),
     private val partDao: PartDao = PartDao(),
+    private val trackingDao: StockItemTrackingDao = StockItemTrackingDao(),
     private val batchSyncService: BatchSyncService = BatchSyncService()
 ) {
     /**
@@ -56,10 +61,39 @@ class PurchaseOrderRepository(
         )
         if (entities.isNotEmpty()) {
             val allTableOrders = orderTable.getAllOrders()
+            val allParts = runCatching { partDao.getPartsPaged(limit = 1000) }.getOrDefault(emptyList())
+            val partNameMap = allParts.associate { (it.uuid.removePrefix("part-").toLongOrNull() ?: 0L) to it.name }
+
             var result = entities.mapIndexed { index, entity ->
                 val matchingTableOrder = allTableOrders.find { it.reference.equals(entity.reference, ignoreCase = true) }
                 val numericId = entity.uuid.removePrefix("po-").toLongOrNull() ?: matchingTableOrder?.id ?: (index + 1L)
-                val lineItems = matchingTableOrder?.lineItems ?: emptyList()
+
+                val dbLines = orderDao.getLinesForOrder(entity.uuid)
+                val lineItems = if (dbLines.isNotEmpty()) {
+                    dbLines.mapIndexed { lIndex, lineEntity ->
+                        val lineNumericId = lineEntity.uuid.removePrefix("po-line-").toLongOrNull() ?: (lIndex + 1L)
+                        val matchingTableLine = matchingTableOrder?.lineItems?.find { it.supplierPartId == lineEntity.supplierPartId }
+                        val partName = matchingTableLine?.partName?.ifBlank { null }
+                            ?: partNameMap[lineEntity.supplierPartId]
+                            ?: "قطعة #${lineEntity.supplierPartId}"
+
+                        PurchaseOrderLineItem(
+                            id = lineNumericId,
+                            orderId = numericId,
+                            supplierPartId = lineEntity.supplierPartId,
+                            partName = partName,
+                            quantity = lineEntity.quantity,
+                            receivedQuantity = lineEntity.receivedQuantity,
+                            purchasePrice = lineEntity.purchasePrice,
+                            targetDate = matchingTableLine?.targetDate ?: entity.targetDate,
+                            destinationLocationId = matchingTableLine?.destinationLocationId,
+                            notes = matchingTableLine?.notes ?: ""
+                        )
+                    }
+                } else {
+                    matchingTableOrder?.lineItems ?: emptyList()
+                }
+
                 PurchaseOrder(
                     id = numericId,
                     reference = entity.reference,
@@ -114,9 +148,10 @@ class PurchaseOrderRepository(
             )
         )
         finalOrder.lineItems.forEach { line ->
+            val lineUuid = if (line.id != 0L) "po-line-${line.id}" else AppUuid.generate()
             orderDao.insertOrUpdateLine(
                 PurchaseOrderLineEntity(
-                    uuid = "po-line-${line.id}",
+                    uuid = lineUuid,
                     orderUuid = "po-${finalOrder.id}",
                     supplierPartId = line.supplierPartId,
                     quantity = line.quantity,
@@ -134,9 +169,10 @@ class PurchaseOrderRepository(
      */
     fun addLineItem(item: PurchaseOrderLineItem): PurchaseOrderLineItem {
         val inserted = orderTable.insertLineItem(item)
+        val lineUuid = if (inserted.id != 0L) "po-line-${inserted.id}" else AppUuid.generate()
         orderDao.insertOrUpdateLine(
             PurchaseOrderLineEntity(
-                uuid = "po-line-${inserted.id}",
+                uuid = lineUuid,
                 orderUuid = "po-${inserted.orderId}",
                 supplierPartId = inserted.supplierPartId,
                 quantity = inserted.quantity,
@@ -149,71 +185,146 @@ class PurchaseOrderRepository(
     }
 
     /**
-     * استلام كمية من بند أمر شراء وتحديث رصيد المخزون التلقائي (PO Stock Receiving Flow).
+     * استلام كمية من بند أمر شراء وتحديث رصيد المخزون وسجل التتبع ذرياً (Closed-Loop Atomic Transaction).
+     * 1. التحقق من صحة وصلاحية أمر الشراء (عدم الإلغاء أو الاكتمال المسبق).
+     * 2. التحقق من الكمية المستلمة وعدم تجاوز المتبقي (منع الاستلام المكرر).
+     * 3. تحديث receivedQuantity في purchase_order_lines.
+     * 4. إدراج/تحديث رصيد المخزون الفعلي في stock_items ومجموع القطعة في parts.
+     * 5. توثيق حركة الاستلام في stock_item_tracking (CREATED / INFLOW).
+     * 6. فحص اكتمال كافة بنود الأمر:
+     *    - إذا استلمت جميع البنود بالكامل -> إغلاق الأمر وتحديث حالته إلى COMPLETE (30).
+     *    - إذا كان الاستلام جزئياً -> بقاء حالة الأمر في PLACED (20).
      */
-    fun receiveLineItem(lineItemId: Long, qty: Double): Boolean {
-        val success = orderTable.receiveLineItem(lineItemId, qty)
-        if (success) {
-            val line = orderTable.getAllOrders().flatMap { it.lineItems }.find { it.id == lineItemId }
-            if (line != null) {
-                val order = orderTable.getAllOrders().find { it.id == line.orderId }
-                orderDao.insertOrUpdateLine(
-                    PurchaseOrderLineEntity(
-                        uuid = "po-line-${line.id}",
-                        orderUuid = "po-${line.orderId}",
-                        supplierPartId = line.supplierPartId,
-                        quantity = line.quantity,
-                        receivedQuantity = line.receivedQuantity,
-                        purchasePrice = line.purchasePrice,
-                        syncStatus = SyncStatus.PENDING
-                    )
-                )
+    fun receiveLineItem(
+        lineItemId: Long,
+        qty: Double,
+        destinationLocationUuid: String? = null,
+        batchName: String? = null
+    ): Boolean {
+        require(qty > 0.0) { "الكمية المستلمة يجب أن تكون أكبر من الصفر" }
 
-                partDao.addStockToPart("part-${line.supplierPartId}", qty)
+        // البحث عن البند في SQLite أو الذاكرة
+        val lineEntity = orderDao.getLineById(lineItemId)
+        val tableLine = orderTable.getAllOrders().flatMap { it.lineItems }.find { it.id == lineItemId }
 
-                stockDao.insertOrUpdate(
-                    StockItemEntity(
-                        uuid = AppUuid.generate(),
-                        partUuid = "part-${line.supplierPartId}",
-                        locationUuid = "loc-001",
-                        quantity = qty,
-                        purchasePrice = line.purchasePrice,
-                        purchasePriceCurrency = order?.orderCurrency ?: "USD",
-                        batch = order?.reference ?: "PO-RECV",
-                        purchaseOrderUuid = "po-${order?.id ?: 1L}",
-                        statusCode = 10,
-                        updatedAt = Clock.System.now().toEpochMilliseconds()
-                    )
-                )
+        val lineUuid = lineEntity?.uuid ?: "po-line-$lineItemId"
+        val orderUuid = lineEntity?.orderUuid ?: tableLine?.let { "po-${it.orderId}" }
+            ?: throw IllegalArgumentException("بند أمر الشراء برقم $lineItemId غير موجود")
 
-                if (order != null) {
-                    orderDao.insertOrUpdateOrder(
-                        PurchaseOrderEntity(
-                            uuid = "po-${order.id}",
-                            reference = order.reference,
-                            supplierId = order.supplierId,
-                            supplierName = order.supplierName,
-                            statusCode = order.status.code,
-                            description = order.description,
-                            orderCurrency = order.orderCurrency,
-                            targetDate = order.targetDate,
-                            totalCost = order.totalCost,
-                            sourceType = order.sourceType,
-                            sourceReferenceUuid = order.sourceReferenceUuid,
-                            destinationLocationUuid = order.destinationLocationUuid,
-                            syncStatus = SyncStatus.PENDING
-                        )
-                    )
-                }
-            }
+        val orderEntity = orderDao.getOrderByUuid(orderUuid)
+        val tableOrder = tableLine?.let { tl -> orderTable.getAllOrders().find { it.id == tl.orderId } }
+
+        val orderRef = orderEntity?.reference ?: tableOrder?.reference ?: "PO-$orderUuid"
+        val orderStatus = orderEntity?.statusCode ?: tableOrder?.status?.code ?: POStatus.PENDING.code
+
+        if (orderStatus == POStatus.CANCELLED.code) {
+            throw IllegalStateException("لا يمكن استلام بضاعة لأمر شراء ملغي ('$orderRef').")
         }
-        return success
+        if (orderStatus == POStatus.COMPLETE.code) {
+            throw IllegalStateException("أمر الشراء '$orderRef' مكتمل ومستلم بالكامل بالفعل ولا يمكن استلام كميات إضافية منه.")
+        }
+
+        val currentReceived = lineEntity?.receivedQuantity ?: tableLine?.receivedQuantity ?: 0.0
+        val totalQty = lineEntity?.quantity ?: tableLine?.quantity ?: 0.0
+        val remainingNeeded = totalQty - currentReceived
+
+        if (remainingNeeded <= 0.0001) {
+            throw IllegalStateException("تم استلام هذا البند بالكامل بالفعل ولا يمكن تكرار استلامه.")
+        }
+
+        require(qty <= remainingNeeded + 0.0001) {
+            "الكمية المستلمة ($qty) تتجاوز الكمية المتبقية المطلوبة ($remainingNeeded) للبند في أمر الشراء '$orderRef'."
+        }
+
+        val supplierPartId = lineEntity?.supplierPartId ?: tableLine?.supplierPartId
+            ?: throw IllegalArgumentException("معرف القطعة غير محدد للبند $lineItemId")
+        val purchasePrice = lineEntity?.purchasePrice ?: tableLine?.purchasePrice ?: 0.0
+        val orderCurrency = orderEntity?.orderCurrency ?: tableOrder?.orderCurrency ?: "USD"
+        val finalLocationUuid = destinationLocationUuid
+            ?: orderEntity?.destinationLocationUuid
+            ?: "loc-001"
+        val finalBatch = batchName ?: orderRef
+
+        // تنفيذ المعاملة الذرية
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        try {
+            val now = Clock.System.now().toEpochMilliseconds()
+            val newReceivedQty = currentReceived + qty
+
+            // 1. تحديث كمية الاستلام في purchase_order_lines
+            orderDao.updateLineReceivedQuantity(lineUuid, newReceivedQty, now)
+
+            // 2. إدراج سجل المخزون الجديد في stock_items
+            val stockItemUuid = AppUuid.generate()
+            stockDao.insertOrUpdate(
+                StockItemEntity(
+                    uuid = stockItemUuid,
+                    partUuid = "part-$supplierPartId",
+                    locationUuid = finalLocationUuid,
+                    quantity = qty,
+                    purchasePrice = purchasePrice,
+                    purchasePriceCurrency = orderCurrency,
+                    batch = finalBatch,
+                    purchaseOrderUuid = orderUuid,
+                    statusCode = 10,
+                    updatedAt = now
+                )
+            )
+
+            // 3. تحديث الرصيد التراكمي في parts
+            partDao.addStockToPart("part-$supplierPartId", qty)
+
+            // 4. توثيق حركة الاستلام في stock_item_tracking
+            trackingDao.insertOrUpdate(
+                StockItemTrackingEntity(
+                    uuid = AppUuid.generate(),
+                    stockItemUuid = stockItemUuid,
+                    trackingTypeCode = StockTrackingType.CREATED.code,
+                    label = "استلام توريد من أمر شراء #$orderRef",
+                    notes = "تم توريد $qty وحدة من القطعة #$supplierPartId للموقع $finalLocationUuid",
+                    deltas = "{\"receivedQty\": $qty, \"orderUuid\": \"$orderUuid\", \"lineUuid\": \"$lineUuid\", \"partId\": $supplierPartId}",
+                    createdAt = now
+                )
+            )
+
+            // 5. التحقق من اكتمال كافة بنود أمر الشراء
+            val allOrderLines = orderDao.getLinesForOrder(orderUuid)
+            val isOrderFullyReceived = if (allOrderLines.isNotEmpty()) {
+                allOrderLines.all { line ->
+                    val lineRec = if (line.uuid == lineUuid) newReceivedQty else line.receivedQuantity
+                    lineRec >= line.quantity - 0.0001
+                }
+            } else {
+                newReceivedQty >= totalQty - 0.0001
+            }
+
+            val finalStatusCode = if (isOrderFullyReceived) POStatus.COMPLETE.code else POStatus.PLACED.code
+            orderDao.updateOrderStatus(orderUuid, finalStatusCode, now)
+
+            val orderNumericId = orderEntity?.uuid?.removePrefix("po-")?.toLongOrNull() ?: tableOrder?.id
+            if (orderNumericId != null) {
+                val poStatusEnum = if (isOrderFullyReceived) POStatus.COMPLETE else POStatus.PLACED
+                orderTable.updateOrderStatus(orderNumericId, poStatusEnum)
+            }
+
+            // تحديث جدول الذاكرة المتزامن
+            orderTable.receiveLineItem(lineItemId, qty)
+
+            conn.prepare("COMMIT;").use { it.step() }
+            return true
+        } catch (e: Throwable) {
+            runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
+            throw e
+        }
     }
 
     /**
      * تغيير حالة أمر الشراء (Placed / Complete / Cancelled).
      */
     fun updateOrderStatus(orderId: Long, status: POStatus): Boolean {
+        val now = Clock.System.now().toEpochMilliseconds()
+        orderDao.updateOrderStatus("po-$orderId", status.code, now)
         return orderTable.updateOrderStatus(orderId, status)
     }
 

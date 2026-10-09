@@ -1,4 +1,4 @@
-﻿package com.nextstepai.inventory.data.db
+package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -142,6 +142,133 @@ class PurchaseOrderDao {
                 stmt.bindText(2, uuid)
                 stmt.step()
             }
+        }
+    }
+
+    fun getOrderByUuid(orderUuid: String): PurchaseOrderEntity? {
+        val conn = SqliteDatabaseManager.getConnection()
+        val sql = """
+            SELECT uuid, reference, supplierId, supplierName, statusCode, description, orderCurrency, targetDate, totalCost, sourceType, sourceReferenceUuid, destinationLocationUuid, syncStatus, isDeleted, updatedAt
+            FROM purchase_orders
+            WHERE isDeleted = 0 AND uuid = ?
+            LIMIT 1
+        """.trimIndent()
+        conn.prepare(sql).use { stmt ->
+            stmt.bindText(1, orderUuid)
+            if (stmt.step()) {
+                return mapOrderEntity(stmt)
+            }
+        }
+        return null
+    }
+
+    fun getOrderById(orderId: Long): PurchaseOrderEntity? {
+        val direct = getOrderByUuid("po-$orderId")
+        if (direct != null) return direct
+
+        val conn = SqliteDatabaseManager.getConnection()
+        val sql = """
+            SELECT uuid, reference, supplierId, supplierName, statusCode, description, orderCurrency, targetDate, totalCost, sourceType, sourceReferenceUuid, destinationLocationUuid, syncStatus, isDeleted, updatedAt
+            FROM purchase_orders
+            WHERE isDeleted = 0 AND (uuid = ? OR uuid LIKE ?)
+            LIMIT 1
+        """.trimIndent()
+        conn.prepare(sql).use { stmt ->
+            stmt.bindText(1, orderId.toString())
+            stmt.bindText(2, "%-$orderId")
+            if (stmt.step()) {
+                return mapOrderEntity(stmt)
+            }
+        }
+        return null
+    }
+
+    fun getOrderByReference(reference: String): PurchaseOrderEntity? {
+        val conn = SqliteDatabaseManager.getConnection()
+        val sql = """
+            SELECT uuid, reference, supplierId, supplierName, statusCode, description, orderCurrency, targetDate, totalCost, sourceType, sourceReferenceUuid, destinationLocationUuid, syncStatus, isDeleted, updatedAt
+            FROM purchase_orders
+            WHERE isDeleted = 0 AND reference = ?
+            LIMIT 1
+        """.trimIndent()
+        conn.prepare(sql).use { stmt ->
+            stmt.bindText(1, reference.trim())
+            if (stmt.step()) {
+                return mapOrderEntity(stmt)
+            }
+        }
+        return null
+    }
+
+    fun getLinesForOrder(orderUuid: String): List<PurchaseOrderLineEntity> {
+        return getLinesForOrderPaged(orderUuid, limit = 500, offset = 0)
+    }
+
+    fun getLineByUuid(lineUuid: String): PurchaseOrderLineEntity? {
+        val conn = SqliteDatabaseManager.getConnection()
+        val sql = """
+            SELECT uuid, orderUuid, supplierPartId, quantity, receivedQuantity, purchasePrice, syncStatus, isDeleted, updatedAt
+            FROM purchase_order_lines
+            WHERE isDeleted = 0 AND uuid = ?
+            LIMIT 1
+        """.trimIndent()
+        conn.prepare(sql).use { stmt ->
+            stmt.bindText(1, lineUuid)
+            if (stmt.step()) {
+                return mapLineEntity(stmt)
+            }
+        }
+        return null
+    }
+
+    fun getLineById(lineId: Long): PurchaseOrderLineEntity? {
+        val direct = getLineByUuid("po-line-$lineId")
+        if (direct != null) return direct
+
+        val conn = SqliteDatabaseManager.getConnection()
+        val sql = """
+            SELECT uuid, orderUuid, supplierPartId, quantity, receivedQuantity, purchasePrice, syncStatus, isDeleted, updatedAt
+            FROM purchase_order_lines
+            WHERE isDeleted = 0 AND (uuid = ? OR uuid LIKE ?)
+            LIMIT 1
+        """.trimIndent()
+        conn.prepare(sql).use { stmt ->
+            stmt.bindText(1, lineId.toString())
+            stmt.bindText(2, "%-$lineId")
+            if (stmt.step()) {
+                return mapLineEntity(stmt)
+            }
+        }
+        return null
+    }
+
+    fun updateLineReceivedQuantity(lineUuid: String, receivedQuantity: Double, updatedAt: Long) {
+        val conn = SqliteDatabaseManager.getConnection()
+        val sql = """
+            UPDATE purchase_order_lines
+            SET receivedQuantity = ?, updatedAt = ?, syncStatus = 'PENDING'
+            WHERE uuid = ?
+        """.trimIndent()
+        conn.prepare(sql).use { stmt ->
+            stmt.bindDouble(1, receivedQuantity)
+            stmt.bindLong(2, updatedAt)
+            stmt.bindText(3, lineUuid)
+            stmt.step()
+        }
+    }
+
+    fun updateOrderStatus(orderUuid: String, newStatusCode: Int, updatedAt: Long) {
+        val conn = SqliteDatabaseManager.getConnection()
+        val sql = """
+            UPDATE purchase_orders
+            SET statusCode = ?, updatedAt = ?, syncStatus = 'PENDING'
+            WHERE uuid = ?
+        """.trimIndent()
+        conn.prepare(sql).use { stmt ->
+            stmt.bindLong(1, newStatusCode.toLong())
+            stmt.bindLong(2, updatedAt)
+            stmt.bindText(3, orderUuid)
+            stmt.step()
         }
     }
 
