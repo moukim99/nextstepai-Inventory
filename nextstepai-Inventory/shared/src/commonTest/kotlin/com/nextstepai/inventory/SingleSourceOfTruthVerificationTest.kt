@@ -147,6 +147,7 @@ class SingleSourceOfTruthVerificationTest {
         )
         val inserted = partRepo.addPart(part)
         assertEquals(customUuid, inserted.effectiveUuid, "يجب الحفاظ على الـ UUIDv7 الأصلي")
+        assertTrue(inserted.id > 0L, "يجب تخصيص معرّف رقمي متوافق حتى عندما يكون UUID غير رقمي")
 
         // قراءة القطعة بواسطة UUID الخاص بها
         val fetched = partRepo.getPartByUuid(customUuid)
@@ -161,12 +162,22 @@ class SingleSourceOfTruthVerificationTest {
         assertNotNull(fetchedAfterUpdate)
         assertEquals("وصف محدث للـ UUIDv7", fetchedAfterUpdate.description)
 
+        // اختبار إعادة الفتح: يجب أن يبقى الربط بين UUID والـ numeric ID ثابتاً.
+        val persistedId = fetchedAfterUpdate.id
+        SqliteDatabaseManager.closeDatabase()
+        SqliteDatabaseManager.getConnection()
+        val freshRepo = PartRepository()
+        val fetchedAfterRestart = freshRepo.getPartByUuid(customUuid)
+        assertNotNull(fetchedAfterRestart)
+        assertEquals(persistedId, fetchedAfterRestart.id)
+        assertEquals(customUuid, freshRepo.getPartById(persistedId)?.effectiveUuid)
+
         // حذف القطعة
         val deleteResult = partRepo.deletePartByUuid(customUuid)
         assertTrue(deleteResult.isSuccess, "حذف القطعة ذات المعرف النصي يجب أن ينجح")
 
         // التأكد من عدم وجودها بعد الحذف
-        assertNull(partRepo.getPartByUuid(customUuid), "يجب ألا تظهر القطعة المحذوفة في القراءات")
+        assertNull(freshRepo.getPartByUuid(customUuid), "يجب ألا تظهر القطعة المحذوفة في القراءات")
     }
 
     @Test
@@ -304,6 +315,89 @@ class SingleSourceOfTruthVerificationTest {
         // 9. حذف صلة ربط غير موجودة
         val deleteRelatedNonExistent = partRepo.deletePartRelated(999999L)
         assertFalse(deleteRelatedNonExistent, "حذف صلة غير موجودة يجب أن يعيد false")
+    }
+
+    @Test
+    fun testStaleAttachmentCacheCannotResurrectDeletedRows() {
+        val partRepo = PartRepository()
+        val part = partRepo.addPart(Part(name = "قطعة اختبار عدم استعادة المرفقات المحذوفة"))
+        val attachment = partRepo.addPartAttachment(
+            PartAttachment(partId = part.id, comment = "مرفق يجب أن يختفي")
+        )
+
+        assertEquals(1, partRepo.getPartAttachments(part.id).size)
+        assertTrue(PartAttachmentDao().delete("part-att-${attachment.id}"))
+
+        // PartAttachmentTable ما زال يحتوي نسخة الذاكرة القديمة، لكن DAO الفارغ هو المرجع الوحيد.
+        assertTrue(
+            partRepo.getPartAttachments(part.id).isEmpty(),
+            "يجب ألا يعيد المستودع مرفقاً حُذف من SQLite بسبب وجود نسخة قديمة في الذاكرة"
+        )
+    }
+
+    @Test
+    fun testCustomCompanyUuidKeepsNumericIdentityAndChildRelationsAfterRestart() {
+        val companyRepo = CompanyRepository()
+        val customUuid = "018f3a5b-7c8d-7e9f-a0b1-c2d3e4f5a6c8"
+        val company = companyRepo.addCompany(
+            Company(uuid = customUuid, name = "شركة بمعرف UUID مخصص للاختبار")
+        )
+        assertTrue(company.id > 0L)
+        assertEquals(customUuid, company.effectiveUuid)
+
+        val contact = companyRepo.addContact(
+            Contact(companyId = company.id, name = "جهة اتصال اختبار", phone = "000")
+        )
+        assertTrue(contact.id > 0L)
+
+        SqliteDatabaseManager.closeDatabase()
+        SqliteDatabaseManager.getConnection()
+
+        val freshRepo = CompanyRepository()
+        val companyAfterRestart = freshRepo.getCompanyById(company.id)
+        assertNotNull(companyAfterRestart)
+        assertEquals(customUuid, companyAfterRestart.effectiveUuid)
+        val contacts = freshRepo.getContactsForCompany(company.id)
+        assertEquals(1, contacts.size)
+        assertEquals(company.id, contacts.single().companyId)
+        assertEquals("جهة اتصال اختبار", contacts.single().name)
+    }
+
+    @Test
+    fun testPartCascadeDeleteRollsBackWhenDependentDeleteFails() {
+        val partRepo = PartRepository()
+        val part = partRepo.addPart(Part(name = "قطعة اختبار التراجع الذري"))
+        val attachment = partRepo.addPartAttachment(
+            PartAttachment(partId = part.id, comment = "يجب أن يبقى بعد التراجع")
+        )
+
+        // إجبار إحدى خطوات cascade على الفشل بعد بدء المعاملة وبعد حذف المرفقات منطقياً.
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("DROP TABLE part_notes").use { it.step() }
+        val result = partRepo.deletePartByUuid(part.effectiveUuid)
+        assertTrue(result.isFailure, "يجب إرجاع فشل واضح عندما تفشل إزالة إحدى التوابع")
+
+        // إعادة إنشاء الجدول لتمكين فحص الحالة بعد rollback.
+        SqliteDatabaseSchema.createTables(conn)
+        assertNotNull(partRepo.getPartByUuid(part.effectiveUuid), "يجب أن يتراجع حذف القطعة الأساسية")
+        assertEquals(
+            attachment.id,
+            partRepo.getPartAttachments(part.id).single().id,
+            "يجب أن يتراجع حذف المرفق التابع مع العملية الذرية"
+        )
+    }
+
+    @Test
+    fun testCompanyUniqueIndexMigrationFailsClosedOnLegacyDuplicates() {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("DROP INDEX IF EXISTS idx_companies_unique_name").use { it.step() }
+        conn.prepare("INSERT INTO companies (uuid, id, name, isDeleted) VALUES ('legacy-dup-1', 90001, ' Legacy Duplicate ', 0)").use { it.step() }
+        conn.prepare("INSERT INTO companies (uuid, id, name, isDeleted) VALUES ('legacy-dup-2', 90002, 'legacy duplicate', 0)").use { it.step() }
+
+        val failure = assertFailsWith<IllegalStateException> {
+            SqliteDatabaseSchema.createTables(conn)
+        }
+        assertTrue(failure.message.orEmpty().contains("duplicate active company names", ignoreCase = true))
     }
 
     @Test
