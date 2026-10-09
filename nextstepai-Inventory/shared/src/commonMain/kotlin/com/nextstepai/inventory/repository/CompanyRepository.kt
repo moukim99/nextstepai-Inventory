@@ -62,6 +62,7 @@ class CompanyRepository(
         val parsedId = uuid.removePrefix("company-").toLongOrNull() ?: 0L
         return Company(
             id = parsedId,
+            uuid = uuid,
             name = name,
             description = description,
             website = website,
@@ -127,16 +128,27 @@ class CompanyRepository(
         return entity?.toCompany() ?: getCompanies().firstOrNull { it.id == id }
     }
 
+    fun getCompanyByUuid(uuid: String): Company? {
+        val entity = companyDao.getCompanyByUuid(uuid)
+        return entity?.toCompany()
+    }
+
     /**
      * إضافة شركة جديدة مع تخصيص المعرف الرقمي من SQLite وحفظ الكيان في قاعدة البيانات الدائمة أولاً.
      */
     fun addCompany(company: Company): Company {
+        val existingWithSameName = companyDao.getCompanyByName(company.name)
+        require(existingWithSameName == null) { "اسم الشركة '${company.name}' مسجل مسبقاً، لا يمكن تكرار الاسم." }
+
         val allocatedId = if (company.id > 0L) company.id else SqliteNumericIdAllocator.nextId("companies", "company-")
-        val companyWithId = company.copy(id = allocatedId)
+        val companyWithId = company.copy(
+            id = allocatedId,
+            uuid = if (company.uuid.isNotBlank()) company.uuid else "company-$allocatedId"
+        )
         val now = Clock.System.now().toEpochMilliseconds()
-        companyDao.insertOrUpdate(
+        val inserted = companyDao.insert(
             CompanyEntity(
-                uuid = "company-$allocatedId",
+                uuid = companyWithId.effectiveUuid,
                 name = companyWithId.name,
                 description = companyWithId.description,
                 website = companyWithId.website,
@@ -156,6 +168,9 @@ class CompanyRepository(
                 updatedAt = now
             )
         )
+        if (!inserted) {
+            throw IllegalStateException("فشل حفظ بيانات الشركة في قاعدة البيانات")
+        }
         runCatching { companyTable.insertCompany(companyWithId) }
         return companyWithId
     }
@@ -164,10 +179,19 @@ class CompanyRepository(
      * تحديث شركة حالية في SQLite مباشرة مع مزامنة جدول الذاكرة.
      */
     fun updateCompany(company: Company): Company {
+        val targetUuid = company.effectiveUuid
+        val existing = companyDao.getCompanyByUuid(targetUuid)
+        requireNotNull(existing) { "الشركة المطلوب تعديلها غير موجودة بالمنظومة" }
+
+        val existingWithSameName = companyDao.getCompanyByName(company.name)
+        if (existingWithSameName != null && existingWithSameName.uuid != targetUuid) {
+            throw IllegalArgumentException("اسم الشركة '${company.name}' مسجل مسبقاً، لا يمكن تكرار الاسم.")
+        }
+
         val now = Clock.System.now().toEpochMilliseconds()
-        companyDao.insertOrUpdate(
+        val updated = companyDao.update(
             CompanyEntity(
-                uuid = "company-${company.id}",
+                uuid = targetUuid,
                 name = company.name,
                 description = company.description,
                 website = company.website,
@@ -182,11 +206,15 @@ class CompanyRepository(
                 notes = company.notes,
                 metadata = company.metadata,
                 parentUuid = company.parentId?.let { "company-$it" },
+                version = existing.version + 1,
                 syncStatus = SyncStatus.PENDING,
                 isDeleted = false,
                 updatedAt = now
             )
         )
+        if (!updated) {
+            throw IllegalStateException("فشل تحديث بيانات الشركة في قاعدة البيانات")
+        }
         runCatching { companyTable.updateCompany(company) }
         return company
     }
@@ -195,9 +223,23 @@ class CompanyRepository(
      * حذف شركة منطقياً من SQLite.
      */
     fun deleteCompany(id: Long): Boolean {
-        companyDao.delete("company-$id")
-        runCatching { companyTable.deleteCompany(id) }
-        return true
+        val company = getCompanyById(id) ?: return false
+        val deleted = companyDao.delete(company.effectiveUuid)
+        if (deleted) {
+            runCatching { companyTable.deleteCompany(id) }
+        }
+        return deleted
+    }
+
+    fun deleteCompanyByUuid(uuid: String): Boolean {
+        val deleted = companyDao.delete(uuid)
+        if (deleted) {
+            val parsedId = uuid.removePrefix("company-").toLongOrNull()
+            if (parsedId != null) {
+                runCatching { companyTable.deleteCompany(parsedId) }
+            }
+        }
+        return deleted
     }
 
     /**
@@ -418,9 +460,11 @@ class CompanyRepository(
     }
 
     fun deleteCompanyAttachment(id: Long): Boolean {
-        companyAttachmentDao.delete("company-att-$id")
-        runCatching { companyAttachmentTable.deleteAttachment(id) }
-        return true
+        val deleted = companyAttachmentDao.delete("company-att-$id")
+        if (deleted) {
+            runCatching { companyAttachmentTable.deleteAttachment(id) }
+        }
+        return deleted
     }
 
     // --- جهات الاتصال (Contacts) ---
@@ -456,9 +500,11 @@ class CompanyRepository(
     }
 
     fun deleteContact(contactId: Long): Boolean {
-        contactDao.delete("contact-$contactId")
-        runCatching { contactTable.deleteContact(contactId) }
-        return true
+        val deleted = contactDao.delete("contact-$contactId")
+        if (deleted) {
+            runCatching { contactTable.deleteContact(contactId) }
+        }
+        return deleted
     }
 
     // --- العناوين (Addresses) ---
@@ -498,9 +544,11 @@ class CompanyRepository(
     }
 
     fun deleteAddress(addressId: Long): Boolean {
-        addressDao.delete("address-$addressId")
-        runCatching { addressTable.deleteAddress(addressId) }
-        return true
+        val deleted = addressDao.delete("address-$addressId")
+        if (deleted) {
+            runCatching { addressTable.deleteAddress(addressId) }
+        }
+        return deleted
     }
 
     // --- الحسابات البنكية للشركة (Company Bank Accounts) ---
@@ -538,9 +586,11 @@ class CompanyRepository(
     }
 
     fun deleteBankAccount(accountId: Long): Boolean {
-        companyBankAccountDao.delete("bank-$accountId")
-        runCatching { companyBankAccountTable.deleteBankAccount(accountId) }
-        return true
+        val deleted = companyBankAccountDao.delete("bank-$accountId")
+        if (deleted) {
+            runCatching { companyBankAccountTable.deleteBankAccount(accountId) }
+        }
+        return deleted
     }
 
     // --- السجلات القانونية والتراخيص (Company Legal Records) ---
@@ -585,9 +635,11 @@ class CompanyRepository(
 
     fun deleteLegalRecord(companyId: Long): Boolean {
         val record = getLegalRecordForCompany(companyId) ?: return false
-        companyLegalRecordDao.delete("legal-${record.id}")
-        runCatching { companyLegalRecordTable.deleteLegalRecord(record.id) }
-        return true
+        val deleted = companyLegalRecordDao.delete("legal-${record.id}")
+        if (deleted) {
+            runCatching { companyLegalRecordTable.deleteLegalRecord(record.id) }
+        }
+        return deleted
     }
 
     // --- قطع المصنّع (Manufacturer Parts) ---
@@ -635,9 +687,11 @@ class CompanyRepository(
     }
 
     fun deleteManufacturerPart(id: Long): Boolean {
-        manufacturerPartDao.delete("mfg-part-$id")
-        runCatching { manufacturerPartTable.deleteManufacturerPart(id) }
-        return true
+        val deleted = manufacturerPartDao.delete("mfg-part-$id")
+        if (deleted) {
+            runCatching { manufacturerPartTable.deleteManufacturerPart(id) }
+        }
+        return deleted
     }
 
     // --- الخصائص الفنية لقطع المصنّع (Manufacturer Part Parameters) ---
@@ -674,9 +728,11 @@ class CompanyRepository(
     }
 
     fun deleteManufacturerPartParameter(id: Long): Boolean {
-        manufacturerPartParameterDao.delete("mfg-param-$id")
-        runCatching { manufacturerPartParameterTable.deleteParameter(id) }
-        return true
+        val deleted = manufacturerPartParameterDao.delete("mfg-param-$id")
+        if (deleted) {
+            runCatching { manufacturerPartParameterTable.deleteParameter(id) }
+        }
+        return deleted
     }
 
     // --- مرفقات قطع المصنّع (Manufacturer Part Attachments) ---
@@ -710,9 +766,11 @@ class CompanyRepository(
     }
 
     fun deleteManufacturerPartAttachment(id: Long): Boolean {
-        manufacturerPartAttachmentDao.delete("mfg-part-att-$id")
-        runCatching { manufacturerPartAttachmentTable.deleteAttachment(id) }
-        return true
+        val deleted = manufacturerPartAttachmentDao.delete("mfg-part-att-$id")
+        if (deleted) {
+            runCatching { manufacturerPartAttachmentTable.deleteAttachment(id) }
+        }
+        return deleted
     }
 
     // --- قطع الموردين (Supplier Parts) ---
@@ -766,9 +824,11 @@ class CompanyRepository(
     }
 
     fun deleteSupplierPart(id: Long): Boolean {
-        supplierPartDao.delete("sup-part-$id")
-        runCatching { supplierPartTable.deleteSupplierPart(id) }
-        return true
+        val deleted = supplierPartDao.delete("sup-part-$id")
+        if (deleted) {
+            runCatching { supplierPartTable.deleteSupplierPart(id) }
+        }
+        return deleted
     }
 
     // --- شرائح الأسعار (Supplier Price Breaks) ---
@@ -815,9 +875,11 @@ class CompanyRepository(
     }
 
     fun deletePriceBreak(id: Long): Boolean {
-        supplierPriceBreakDao.delete("price-break-$id")
-        runCatching { supplierPriceBreakTable.deletePriceBreak(id) }
-        return true
+        val deleted = supplierPriceBreakDao.delete("price-break-$id")
+        if (deleted) {
+            runCatching { supplierPriceBreakTable.deletePriceBreak(id) }
+        }
+        return deleted
     }
 
     fun getBestPriceForQuantity(supplierPartId: Long, quantity: Double): SupplierPriceBreak? {

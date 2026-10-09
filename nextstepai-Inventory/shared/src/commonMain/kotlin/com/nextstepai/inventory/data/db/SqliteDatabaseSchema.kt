@@ -1,4 +1,4 @@
-﻿package com.nextstepai.inventory.data.db
+package com.nextstepai.inventory.data.db
 
 import androidx.sqlite.SQLiteConnection
 
@@ -930,6 +930,14 @@ internal object SqliteDatabaseSchema {
             );
         """.trimIndent()).use { it.step() }
 
+        // Atomic sequence table for safe ID allocation
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS id_sequences (
+                table_name TEXT PRIMARY KEY NOT NULL,
+                last_id INTEGER NOT NULL
+            );
+        """.trimIndent()).use { it.step() }
+
         // 8. Ø§Ù„ÙÙ‡Ø§Ø±Ø³ (Optimized Production Indexes)
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_parts_categoryUuid ON parts(categoryUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_parts_defaultLocationUuid ON parts(defaultLocationUuid);").use { it.step() } }
@@ -958,6 +966,7 @@ internal object SqliteDatabaseSchema {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_items_stockItemUuid ON build_items(stockItemUuid);").use { it.step() } }
 
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_companies_sync ON companies(syncStatus, isDeleted, updatedAt);").use { it.step() } }
+        runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_unique_name ON companies(LOWER(TRIM(name))) WHERE isDeleted = 0;").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_company_att_compUuid ON company_attachments(companyUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_contacts_companyUuid ON contacts(companyUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_primary_contact ON contacts(companyUuid) WHERE isPrimary = 1;").use { it.step() } }

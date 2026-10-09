@@ -59,13 +59,14 @@ data class Part(
     val allocatedToSalesOrders: Double = 0.0,
     val totalHardAllocated: Double = 0.0,
     val totalSoftAllocated: Double = 0.0,
-    val orderingQuantity: Double = 0.0
+    val orderingQuantity: Double = 0.0,
+    val uuid: String = ""
 ) {
     /**
      * المعرف الفريد السلسلي للقطعة للاستخدام الموحد في المسارات وحفظ الملفات.
      */
     val effectiveUuid: String
-        get() = "part-$id"
+        get() = if (uuid.isNotBlank()) uuid else "part-$id"
 
     /**
      * حساب إجمالي المخصصات المحجوزة المؤكدة (Committed Allocated = HARD)

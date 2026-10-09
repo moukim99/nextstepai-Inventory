@@ -39,8 +39,15 @@ data class Company(
     val link: String = "",
     val notes: String = "",
     val metadata: String = "{}",
-    val parentId: Long? = null
-)
+    val parentId: Long? = null,
+    val uuid: String = ""
+) {
+    /**
+     * المعرف الفريد السلسلي للشركة للاستخدام الموحد في المسارات وحفظ البيانات.
+     */
+    val effectiveUuid: String
+        get() = if (uuid.isNotBlank()) uuid else "company-$id"
+}
 
 /**
  * محاكاة جدول إدارة الشركات والعلاقات التجارية (Company Table).

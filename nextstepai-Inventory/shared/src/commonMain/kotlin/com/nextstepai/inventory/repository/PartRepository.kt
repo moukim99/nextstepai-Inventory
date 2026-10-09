@@ -39,6 +39,17 @@ import com.nextstepai.inventory.data.withLabelSnapshot
 import java.io.File
 import kotlin.time.Clock
 
+import com.nextstepai.inventory.data.db.PartAttachmentDao
+import com.nextstepai.inventory.data.db.PartNotesDao
+import com.nextstepai.inventory.data.db.PartInternalPriceDao
+import com.nextstepai.inventory.data.db.PartSalePriceDao
+import com.nextstepai.inventory.data.db.PartStarDao
+import com.nextstepai.inventory.data.db.PartPricingDao
+import com.nextstepai.inventory.data.db.PartTestTemplateDao
+import com.nextstepai.inventory.data.db.PartParameterDao
+import com.nextstepai.inventory.data.db.PartRelatedDao
+import com.nextstepai.inventory.data.db.PartParameterTemplateDao
+import com.nextstepai.inventory.data.db.PartCategoryParameterTemplateDao
 import com.nextstepai.inventory.data.db.getRoomDatabase
 import com.nextstepai.inventory.data.db.SqliteNumericIdAllocator
 import com.nextstepai.inventory.util.AppUuid
@@ -49,6 +60,17 @@ import com.nextstepai.inventory.util.AppUuid
 class PartRepository(
     private val partTable: PartTable = PartTable(),
     private val partDao: PartDao = PartDao(),
+    private val partAttachmentDao: PartAttachmentDao = PartAttachmentDao(),
+    private val partNotesDao: PartNotesDao = PartNotesDao(),
+    private val partInternalPriceDao: PartInternalPriceDao = PartInternalPriceDao(),
+    private val partSalePriceDao: PartSalePriceDao = PartSalePriceDao(),
+    private val partStarDao: PartStarDao = PartStarDao(),
+    private val partPricingDao: PartPricingDao = PartPricingDao(),
+    private val partTestTemplateDao: PartTestTemplateDao = PartTestTemplateDao(),
+    private val partParameterDao: PartParameterDao = PartParameterDao(),
+    private val partRelatedDao: PartRelatedDao = PartRelatedDao(),
+    private val partParameterTemplateDao: PartParameterTemplateDao = PartParameterTemplateDao(),
+    private val partCategoryParameterTemplateDao: PartCategoryParameterTemplateDao = PartCategoryParameterTemplateDao(),
     private val categoryParameterTable: PartCategoryParameterTable = PartCategoryParameterTable(partTable),
     private val partRelatedTable: PartRelatedTable = PartRelatedTable(partTable),
     private val partTestTemplateTable: PartTestTemplateTable = PartTestTemplateTable(partTable),
@@ -115,6 +137,7 @@ class PartRepository(
         val parsedId = uuid.removePrefix("part-").toLongOrNull() ?: 0L
         return Part(
             id = parsedId,
+            uuid = uuid,
             name = name,
             ipn = ipn,
             description = description,
@@ -160,6 +183,22 @@ class PartRepository(
     }
 
     /**
+     * جلب قطعة محددة بواسطة المعرف الفريد.
+     */
+    fun getPartById(id: Long): Part? {
+        val byUuid = partDao.getPartByUuid("part-$id")?.toPart()
+        if (byUuid != null) return byUuid
+        return getParts().firstOrNull { it.id == id }
+    }
+
+    /**
+     * جلب قطعة محددة بواسطة UUID الصريح.
+     */
+    fun getPartByUuid(uuid: String): Part? {
+        return partDao.getPartByUuid(uuid)?.toPart()
+    }
+
+    /**
      * جلب المنتجات الأب المؤهلة التي تفعل خيار التجميع الهندسي (assembly = true) من SQLite.
      */
     fun getParentAssemblies(): List<Part> {
@@ -197,22 +236,32 @@ class PartRepository(
      * زيادة رصيد المخزون لقطعة محددة وتحديث رصيد الصنف في الذاكرة والمحرك المحلي.
      */
     fun addStockToPart(partId: Long, quantity: Double): Part? {
-        val partUuid = "part-$partId"
-        runCatching { partDao.addStockToPart(partUuid, quantity) }
+        val targetPart = getPartById(partId) ?: return null
+        val updated = partDao.addStockToPart(targetPart.effectiveUuid, quantity)
+        if (!updated) {
+            return null
+        }
         val updatedFromDb = getPartById(partId)
         if (updatedFromDb != null) {
             runCatching { partTable.updatePart(updatedFromDb) }
-            return updatedFromDb
         }
-        return partTable.addStockToPart(partId, quantity)
+        return updatedFromDb
     }
 
     /**
-     * جلب قطعة محددة بواسطة المعرف الفريد.
+     * زيادة رصيد المخزون لقطعة محددة بواسطة المعرف النصي UUID.
      */
-    fun getPartById(id: Long): Part? {
-        // SQLite is authoritative: never repopulate and query the legacy in-memory table.
-        return getParts().firstOrNull { it.id == id }
+    fun addStockToPartByUuid(uuid: String, quantity: Double): Part? {
+        val targetPart = getPartByUuid(uuid) ?: return null
+        val updated = partDao.addStockToPart(targetPart.effectiveUuid, quantity)
+        if (!updated) {
+            return null
+        }
+        val updatedFromDb = getPartByUuid(uuid)
+        if (updatedFromDb != null) {
+            runCatching { partTable.updatePart(updatedFromDb) }
+        }
+        return updatedFromDb
     }
 
     /**
@@ -253,9 +302,9 @@ class PartRepository(
             ?: part.link
 
         val allocatedId = if (part.id > 0L) part.id else SqliteNumericIdAllocator.nextId("parts", "part-")
-        val partToInsert = part.copy(id = allocatedId, imageUrl = resolvedImageUrl, link = resolvedLink)
-        val partUuid = "part-$allocatedId"
-        partDao.insertOrUpdate(
+        val partUuid = if (part.uuid.isNotBlank()) part.uuid else "part-$allocatedId"
+        val partToInsert = part.copy(id = allocatedId, uuid = partUuid, imageUrl = resolvedImageUrl, link = resolvedLink)
+        val inserted = partDao.insert(
             PartEntity(
                 uuid = partUuid,
                 name = partToInsert.name,
@@ -289,6 +338,9 @@ class PartRepository(
                 updatedAt = Clock.System.now().toEpochMilliseconds()
             )
         )
+        if (!inserted) {
+            throw IllegalStateException("فشل إدراج القطعة في قاعدة بيانات SQLite")
+        }
         runCatching { partTable.insertPart(partToInsert) }
         pendingAttachments.forEach { att ->
             addPartAttachment(
@@ -300,8 +352,19 @@ class PartRepository(
                 )
             )
         }
-        // إنشاء سجلات المعاملات الفنية تلقائياً بناءً على PartCategoryParameterTemplate للتصنيف
-        categoryParameterTable.autoGenerateParametersForPart(allocatedId, partToInsert.categoryId)
+        // إنشاء سجلات المعاملات الفنية تلقائياً بناءً على PartCategoryParameterTemplate للتصنيف وحفظها
+        val generatedParams = categoryParameterTable.autoGenerateParametersForPart(allocatedId, partToInsert.categoryId)
+        generatedParams.forEach { param ->
+            runCatching {
+                partParameterDao.insertOrUpdate(
+                    partUuid = partUuid,
+                    templateUuid = "param-tpl-${param.templateId}",
+                    data = param.data,
+                    dataNumeric = param.dataNumeric,
+                    id = param.id
+                )
+            }
+        }
         return partToInsert
     }
 
@@ -313,11 +376,10 @@ class PartRepository(
         val genAt = Clock.System.now().toEpochMilliseconds()
         val imagePath = "files/labels/parts/part_${targetPart.effectiveUuid}.webp"
         val updatedPart = targetPart.withLabelSnapshot(imagePath, genAt, snapshotData)
-        runCatching { partTable.updatePart(updatedPart) }
-        val partUuid = "part-$partId"
-        partDao.insertOrUpdate(
+        val existingEntity = partDao.getPartByUuid(targetPart.effectiveUuid)
+        val updated = partDao.update(
             PartEntity(
-                uuid = partUuid,
+                uuid = targetPart.effectiveUuid,
                 name = updatedPart.name,
                 ipn = updatedPart.ipn,
                 description = updatedPart.description,
@@ -343,24 +405,53 @@ class PartRepository(
                 localImagePath = updatedPart.imageUrl,
                 link = updatedPart.link,
                 metadata = updatedPart.metadata,
-                version = 1,
+                version = (existingEntity?.version ?: 1) + 1,
                 syncStatus = SyncStatus.PENDING,
                 isDeleted = false,
-                updatedAt = Clock.System.now().toEpochMilliseconds()
+                updatedAt = genAt
             )
         )
+        if (!updated) return null
+        runCatching { partTable.updatePart(updatedPart) }
         return updatedPart
     }
 
     /**
-     * حذف أمني محمي للقطعة وإزالتها من الجداول مع التنظيف الفيزيائي لملف الملصق.
+     * حذف أمني محمي للقطعة وإزالتها من الجداول مع التنظيف الفيزيائي لملف الملصق وحذف الكيانات التابعة.
      */
     fun deletePartWithValidation(partId: Long): Result<Boolean> {
         val part = getPartById(partId)
             ?: return Result.failure(IllegalArgumentException("القطعة المطلوب حذفها غير موجودة بالمنظومة"))
+        return deletePartByUuid(part.effectiveUuid)
+    }
+
+    /**
+     * حذف أمني للقطعة باستخدام المعرف النصي UUID.
+     */
+    fun deletePartByUuid(uuid: String): Result<Boolean> {
+        val part = getPartByUuid(uuid)
+            ?: return Result.failure(IllegalArgumentException("القطعة المطلوب حذفها غير موجودة بالمنظومة"))
+
+        val deleted = partDao.softDeleteByUuid(part.effectiveUuid)
+        if (!deleted) {
+            return Result.failure(IllegalStateException("فشل حذف القطعة من قاعدة البيانات"))
+        }
+
+        // حذف الكيانات التابعة للقطعة في SQLite
+        runCatching {
+            partAttachmentDao.deleteForPart(part.effectiveUuid)
+            partNotesDao.deleteForPart(part.effectiveUuid)
+            partInternalPriceDao.deleteForPart(part.effectiveUuid)
+            partSalePriceDao.deleteForPart(part.effectiveUuid)
+            partStarDao.deleteForPart(part.effectiveUuid)
+            partPricingDao.deleteForPart(part.effectiveUuid)
+            partTestTemplateDao.deleteForPart(part.effectiveUuid)
+            partParameterDao.deleteForPart(part.effectiveUuid)
+            partRelatedDao.deleteForPart(part.effectiveUuid)
+        }
 
         // إزالة القطعة من جدول الذاكرة الداخلي
-        runCatching { partTable.deletePart(partId) }
+        runCatching { partTable.deletePart(part.id) }
 
         // الحذف الفيزيائي الآلي لملف صورة الملصق لمنع الملفات المهملة
         part.labelImagePath?.let { path ->
@@ -370,42 +461,6 @@ class PartRepository(
             }
         }
 
-        // أرشفة وحذف الكيان في قاعدة البيانات الدائمة (SQLite)
-        val partUuid = "part-$partId"
-        partDao.insertOrUpdate(
-            PartEntity(
-                uuid = partUuid,
-                name = part.name,
-                ipn = part.ipn,
-                description = part.description,
-                revision = part.revision,
-                keywords = part.keywords,
-                categoryUuid = part.categoryId?.let { "cat-${it.toString().padStart(3, '0')}" },
-                units = part.units,
-                assembly = part.assembly,
-                component = part.component,
-                isTemplate = part.isTemplate,
-                variantOfUuid = part.variantOfId?.let { "part-$it" },
-                trackable = part.trackable,
-                purchaseable = part.purchaseable,
-                salable = part.salable,
-                virtual = part.virtual,
-                active = false,
-                locked = part.locked,
-                minimumStock = part.minimumStock,
-                maximumStock = part.maximumStock,
-                defaultLocationUuid = part.defaultLocationId?.let { "loc-${it.toString().padStart(3, '0')}" },
-                defaultExpiryDays = part.defaultExpiryDays,
-                totalInStock = part.totalInStock,
-                localImagePath = part.imageUrl,
-                link = part.link,
-                metadata = part.metadata,
-                version = 1,
-                syncStatus = SyncStatus.PENDING,
-                isDeleted = true,
-                updatedAt = Clock.System.now().toEpochMilliseconds()
-            )
-        )
         return Result.success(true)
     }
 
@@ -424,6 +479,11 @@ class PartRepository(
         parameterTemplateId: Long,
         defaultValue: String? = null
     ) {
+        val catUuid = "cat-${categoryId.toString().padStart(3, '0')}"
+        val tplUuid = "param-tpl-$parameterTemplateId"
+        runCatching {
+            partCategoryParameterTemplateDao.insert(catUuid, tplUuid, defaultValue)
+        }
         categoryParameterTable.insertCategoryParameterTemplate(
             categoryId = categoryId,
             parameterTemplateId = parameterTemplateId,
@@ -435,6 +495,8 @@ class PartRepository(
      * جلب كافة قوالب المعاملات القياسية العامة (PartParameterTemplate).
      */
     fun getAllParameterTemplates(): List<PartParameterTemplate> {
+        val fromDb = partParameterTemplateDao.getAll()
+        if (fromDb.isNotEmpty()) return fromDb
         return categoryParameterTable.getAllParameterTemplates()
     }
 
@@ -447,143 +509,217 @@ class PartRepository(
             units = units.ifBlank { name },
             description = description
         )
-        return categoryParameterTable.insertParameterTemplate(template)
+        val saved = partParameterTemplateDao.insert(template)
+        runCatching { categoryParameterTable.insertParameterTemplate(saved) }
+        return saved
     }
 
     /**
      * حذف قالب معامل/وحدة من النظام بحذف متتابع (CASCADE) في قاعدة البيانات.
      */
     fun deleteParameterTemplate(templateId: Long): Boolean {
-        return categoryParameterTable.deleteParameterTemplate(templateId)
+        val deleted = partParameterTemplateDao.delete(templateId)
+        if (deleted) {
+            runCatching { categoryParameterTable.deleteParameterTemplate(templateId) }
+        }
+        return deleted
     }
 
     /**
      * حذف قالب معامل/وحدة عن طريق الاسم أو رمز الوحدة في قاعدة البيانات.
      */
     fun deleteParameterTemplateByNameOrUnit(unitCode: String): Boolean {
-        val templates = categoryParameterTable.getAllParameterTemplates()
+        val templates = getAllParameterTemplates()
         val match = templates.find {
             it.name.equals(unitCode, ignoreCase = true) ||
             it.units.equals(unitCode, ignoreCase = true)
         }
         return if (match != null) {
-            categoryParameterTable.deleteParameterTemplate(match.id)
+            deleteParameterTemplate(match.id)
         } else {
             false
         }
     }
 
     /**
-     * جلب قيم المعاملات الفنية المحددة لقطعة معينة (PartParameter).
+     * جلب قيم المعاملات الفنية المحددة لقطعة معينة (PartParameter) من SQLite.
      */
     fun getPartParameters(partId: Long): List<PartParameter> {
+        val targetPart = getPartById(partId)
+        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
+        val fromDb = partParameterDao.getForPart(partUuid)
+        if (fromDb.isNotEmpty()) return fromDb
         return categoryParameterTable.getParametersForPart(partId)
     }
 
     /**
-     * إدراج خاصية فنية محددة لقطعة (PartParameter) مع تحويل القيمة العددية data_numeric.
+     * إدراج خاصية فنية محددة لقطعة (PartParameter) مع تحويل القيمة العددية data_numeric وحفظها في SQLite.
      */
     fun addPartParameter(partId: Long, templateId: Long, data: String): PartParameter {
-        return categoryParameterTable.insertPartParameter(
-            partId = partId,
-            templateId = templateId,
-            data = data
-        )
+        val targetPart = getPartById(partId)
+        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
+        val templateUuid = "param-tpl-$templateId"
+        val dataNumeric = data.toDoubleOrNull()
+        val saved = partParameterDao.insertOrUpdate(partUuid, templateUuid, data, dataNumeric)
+        runCatching {
+            categoryParameterTable.insertPartParameter(
+                partId = partId,
+                templateId = templateId,
+                data = data
+            )
+        }
+        return saved
     }
 
     /**
-     * إدراج صلة ربط تبادلية بين قطعتين في PartRelated.
+     * إدراج صلة ربط تبادلية بين قطعتين في PartRelated وحفظها في SQLite.
      */
     fun addPartRelated(part1Id: Long, part2Id: Long): PartRelated {
-        return partRelatedTable.insertPartRelated(part1Id, part2Id)
+        val p1 = getPartById(part1Id) ?: throw IllegalArgumentException("القطعة الأولى غير موجودة")
+        val p2 = getPartById(part2Id) ?: throw IllegalArgumentException("القطعة الثانية غير موجودة")
+        val saved = partRelatedDao.insert(p1.effectiveUuid, p2.effectiveUuid)
+        runCatching { partRelatedTable.insertPartRelated(part1Id, part2Id) }
+        return saved
     }
 
     /**
-     * جلب القطع ذات الصلة لقطعة معينة بالاتجاهين المتبادلين.
+     * جلب القطع ذات الصلة لقطعة معينة بالاتجاهين المتبادلين من SQLite.
      */
     fun getRelatedPartsForPart(partId: Long): List<PartRelatedView> {
+        val targetPart = getPartById(partId) ?: return emptyList()
+        val relatedRecords = partRelatedDao.getRelatedForPart(targetPart.effectiveUuid)
+        if (relatedRecords.isNotEmpty()) {
+            val allParts = getParts().associateBy { it.id }
+            return relatedRecords.mapNotNull { rel ->
+                val otherId = if (rel.part1Id == partId) rel.part2Id else rel.part1Id
+                val otherPart = allParts[otherId] ?: getPartById(otherId)
+                if (otherPart != null) {
+                    PartRelatedView(relatedRecord = rel, relatedPart = otherPart)
+                } else null
+            }
+        }
         return partRelatedTable.getRelatedPartsForPart(partId, getParts())
     }
 
     /**
-     * حذف سجل صلة محدد.
+     * حذف سجل صلة محدد من SQLite.
      */
     fun deletePartRelated(id: Long): Boolean {
-        return partRelatedTable.deletePartRelated(id)
+        val deleted = partRelatedDao.delete(id)
+        if (deleted) {
+            runCatching { partRelatedTable.deletePartRelated(id) }
+        }
+        return deleted
     }
 
     /**
-     * إدراج قالب فحص وضمان جودة جديد لقطعة في PartTestTemplate.
+     * إدراج قالب فحص وضمان جودة جديد لقطعة في PartTestTemplate وحفظه في SQLite.
      */
     fun addPartTestTemplate(template: PartTestTemplate): PartTestTemplate {
-        return partTestTemplateTable.insertTestTemplate(template)
+        val targetPart = getPartById(template.partId)
+        val partUuid = targetPart?.effectiveUuid ?: "part-${template.partId}"
+        val saved = partTestTemplateDao.insert(template, partUuid)
+        runCatching { partTestTemplateTable.insertTestTemplate(saved) }
+        return saved
     }
 
     /**
-     * جلب قوالب الفحوصات الخاصة بقطعة معينة.
+     * جلب قوالب الفحوصات الخاصة بقطعة معينة من SQLite.
      */
     fun getPartTestTemplates(partId: Long): List<PartTestTemplate> {
+        val targetPart = getPartById(partId)
+        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
+        val fromDb = partTestTemplateDao.getForPart(partUuid)
+        if (fromDb.isNotEmpty()) return fromDb
         return partTestTemplateTable.getTestTemplatesForPart(partId)
     }
 
     /**
-     * حذف قالب فحص محدد.
+     * حذف قالب فحص محدد من SQLite.
      */
     fun deletePartTestTemplate(id: Long): Boolean {
-        return partTestTemplateTable.deleteTestTemplate(id)
+        val uuid = "part-test-$id"
+        val deleted = partTestTemplateDao.delete(uuid)
+        if (deleted) {
+            runCatching { partTestTemplateTable.deleteTestTemplate(id) }
+        }
+        return deleted
     }
 
     /**
-     * إدراج مرفق أو رابط وثيقة جديد لقطعة في PartAttachment.
+     * إدراج مرفق أو رابط وثيقة جديد لقطعة في PartAttachment وحفظه في SQLite.
      */
     fun addPartAttachment(attachmentItem: PartAttachment): PartAttachment {
-        return partAttachmentTable.insertAttachment(attachmentItem)
+        val targetPart = getPartById(attachmentItem.partId)
+        val partUuid = targetPart?.effectiveUuid ?: "part-${attachmentItem.partId}"
+        val saved = partAttachmentDao.insertOrUpdate(attachmentItem, partUuid)
+        runCatching { partAttachmentTable.insertAttachment(saved) }
+        return saved
     }
 
     /**
-     * جلب المرفقات والوثائق التابعة لقطعة معينة.
+     * جلب المرفقات والوثائق التابعة لقطعة معينة من SQLite.
      */
     fun getPartAttachments(partId: Long): List<PartAttachment> {
+        val targetPart = getPartById(partId)
+        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
+        val fromDb = partAttachmentDao.getForPart(partUuid)
+        if (fromDb.isNotEmpty()) return fromDb
         return partAttachmentTable.getAttachmentsForPart(partId)
     }
 
     /**
-     * حذف مرفق محدد.
+     * حذف مرفق محدد من SQLite.
      */
     fun deletePartAttachment(id: Long): Boolean {
-        return partAttachmentTable.deleteAttachment(id)
+        val uuid = "part-att-$id"
+        val deleted = partAttachmentDao.delete(uuid)
+        if (deleted) {
+            runCatching { partAttachmentTable.deleteAttachment(id) }
+        }
+        return deleted
     }
 
     /**
-     * حفظ أو تحديث سجل الملاحظات التفصيلية لقطعة معينة في PartNotes.
+     * حفظ أو تحديث سجل الملاحظات التفصيلية لقطعة معينة في PartNotes وحفظها في SQLite.
      */
     fun saveOrUpdatePartNotes(partId: Long, notes: String, userId: Long? = 1L): PartNotes {
-        return partNotesTable.saveOrUpdateNotes(partId = partId, newNotes = notes, userId = userId)
+        val targetPart = getPartById(partId)
+        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
+        val saved = partNotesDao.saveOrUpdate(partUuid, notes, userId)
+        runCatching { partNotesTable.saveOrUpdateNotes(partId = partId, newNotes = notes, userId = userId) }
+        return saved
     }
 
     /**
-     * جلب الملاحظات التفصيلية الخاصة بقطعة معينة.
+     * جلب الملاحظات التفصيلية الخاصة بقطعة معينة من SQLite.
      */
     fun getPartNotes(partId: Long): PartNotes? {
-        return partNotesTable.getNotesForPart(partId)
+        val targetPart = getPartById(partId)
+        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
+        return partNotesDao.getForPart(partUuid) ?: partNotesTable.getNotesForPart(partId)
     }
 
     /**
-     * جلب سجل حساب وتسعير التكاليف لقطعة معينة في PartPricing.
+     * جلب سجل حساب وتسعير التكاليف لقطعة معينة في PartPricing من SQLite.
      */
     fun getPartPricing(partId: Long): PartPricingEntity? {
-        return partPricingTable.getPricingForPart(partId)
+        val targetPart = getPartById(partId)
+        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
+        return partPricingDao.getForPart(partUuid) ?: partPricingTable.getPricingForPart(partId)
     }
 
     /**
-     * إعادة حساب وتحديث التكاليف المجمعة لقطعة معينة في PartPricing.
+     * إعادة حساب وتحديث التكاليف المجمعة لقطعة معينة في PartPricing وحفظها في SQLite.
      */
     fun recalculatePartPricing(part: Part, bomItems: List<BomItem> = emptyList()): PartPricingEntity {
-        return partPricingTable.recalculatePricingForPart(part, bomItems)
+        val calculated = partPricingTable.recalculatePricingForPart(part, bomItems)
+        val saved = partPricingDao.saveOrUpdate(calculated, part.effectiveUuid)
+        return saved
     }
 
     /**
-     * إدراج شريحة سعرية داخلية جديدة لقطعة في PartInternalPrice.
+     * إدراج شريحة سعرية داخلية جديدة لقطعة في PartInternalPrice وحفظها في SQLite.
      */
     fun addPartInternalPrice(
         partId: Long,
@@ -591,30 +727,50 @@ class PartRepository(
         price: Double,
         currency: String = "USD"
     ): PartInternalPriceEntity {
-        return partInternalPriceTable.insertInternalPrice(
-            partId = partId,
+        val targetPart = getPartById(partId)
+        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
+        val saved = partInternalPriceDao.insert(
+            partUuid = partUuid,
             quantity = quantity,
             price = price,
             currency = currency
         )
+        runCatching {
+            partInternalPriceTable.insertInternalPrice(
+                partId = partId,
+                quantity = quantity,
+                price = price,
+                currency = currency
+            )
+        }
+        return saved
     }
 
     /**
-     * جلب شرائح الأسعار والتكاليف الداخلية لقطعة معينة.
+     * جلب شرائح الأسعار والتكاليف الداخلية لقطعة معينة من SQLite.
      */
     fun getPartInternalPrices(partId: Long): List<PartInternalPriceEntity> {
+        val targetPart = getPartById(partId)
+        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
+        val fromDb = partInternalPriceDao.getForPart(partUuid)
+        if (fromDb.isNotEmpty()) return fromDb
         return partInternalPriceTable.getInternalPricesForPart(partId)
     }
 
     /**
-     * حذف شريحة سعرية محددة.
+     * حذف شريحة سعرية محددة من SQLite.
      */
     fun deletePartInternalPrice(id: Long): Boolean {
-        return partInternalPriceTable.deleteInternalPrice(id)
+        val uuid = "part-iprice-$id"
+        val deleted = partInternalPriceDao.delete(uuid)
+        if (deleted) {
+            runCatching { partInternalPriceTable.deleteInternalPrice(id) }
+        }
+        return deleted
     }
 
     /**
-     * إدراج شريحة سعر بيع جديدة للعملاء مع شرط القابلية للبيع (salable = true) في PartSalePrice.
+     * إدراج شريحة سعر بيع جديدة للعملاء مع شرط القابلية للبيع (salable = true) وحفظها في SQLite.
      */
     fun addPartSalePrice(
         part: Part,
@@ -622,103 +778,143 @@ class PartRepository(
         price: Double,
         currency: String = "USD"
     ): PartSalePriceEntity {
-        return partSalePriceTable.insertSalePrice(
-            part = part,
+        require(part.salable) { "لا يمكن إضافة سعر بيع لقطعة غير قابلة للبيع (salable must be true)" }
+        val saved = partSalePriceDao.insert(
+            partUuid = part.effectiveUuid,
             quantity = quantity,
             price = price,
             currency = currency
         )
+        runCatching {
+            partSalePriceTable.insertSalePrice(
+                part = part,
+                quantity = quantity,
+                price = price,
+                currency = currency
+            )
+        }
+        return saved
     }
 
     /**
-     * جلب شرائح أسعار البيع للعملاء لقطعة معينة.
+     * جلب شرائح أسعار البيع للعملاء لقطعة معينة من SQLite.
      */
     fun getPartSalePrices(partId: Long): List<PartSalePriceEntity> {
+        val targetPart = getPartById(partId)
+        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
+        val fromDb = partSalePriceDao.getForPart(partUuid)
+        if (fromDb.isNotEmpty()) return fromDb
         return partSalePriceTable.getSalePricesForPart(partId)
     }
 
     /**
-     * حساب أنسب شريحة سعر بيع لطلب عميل بناءً على الكمية المطلوبة.
+     * حساب أنسب شريحة سعر بيع لطلب عميل بناءً على الكمية المطلوبة من SQLite.
      */
     fun getBestPartSalePriceForQuantity(partId: Long, quantity: Double): PartSalePriceEntity? {
+        val prices = getPartSalePrices(partId)
+        if (prices.isNotEmpty()) {
+            return prices.filter { it.quantity <= quantity }.maxByOrNull { it.quantity }
+                ?: prices.minByOrNull { it.quantity }
+        }
         return partSalePriceTable.getBestSalePriceForQuantity(partId, quantity)
     }
 
     /**
-     * حذف شريحة سعر بيع محددة.
+     * حذف شريحة سعر بيع محددة من SQLite.
      */
     fun deletePartSalePrice(id: Long): Boolean {
-        return partSalePriceTable.deleteSalePrice(id)
+        val uuid = "part-sprice-$id"
+        val deleted = partSalePriceDao.delete(uuid)
+        if (deleted) {
+            runCatching { partSalePriceTable.deleteSalePrice(id) }
+        }
+        return deleted
     }
 
     /**
-     * تبديل حالة تفضيل ومتابعة القطعة (Star / Unstar Toggle Action) في PartStar.
+     * تبديل حالة تفضيل ومتابعة القطعة (Star / Unstar Toggle Action) في SQLite.
      */
     fun togglePartStar(partId: Long, userId: Long = 1L): Boolean {
-        return partStarTable.toggleStarForPart(partId, userId)
+        val targetPart = getPartById(partId)
+        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
+        val userUuid = "usr-$userId"
+        val result = partStarDao.toggleStar(partUuid, userUuid)
+        runCatching { partStarTable.toggleStarForPart(partId, userId) }
+        return result
     }
 
     /**
-     * التحقق مما إذا كانت القطعة مميزة بنجمة ومفضلة للمستخدم الحالي.
+     * التحقق مما إذا كانت القطعة مميزة بنجمة ومفضلة للمستخدم الحالي من SQLite.
      */
     fun isPartStarred(partId: Long, userId: Long = 1L): Boolean {
-        return partStarTable.isPartStarred(partId, userId)
+        val targetPart = getPartById(partId)
+        val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
+        val userUuid = "usr-$userId"
+        return partStarDao.isStarred(partUuid, userUuid)
     }
 
     /**
-     * جلب قائمة معرفات القطع المفضلة والمتابعة للمستخدم الحالي.
+     * جلب قائمة معرفات القطع المفضلة والمتابعة للمستخدم الحالي من SQLite.
      */
     fun getStarredPartIdsForUser(userId: Long = 1L): List<Long> {
+        val userUuid = "usr-$userId"
+        val uuids = partStarDao.getStarredPartUuids(userUuid)
+        if (uuids.isNotEmpty()) {
+            return uuids.mapNotNull { it.removePrefix("part-").toLongOrNull() }
+        }
         return partStarTable.getStarredPartIdsForUser(userId)
     }
 
     /**
-     * تحديث بيانات قطعة موجودة.
+     * تحديث بيانات قطعة موجودة مع التحقق الصارم من وجودها في SQLite وفصل التحديث عن الإنشاء.
      */
     fun updatePart(part: Part, pendingAttachments: List<PendingAttachment> = emptyList()): Boolean {
+        val targetUuid = part.effectiveUuid
+        val existingEntity = partDao.getPartByUuid(targetUuid) ?: return false
+
         val resolvedImageUrl = pendingAttachments.firstOrNull { it.type == AttachmentType.IMAGE }?.pathOrUrl ?: part.imageUrl
         val resolvedLink = pendingAttachments.firstOrNull { it.type == AttachmentType.LINK }?.pathOrUrl 
             ?: pendingAttachments.firstOrNull { it.type == AttachmentType.DOCUMENT }?.pathOrUrl 
             ?: part.link
 
         val partToUpdate = part.copy(imageUrl = resolvedImageUrl, link = resolvedLink)
-        val partUuid = "part-${part.id}"
-        val existingEntity = partDao.getPartByUuid(partUuid)
 
-        partDao.insertOrUpdate(
-            PartEntity(
-                uuid = partUuid,
-                name = partToUpdate.name,
-                ipn = partToUpdate.ipn,
-                description = partToUpdate.description,
-                revision = partToUpdate.revision,
-                keywords = partToUpdate.keywords,
-                categoryUuid = partToUpdate.categoryId?.let { "cat-${it.toString().padStart(3, '0')}" },
-                units = partToUpdate.units,
-                assembly = partToUpdate.assembly,
-                component = partToUpdate.component,
-                isTemplate = partToUpdate.isTemplate,
-                variantOfUuid = partToUpdate.variantOfId?.let { "part-$it" },
-                trackable = partToUpdate.trackable,
-                purchaseable = partToUpdate.purchaseable,
-                salable = partToUpdate.salable,
-                virtual = partToUpdate.virtual,
-                active = partToUpdate.active,
-                locked = partToUpdate.locked,
-                minimumStock = partToUpdate.minimumStock,
-                maximumStock = partToUpdate.maximumStock,
-                defaultLocationUuid = partToUpdate.defaultLocationId?.let { "loc-${it.toString().padStart(3, '0')}" },
-                defaultExpiryDays = partToUpdate.defaultExpiryDays,
-                totalInStock = partToUpdate.totalInStock,
-                localImagePath = partToUpdate.imageUrl,
-                link = partToUpdate.link,
-                metadata = partToUpdate.metadata,
-                version = (existingEntity?.version ?: 1) + 1,
-                syncStatus = SyncStatus.PENDING,
-                isDeleted = false,
-                updatedAt = Clock.System.now().toEpochMilliseconds()
-            )
+        val updatedEntity = PartEntity(
+            uuid = targetUuid,
+            name = partToUpdate.name,
+            ipn = partToUpdate.ipn,
+            description = partToUpdate.description,
+            revision = partToUpdate.revision,
+            keywords = partToUpdate.keywords,
+            categoryUuid = partToUpdate.categoryId?.let { "cat-${it.toString().padStart(3, '0')}" },
+            units = partToUpdate.units,
+            assembly = partToUpdate.assembly,
+            component = partToUpdate.component,
+            isTemplate = partToUpdate.isTemplate,
+            variantOfUuid = partToUpdate.variantOfId?.let { "part-$it" },
+            trackable = partToUpdate.trackable,
+            purchaseable = partToUpdate.purchaseable,
+            salable = partToUpdate.salable,
+            virtual = partToUpdate.virtual,
+            active = partToUpdate.active,
+            locked = partToUpdate.locked,
+            minimumStock = partToUpdate.minimumStock,
+            maximumStock = partToUpdate.maximumStock,
+            defaultLocationUuid = partToUpdate.defaultLocationId?.let { "loc-${it.toString().padStart(3, '0')}" },
+            defaultExpiryDays = partToUpdate.defaultExpiryDays,
+            totalInStock = partToUpdate.totalInStock,
+            localImagePath = partToUpdate.imageUrl,
+            link = partToUpdate.link,
+            metadata = partToUpdate.metadata,
+            version = existingEntity.version + 1,
+            syncStatus = SyncStatus.PENDING,
+            isDeleted = false,
+            updatedAt = Clock.System.now().toEpochMilliseconds()
         )
+
+        val updated = partDao.update(updatedEntity)
+        if (!updated) return false
+
         runCatching { partTable.updatePart(partToUpdate) }
 
         val existing = getPartAttachments(part.id)
