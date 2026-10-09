@@ -135,6 +135,19 @@ class SingleSourceOfTruthVerificationTest {
     }
 
     @Test
+    fun testNumericIdAllocatorAccountsForCustomUuidRows() {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("INSERT INTO parts (uuid, id, name) VALUES ('custom-part-with-high-id', 50000, 'custom id row')").use { it.step() }
+        conn.prepare("INSERT INTO companies (uuid, id, name) VALUES ('custom-company-with-high-id', 60000, 'custom company row')").use { it.step() }
+
+        val nextPartId = SqliteNumericIdAllocator.nextId("parts", "part-")
+        val nextCompanyId = SqliteNumericIdAllocator.nextId("companies", "company-")
+
+        assertTrue(nextPartId > 50000L, "يجب ألا يتكرر رقم قطعة موجودة بمعرّف UUID مخصص")
+        assertTrue(nextCompanyId > 60000L, "يجب ألا يتكرر رقم شركة موجودة بمعرّف UUID مخصص")
+    }
+
+    @Test
     fun testFinding4NonNumericUuidv7Preservation() {
         val partRepo = PartRepository()
         val customUuid = "018f3a5b-7c8d-7e9f-a0b1-c2d3e4f5a6b7"
