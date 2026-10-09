@@ -239,12 +239,18 @@ class PurchaseOrderRepository(
             }
 
             // 3. التحقق من صحة موقع الاستلام وعدم كونه موقعاً هيكلياً
-            val finalLocationUuid = destinationLocationUuid
-                ?: orderEntity.destinationLocationUuid
-                ?: "loc-001"
-            val targetLoc = locationDao.getLocationByUuid(finalLocationUuid)
-            if (targetLoc != null && targetLoc.structural) {
-                throw IllegalArgumentException("لا يمكن استلام المواد في موقع هيكلي ('${targetLoc.name}')")
+            val nonStructuralFallback = locationDao.getAllLocations().firstOrNull { !it.structural }?.uuid ?: "loc-002"
+            val requestedLocationUuid = destinationLocationUuid ?: orderEntity.destinationLocationUuid?.takeIf { it.isNotBlank() }
+            val finalLocationUuid: String
+            if (requestedLocationUuid != null) {
+                val loc = locationDao.getLocationByUuid(requestedLocationUuid)
+                    ?: locationDao.getLocationById(requestedLocationUuid.removePrefix("loc-").toLongOrNull() ?: -1L)
+                if (loc != null && loc.structural) {
+                    throw IllegalArgumentException("لا يمكن استلام المواد في موقع هيكلي ('${loc.name}')")
+                }
+                finalLocationUuid = requestedLocationUuid
+            } else {
+                finalLocationUuid = nonStructuralFallback
             }
 
             // 4. تحديث كمية الاستلام المشروطة في purchase_order_lines مع فحص الصفوف المتأثرة

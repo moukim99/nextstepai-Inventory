@@ -42,9 +42,14 @@ class StockLocationDao {
         if (uuid.isBlank()) return null
         return runCatching {
             val conn = SqliteDatabaseManager.getConnection()
-            val sql = "SELECT $selectColumns FROM stock_locations WHERE uuid = ? AND isDeleted = 0 LIMIT 1"
+            val numericSuffix = uuid.removePrefix("location-").removePrefix("loc-").toLongOrNull()
+            val paddedUuid = numericSuffix?.let { "loc-${it.toString().padStart(3, '0')}" } ?: uuid
+            val shortUuid = numericSuffix?.let { "loc-$it" } ?: uuid
+            val sql = "SELECT $selectColumns FROM stock_locations WHERE (uuid = ? OR uuid = ? OR uuid = ?) AND isDeleted = 0 LIMIT 1"
             conn.prepare(sql).use { stmt ->
                 stmt.bindText(1, uuid)
+                stmt.bindText(2, paddedUuid)
+                stmt.bindText(3, shortUuid)
                 if (stmt.step()) mapStockLocationEntity(stmt) else null
             }
         }.getOrNull()
@@ -52,17 +57,28 @@ class StockLocationDao {
 
     fun getLocationById(id: Long): StockLocationEntity? {
         if (id <= 0L) return null
+        val formatted = id.toString()
+        val padded = formatted.padStart(3, '0')
         return runCatching {
             val conn = SqliteDatabaseManager.getConnection()
-            val sql = "SELECT $selectColumns FROM stock_locations WHERE (id = ? OR locationId = ? OR uuid = ? OR uuid = ?) AND isDeleted = 0 LIMIT 1"
+            val sql = "SELECT $selectColumns FROM stock_locations WHERE (id = ? OR locationId = ? OR uuid = ? OR uuid = ? OR uuid = ? OR uuid = ?) AND isDeleted = 0 LIMIT 1"
             conn.prepare(sql).use { stmt ->
                 stmt.bindLong(1, id)
                 stmt.bindLong(2, id)
-                stmt.bindText(3, "loc-$id")
-                stmt.bindText(4, "location-$id")
+                stmt.bindText(3, "loc-$formatted")
+                stmt.bindText(4, "loc-$padded")
+                stmt.bindText(5, "location-$formatted")
+                stmt.bindText(6, "location-$padded")
                 if (stmt.step()) mapStockLocationEntity(stmt) else null
             }
-        }.getOrNull()
+        }.getOrNull() ?: getAllLocations().firstOrNull {
+            it.id == id ||
+            it.uuid == "loc-$formatted" ||
+            it.uuid == "loc-$padded" ||
+            it.uuid == "location-$formatted" ||
+            it.uuid == "location-$padded" ||
+            it.uuid.removePrefix("loc-").removePrefix("location-").toLongOrNull() == id
+        }
     }
 
     fun insertOrUpdate(entity: StockLocationEntity) {

@@ -143,28 +143,53 @@ internal object SqliteDatabaseSeeder {
                 }
 
                 val seedLocations = listOf(
-                    listOf("loc-001","المستودع المركزي - الجزائر العاصمة","المستودع الرئيسي للمواد والقطع",null,1,0,"WAREHOUSE"),
-                    listOf("loc-002","رف الشرائح والدائريات A-01","مخصص للمتحكمات والشريحات SMD","loc-001",1,0,"SHELF"),
-                    listOf("loc-003","رف المكونات السلبية B-02","مخصص للمكثفات والمقاومات والملفات","loc-001",1,0,"SHELF"),
-                    listOf("loc-004","خط الإنتاج والتجميع الرئيسي P-10","موقع تجميع اللوحات وأوامر البناء","loc-001",1,0,"LINE"),
-                    listOf("loc-005","مخزن وهران للتوزيع الغربي","مستودع فرعي للشحن الإقليمي",null,1,0,"WAREHOUSE"),
-                    listOf("loc-006","منطقة الفحص والجودة (Quarantine Zone)","منطقة عزل المنتجات قيد الفحص","loc-001",1,0,"AREA")
+                    listOf("loc-001", 1L, "المستودع المركزي - الجزائر العاصمة", "المستودع الرئيسي للمواد والقطع", null, 1, 0, "WAREHOUSE"),
+                    listOf("loc-002", 2L, "رف الشرائح والدائريات A-01", "مخصص للمتحكمات والشريحات SMD", "loc-001", 0, 0, "SHELF"),
+                    listOf("loc-003", 3L, "رف المكونات السلبية B-02", "مخصص للمكثفات والمقاومات والملفات", "loc-001", 0, 0, "SHELF"),
+                    listOf("loc-004", 4L, "خط الإنتاج والتجميع الرئيسي P-10", "موقع تجميع اللوحات وأوامر البناء", "loc-001", 0, 0, "LINE"),
+                    listOf("loc-005", 5L, "مخزن وهران للتوزيع الغربي", "مستودع فرعي للشحن الإقليمي", null, 1, 0, "WAREHOUSE"),
+                    listOf("loc-006", 6L, "منطقة الفحص والجودة (Quarantine Zone)", "منطقة عزل المنتجات قيد الفحص", "loc-001", 0, 0, "AREA")
                 )
                 seedLocations.forEach { row ->
                     conn.prepare("""
-                        INSERT OR IGNORE INTO stock_locations (uuid, name, description, parentUuid, structural, external, locationType, version, syncStatus, isDeleted, updatedAt, lastModifiedByDeviceUuid)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'SYNCHRONIZED', 0, 1738000000000, 'dev-local');
+                        INSERT OR IGNORE INTO stock_locations (uuid, id, locationId, name, description, parentUuid, structural, external, locationType, version, syncStatus, isDeleted, updatedAt, lastModifiedByDeviceUuid)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'SYNCHRONIZED', 0, 1738000000000, 'dev-local');
                     """.trimIndent()).use { stmt ->
                         stmt.bindText(1, row[0] as String)
-                        stmt.bindText(2, row[1] as String)
-                        stmt.bindText(3, row[2] as String)
-                        if (row[3] != null) stmt.bindText(4, row[3] as String) else stmt.bindNull(4)
-                        stmt.bindLong(5, (row[4] as Int).toLong())
-                        stmt.bindLong(6, (row[5] as Int).toLong())
-                        stmt.bindText(7, row[6] as String)
+                        stmt.bindLong(2, row[1] as Long)
+                        stmt.bindLong(3, row[1] as Long)
+                        stmt.bindText(4, row[2] as String)
+                        stmt.bindText(5, row[3] as String)
+                        if (row[4] != null) stmt.bindText(6, row[4] as String) else stmt.bindNull(6)
+                        stmt.bindLong(7, (row[5] as Int).toLong())
+                        stmt.bindLong(8, (row[6] as Int).toLong())
+                        stmt.bindText(9, row[7] as String)
                         stmt.step()
                     }
                 }
+
+                // تحديث السجلات القائمة لضمان صحة القيم الهيكلية والمعرفات الرقمية حتى في قواعد البيانات السابقة
+                conn.prepare("""
+                    UPDATE stock_locations SET structural = 0 WHERE uuid IN ('loc-002', 'loc-003', 'loc-004', 'loc-006');
+                """.trimIndent()).use { it.step() }
+                conn.prepare("""
+                    UPDATE stock_locations SET id = 1, locationId = 1 WHERE uuid = 'loc-001' AND (id = 0 OR id IS NULL);
+                """.trimIndent()).use { it.step() }
+                conn.prepare("""
+                    UPDATE stock_locations SET id = 2, locationId = 2 WHERE uuid = 'loc-002' AND (id = 0 OR id IS NULL);
+                """.trimIndent()).use { it.step() }
+                conn.prepare("""
+                    UPDATE stock_locations SET id = 3, locationId = 3 WHERE uuid = 'loc-003' AND (id = 0 OR id IS NULL);
+                """.trimIndent()).use { it.step() }
+                conn.prepare("""
+                    UPDATE stock_locations SET id = 4, locationId = 4 WHERE uuid = 'loc-004' AND (id = 0 OR id IS NULL);
+                """.trimIndent()).use { it.step() }
+                conn.prepare("""
+                    UPDATE stock_locations SET id = 5, locationId = 5 WHERE uuid = 'loc-005' AND (id = 0 OR id IS NULL);
+                """.trimIndent()).use { it.step() }
+                conn.prepare("""
+                    UPDATE stock_locations SET id = 6, locationId = 6 WHERE uuid = 'loc-006' AND (id = 0 OR id IS NULL);
+                """.trimIndent()).use { it.step() }
             }
         }
     }

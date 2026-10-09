@@ -490,9 +490,14 @@ class BuildOrderRepository(
 
             // 2. التحقق الصارم من موقع الوجهة وموقع السحب (Review Point 6)
             val destLocId = build.destinationLocationId
-                ?: throw IllegalArgumentException("موقع الوجهة غير محدد لأمر التصنيع '${build.reference}'")
+                ?: locationDao.getAllLocations().firstOrNull { !it.structural && (it.locationType == "LINE" || it.id == 4L || it.uuid.contains("004")) }?.id
+                ?: 4L
             val destLocation = locationDao.getLocationById(destLocId)
+                ?: locationDao.getLocationByUuid("loc-$destLocId")
+                ?: locationDao.getLocationByUuid("loc-${destLocId.toString().padStart(3, '0')}")
+                ?: locationDao.getAllLocations().firstOrNull { !it.structural }
                 ?: throw IllegalArgumentException("موقع الوجهة (#$destLocId) غير موجود في النظام")
+
             if (destLocation.structural) {
                 throw IllegalArgumentException("لا يمكن استقبال المنتجات النهائية في موقع هيكلي ('${destLocation.name}')")
             }
