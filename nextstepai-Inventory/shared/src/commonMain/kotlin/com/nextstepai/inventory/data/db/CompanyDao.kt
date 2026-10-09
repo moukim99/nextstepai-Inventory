@@ -49,6 +49,21 @@ class CompanyDao {
         return results
     }
 
+    fun getCompanyById(id: Long): CompanyEntity? {
+        if (id <= 0L) return null
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            SELECT $selectColumns
+            FROM companies
+            WHERE id = ? AND isDeleted = 0
+            LIMIT 1
+        """.trimIndent()).use { stmt ->
+            stmt.bindLong(1, id)
+            if (stmt.step()) return mapCompanyEntity(stmt)
+        }
+        return null
+    }
+
     fun getCompanyByUuid(uuid: String): CompanyEntity? {
         if (uuid.isBlank()) return null
         val conn = SqliteDatabaseManager.getConnection()
