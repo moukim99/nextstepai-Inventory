@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,17 +28,19 @@ import nextstepai_inventory.shared.generated.resources.*
 private enum class ManagementSubView {
     MAIN_DASHBOARD,
     COMPANIES,
-    PURCHASE_ORDERS
+    PURCHASE_ORDERS,
+    STAFF_MANAGEMENT
 }
 
 /**
- * شاشة الإدارة الرئيسية: تعرض صفحة هبوط ذات بطاقتين تفاعليتين
- * تتيحان الانتقال المستقل إلى (قسم الشركات والعلاقات) أو (قسم أوامر الشراء وبنودها).
+ * شاشة الإدارة الرئيسية: تعرض صفحة هبوط ذات بطاقات تفاعلية
+ * تتيح الانتقال إلى (قسم الشركات)، (أوامر الشراء)، أو (إدارة الموظفين والصلاحيات).
  */
 @Composable
 fun ManagementScreen(
     companyViewModel: CompanyViewModel,
     purchaseOrderViewModel: PurchaseOrderViewModel,
+    staffViewModel: StaffManagementViewModel = remember { StaffManagementViewModel() },
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -49,6 +52,7 @@ fun ManagementScreen(
 
     val companyUiState by companyViewModel.uiState.collectAsState()
     val poUiState by purchaseOrderViewModel.uiState.collectAsState()
+    val staffUiState by staffViewModel.uiState.collectAsState()
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -65,8 +69,11 @@ fun ManagementScreen(
                         suppliersCount = companyUiState.totalSuppliersCount,
                         ordersCount = poUiState.orders.size,
                         activeOrdersCount = poUiState.orders.count { (it.status == POStatus.PLACED || it.status == POStatus.PENDING) },
+                        staffCount = staffUiState.users.size,
+                        invitationCodesCount = staffUiState.activeInvitationCodes.size,
                         onOpenCompaniesClick = { currentSubView = ManagementSubView.COMPANIES },
                         onOpenOrdersClick = { currentSubView = ManagementSubView.PURCHASE_ORDERS },
+                        onOpenStaffClick = { currentSubView = ManagementSubView.STAFF_MANAGEMENT },
                     )
                 }
                 ManagementSubView.COMPANIES -> {
@@ -93,6 +100,18 @@ fun ManagementScreen(
                         },
                     )
                 }
+                ManagementSubView.STAFF_MANAGEMENT -> {
+                    StaffManagementScreen(
+                        viewModel = staffViewModel,
+                        onBackClick = {
+                            if (currentSubView != ManagementSubView.MAIN_DASHBOARD) {
+                                currentSubView = ManagementSubView.MAIN_DASHBOARD
+                            } else {
+                                onBackClick()
+                            }
+                        },
+                    )
+                }
             }
         }
     }
@@ -104,8 +123,11 @@ private fun ManagementMainDashboard(
     suppliersCount: Int,
     ordersCount: Int,
     activeOrdersCount: Int,
+    staffCount: Int,
+    invitationCodesCount: Int,
     onOpenCompaniesClick: () -> Unit,
     onOpenOrdersClick: () -> Unit,
+    onOpenStaffClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberScrollState()
@@ -396,6 +418,120 @@ private fun ManagementMainDashboard(
                     ) {
                         Text(
                             text = stringResource(Res.string.open_orders),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+        // 4. بطاقة قسم إدارة الموظفين والصلاحيات (Staff Management Card)
+        ElevatedCard(
+            onClick = onOpenStaffClick,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+            colors = CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFF5F3FF)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Badge,
+                            contentDescription = null,
+                            tint = Color(0xFF7C3AED),
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = "إدارة الموظفين والصلاحيات",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "إدارة فريق العمل، أكواد الانضمام ومصفوفة الصلاحيات المخصصة لكل موظف",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                        )
+                    }
+
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = null,
+                        tint = Color(0xFF7C3AED),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AssistChip(
+                            onClick = {},
+                            label = { Text("👥 $staffCount موظف") },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = Color(0xFFF5F3FF),
+                                labelColor = Color(0xFF6D28D9),
+                            ),
+                            border = null,
+                        )
+                        AssistChip(
+                            onClick = {},
+                            label = { Text("🔑 $invitationCodesCount كود") },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = Color(0xFFF1F5F9),
+                                labelColor = Color(0xFF334155),
+                            ),
+                            border = null,
+                        )
+                    }
+
+                    Button(
+                        onClick = onOpenStaffClick,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF7C3AED),
+                        ),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Text(
+                            text = "إدارة الموظفين",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.Bold,
                             ),

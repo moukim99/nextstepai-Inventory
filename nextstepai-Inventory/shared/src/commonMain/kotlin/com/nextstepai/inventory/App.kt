@@ -74,6 +74,7 @@ fun App() {
                 val companyViewModel = remember(container) { container.createCompanyViewModel() }
                 val poViewModel = remember(container) { container.createPurchaseOrderViewModel() }
                 val buildViewModel = remember(container) { container.createBuildOrderViewModel() }
+                val staffViewModel = remember(container) { container.createStaffManagementViewModel() }
                 val loginUiState by loginViewModel.uiState.collectAsState()
                 var showSplash by remember { mutableStateOf(true) }
                 var currentScreen by remember { mutableStateOf(Screen.WAREHOUSE) }
@@ -93,6 +94,7 @@ fun App() {
                         companyViewModel.loadData()
                         poViewModel.loadData()
                         buildViewModel.loadData()
+                        staffViewModel.loadData()
                     }
                 }
 
@@ -255,6 +257,7 @@ fun App() {
                                     ManagementScreen(
                                         companyViewModel = companyViewModel,
                                         purchaseOrderViewModel = poViewModel,
+                                        staffViewModel = staffViewModel,
                                         onBackClick = {
                                             currentScreen = Screen.MANAGEMENT
                                             managementResetKey++
