@@ -51,9 +51,29 @@ class SalesOrderRepository(
         if (entities.isNotEmpty()) {
             val allTableOrders = salesOrderTable.getAllOrders()
             var result = entities.mapIndexed { index, entity ->
-                val matchingTableOrder = allTableOrders.find { it.reference.equals(entity.reference, ignoreCase = true) }
-                val numericId = entity.uuid.removePrefix("so-").toLongOrNull() ?: matchingTableOrder?.id ?: (index + 1L)
-                val lineItems = matchingTableOrder?.lineItems ?: emptyList()
+                val dbLines = salesOrderDao.getLinesForOrderUuid(entity.uuid)
+                val lineItems = if (dbLines.isNotEmpty()) {
+                    dbLines.mapIndexed { lineIdx, lineEntity ->
+                        val lineId = lineEntity.uuid.removePrefix("so-line-").toLongOrNull() ?: (lineIdx + 1L)
+                        SalesOrderLineItem(
+                            id = lineId,
+                            orderId = entity.uuid.removePrefix("so-").toLongOrNull() ?: (index + 1L),
+                            orderUuid = entity.uuid,
+                            partId = lineEntity.partId,
+                            partUuid = lineEntity.partUuid,
+                            partName = lineEntity.partName,
+                            quantity = lineEntity.quantity,
+                            unitPrice = lineEntity.unitPrice,
+                            allocatedQuantity = lineEntity.allocatedQuantity,
+                            shippedQuantity = lineEntity.shippedQuantity,
+                            notes = lineEntity.notes
+                        )
+                    }
+                } else {
+                    val matchingTableOrder = allTableOrders.find { it.reference.equals(entity.reference, ignoreCase = true) }
+                    matchingTableOrder?.lineItems ?: emptyList()
+                }
+                val numericId = entity.uuid.removePrefix("so-").toLongOrNull() ?: (index + 1L)
                 SalesOrder(
                     id = numericId,
                     uuid = entity.uuid,
@@ -78,7 +98,49 @@ class SalesOrderRepository(
             }
             return result
         }
-        return salesOrderTable.getAllOrders()
+
+        // إدراج بذور أولية لـ SQLite إذا كان الجدول فارغاً لضمان مصدر حقيقة دائم وموحد
+        val seedOrders = salesOrderTable.getAllOrders()
+        if (seedOrders.isNotEmpty()) {
+            seedOrders.forEach { seed ->
+                val entityUuid = if (seed.uuid.isNotBlank()) seed.uuid else "so-${seed.id}"
+                salesOrderDao.insertOrUpdateOrder(
+                    SalesOrderEntity(
+                        uuid = entityUuid,
+                        reference = seed.reference,
+                        customerId = seed.customerId,
+                        customerUuid = seed.customerUuid.ifBlank { "cust-${seed.customerId}" },
+                        customerName = seed.customerName,
+                        statusCode = seed.status.code,
+                        description = seed.description,
+                        orderCurrency = seed.orderCurrency,
+                        targetDate = seed.targetDate,
+                        totalPrice = seed.totalPrice,
+                        notes = seed.notes,
+                        syncStatus = SyncStatus.SYNCED
+                    )
+                )
+                seed.lineItems.forEach { line ->
+                    salesOrderDao.insertOrUpdateLine(
+                        SalesOrderLineEntity(
+                            uuid = "so-line-${line.id}",
+                            orderUuid = entityUuid,
+                            orderId = seed.id,
+                            partId = line.partId,
+                            partName = line.partName,
+                            quantity = line.quantity,
+                            unitPrice = line.unitPrice,
+                            allocatedQuantity = line.allocatedQuantity,
+                            shippedQuantity = line.shippedQuantity,
+                            notes = line.notes,
+                            syncStatus = SyncStatus.SYNCED
+                        )
+                    )
+                }
+            }
+            return searchOrders(query = query, customerId = customerId, status = status)
+        }
+        return emptyList()
     }
 
     /**

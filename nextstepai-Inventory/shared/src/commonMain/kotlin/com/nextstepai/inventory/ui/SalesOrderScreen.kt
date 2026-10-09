@@ -173,6 +173,7 @@ fun SalesOrderScreen(
         AddSalesOrderBottomSheet(
             customers = uiState.customers,
             parts = uiState.parts,
+            initialCustomerId = uiState.preselectedCustomerId,
             onDismiss = { viewModel.setAddOrderDialogOpen(false) },
             onConfirm = { ref, custId, desc, targetDate, curr, lines ->
                 viewModel.addSalesOrderWithFulfillment(ref, custId, desc, targetDate, curr, lines)
@@ -400,13 +401,14 @@ private fun SalesOrderDetailsBottomSheet(
 private fun AddSalesOrderBottomSheet(
     customers: List<Company>,
     parts: List<Part>,
+    initialCustomerId: Long? = null,
     onDismiss: () -> Unit,
     onConfirm: (reference: String, customerId: Long, description: String, targetDate: String, currency: String, lines: List<SalesOrderLineItem>) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var reference by remember { mutableStateOf("SO-2025-101") }
-    var selectedCustomerId by remember { mutableStateOf<Long?>(customers.firstOrNull()?.id) }
+    var selectedCustomerId by remember(initialCustomerId) { mutableStateOf<Long?>(initialCustomerId ?: customers.firstOrNull()?.id) }
     var description by remember { mutableStateOf("") }
     var targetDate by remember { mutableStateOf("2025-04-15") }
     var currency by remember { mutableStateOf("USD") }

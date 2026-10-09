@@ -26,6 +26,7 @@ data class SalesOrderUiState(
     val statusFilter: SOStatus? = null,
     val selectedOrder: SalesOrder? = null,
     val isAddOrderDialogOpen: Boolean = false,
+    val preselectedCustomerId: Long? = null,
     val lastFulfillmentResult: SalesOrderFulfillmentResult? = null,
     val errorMessage: String? = null,
     val successMessage: String? = null
@@ -84,7 +85,11 @@ class SalesOrderViewModel(
     }
 
     fun setAddOrderDialogOpen(isOpen: Boolean) {
-        _uiState.update { it.copy(isAddOrderDialogOpen = isOpen, errorMessage = null) }
+        _uiState.update { it.copy(isAddOrderDialogOpen = isOpen, preselectedCustomerId = if (!isOpen) null else it.preselectedCustomerId, errorMessage = null) }
+    }
+
+    fun openAddOrderDialog(customerId: Long? = null) {
+        _uiState.update { it.copy(isAddOrderDialogOpen = true, preselectedCustomerId = customerId, errorMessage = null) }
     }
 
     fun addSalesOrderWithFulfillment(

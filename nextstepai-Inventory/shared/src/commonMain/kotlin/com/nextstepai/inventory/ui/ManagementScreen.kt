@@ -27,17 +27,19 @@ import nextstepai_inventory.shared.generated.resources.*
 private enum class ManagementSubView {
     MAIN_DASHBOARD,
     COMPANIES,
-    PURCHASE_ORDERS
+    PURCHASE_ORDERS,
+    SALES_ORDERS
 }
 
 /**
- * شاشة الإدارة الرئيسية: تعرض صفحة هبوط ذات بطاقتين تفاعليتين
- * تتيحان الانتقال المستقل إلى (قسم الشركات والعلاقات) أو (قسم أوامر الشراء وبنودها).
+ * شاشة الإدارة الرئيسية: تعرض صفحة هبوط تفاعلية
+ * تتيح الانتقال المستقل إلى (قسم الشركات والعلاقات)، (قسم أوامر الشراء وبنودها)، أو (قسم أوامر البيع للعملاء).
  */
 @Composable
 fun ManagementScreen(
     companyViewModel: CompanyViewModel,
     purchaseOrderViewModel: PurchaseOrderViewModel,
+    salesOrderViewModel: SalesOrderViewModel,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -49,6 +51,7 @@ fun ManagementScreen(
 
     val companyUiState by companyViewModel.uiState.collectAsState()
     val poUiState by purchaseOrderViewModel.uiState.collectAsState()
+    val soUiState by salesOrderViewModel.uiState.collectAsState()
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -65,13 +68,20 @@ fun ManagementScreen(
                         suppliersCount = companyUiState.totalSuppliersCount,
                         ordersCount = poUiState.orders.size,
                         activeOrdersCount = poUiState.orders.count { (it.status == POStatus.PLACED || it.status == POStatus.PENDING) },
+                        salesOrdersCount = soUiState.orders.size,
+                        activeSalesOrdersCount = soUiState.orders.count { (it.status == com.nextstepai.inventory.data.SOStatus.PENDING || it.status == com.nextstepai.inventory.data.SOStatus.APPROVED || it.status == com.nextstepai.inventory.data.SOStatus.IN_FULFILLMENT) },
                         onOpenCompaniesClick = { currentSubView = ManagementSubView.COMPANIES },
                         onOpenOrdersClick = { currentSubView = ManagementSubView.PURCHASE_ORDERS },
+                        onOpenSalesOrdersClick = { currentSubView = ManagementSubView.SALES_ORDERS },
                     )
                 }
                 ManagementSubView.COMPANIES -> {
                     CompanyScreen(
                         viewModel = companyViewModel,
+                        onCreateSalesOrder = { customerCompany ->
+                            salesOrderViewModel.openAddOrderDialog(customerId = customerCompany.id)
+                            currentSubView = ManagementSubView.SALES_ORDERS
+                        },
                         onBackClick = {
                             if (currentSubView != ManagementSubView.MAIN_DASHBOARD) {
                                 currentSubView = ManagementSubView.MAIN_DASHBOARD
@@ -93,6 +103,18 @@ fun ManagementScreen(
                         },
                     )
                 }
+                ManagementSubView.SALES_ORDERS -> {
+                    SalesOrderScreen(
+                        viewModel = salesOrderViewModel,
+                        onNavigateBack = {
+                            if (currentSubView != ManagementSubView.MAIN_DASHBOARD) {
+                                currentSubView = ManagementSubView.MAIN_DASHBOARD
+                            } else {
+                                onBackClick()
+                            }
+                        },
+                    )
+                }
             }
         }
     }
@@ -104,8 +126,11 @@ private fun ManagementMainDashboard(
     suppliersCount: Int,
     ordersCount: Int,
     activeOrdersCount: Int,
+    salesOrdersCount: Int,
+    activeSalesOrdersCount: Int,
     onOpenCompaniesClick: () -> Unit,
     onOpenOrdersClick: () -> Unit,
+    onOpenSalesOrdersClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberScrollState()
@@ -396,6 +421,120 @@ private fun ManagementMainDashboard(
                     ) {
                         Text(
                             text = stringResource(Res.string.open_orders),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+        // 4. بطاقة قسم أوامر البيع للعملاء (Sales Orders Card)
+        ElevatedCard(
+            onClick = onOpenSalesOrdersClick,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+            colors = CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFFEF3C7)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = AppIcons.Sales,
+                            contentDescription = null,
+                            tint = Color(0xFFD97706),
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = stringResource(Res.string.card_sales_orders_title),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(Res.string.card_sales_orders_subtitle),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                        )
+                    }
+
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = null,
+                        tint = Color(0xFFD97706),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AssistChip(
+                            onClick = {},
+                            label = { Text("🛍️ $salesOrdersCount أمر بيع") },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = Color(0xFFFEF3C7),
+                                labelColor = Color(0xFF92400E),
+                            ),
+                            border = null,
+                        )
+                        AssistChip(
+                            onClick = {},
+                            label = { Text("⏳ $activeSalesOrdersCount قيد التجهيز") },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = Color(0xFFF1F5F9),
+                                labelColor = Color(0xFF334155),
+                            ),
+                            border = null,
+                        )
+                    }
+
+                    Button(
+                        onClick = onOpenSalesOrdersClick,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFD97706),
+                        ),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Text(
+                            text = stringResource(Res.string.open_sales_orders),
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.Bold,
                             ),

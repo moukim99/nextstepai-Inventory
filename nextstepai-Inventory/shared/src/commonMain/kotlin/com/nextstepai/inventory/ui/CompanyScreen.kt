@@ -58,6 +58,7 @@ import nextstepai_inventory.shared.generated.resources.save
 @Composable
 fun CompanyScreen(
     viewModel: CompanyViewModel,
+    onCreateSalesOrder: ((Company) -> Unit)? = null,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -332,6 +333,7 @@ fun CompanyScreen(
             company = uiState.selectedCompany!!,
             uiState = uiState,
             viewModel = viewModel,
+            onCreateSalesOrder = onCreateSalesOrder,
             onDismiss = { viewModel.setSelectedCompany(null) }
         )
     }
