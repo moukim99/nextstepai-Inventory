@@ -940,25 +940,7 @@ internal object SqliteDatabaseSchema {
             );
         """.trimIndent()).use { it.step() }
 
-        // Upgrade existing databases where part_pricing compatibility columns are absent.
-        val partPricingColumns = mutableSetOf<String>()
-        conn.prepare("PRAGMA table_info(part_pricing)").use { stmt ->
-            while (stmt.step()) partPricingColumns.add(stmt.getText(1))
-        }
-        if ("id" !in partPricingColumns) {
-            conn.prepare("ALTER TABLE part_pricing ADD COLUMN id INTEGER NOT NULL DEFAULT 0").use { it.step() }
-        }
-        if ("partId" !in partPricingColumns) {
-            conn.prepare("ALTER TABLE part_pricing ADD COLUMN partId INTEGER NOT NULL DEFAULT 0").use { it.step() }
-        }
-        conn.prepare("""
-            UPDATE part_pricing 
-            SET partId = (SELECT parts.id FROM parts WHERE parts.uuid = part_pricing.partUuid) 
-            WHERE (partId = 0 OR partId IS NULL) 
-              AND EXISTS (SELECT 1 FROM parts WHERE parts.uuid = part_pricing.partUuid AND parts.id > 0)
-        """.trimIndent()).use { it.step() }
-
-        // Ø³Ø¬Ù„ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª (Append-only Log / Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª Ù…Ù‚Ø±ÙˆØ¡Ø© Ù…Ø­Ù„ÙŠØ§Ù‹ ÙÙ‚Ø·)
+        // Ø³Ø¬Ù„ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª (Append-only Log / Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª Ù…Ù‚Ø±ÙˆØ¡Ø© Ù…Ø­Ù„ÙŠØ§Ù‹ Ù Ù‚Ø·)
         conn.prepare("""
             CREATE TABLE IF NOT EXISTS notifications_history (
                 uuid TEXT PRIMARY KEY NOT NULL,
@@ -989,7 +971,7 @@ internal object SqliteDatabaseSchema {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_parts_categoryUuid ON parts(categoryUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_parts_defaultLocationUuid ON parts(defaultLocationUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_parts_sync ON parts(syncStatus, isDeleted, updatedAt);").use { it.step() } }
-        ensurePartIdUniqueIndex(conn)
+        // Unique index idx_parts_unique_id enforced after migrations
 
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_bom_items_partUuid ON bom_items(partUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_bom_items_subPartUuid ON bom_items(subPartUuid);").use { it.step() } }
@@ -1014,8 +996,7 @@ internal object SqliteDatabaseSchema {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_build_items_stockItemUuid ON build_items(stockItemUuid);").use { it.step() } }
 
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_companies_sync ON companies(syncStatus, isDeleted, updatedAt);").use { it.step() } }
-        ensureCompanyNameUniqueIndex(conn)
-        ensureCompanyIdUniqueIndex(conn)
+        // Unique indexes idx_companies_unique_name and idx_companies_unique_id enforced after migrations
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_company_att_compUuid ON company_attachments(companyUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_contacts_companyUuid ON contacts(companyUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_primary_contact ON contacts(companyUuid) WHERE isPrimary = 1;").use { it.step() } }
@@ -1055,6 +1036,17 @@ internal object SqliteDatabaseSchema {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_triggered_schedule ON notifications_history(isTriggered, scheduledDate);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications_history(isRead);").use { it.step() } }
 
+        // 9. Centralized schema migrations and relational backfills
+        SqliteDatabaseMigrations.applyMigrations(conn)
+
+        // 10. Enforce strict uniqueness constraints, reconcile duplicate IDs, and build unique indexes
+        enforceUniqueConstraintsAndIndexes(conn)
+    }
+
+    fun enforceUniqueConstraintsAndIndexes(conn: SQLiteConnection) {
+        ensurePartIdUniqueIndex(conn)
+        ensureCompanyNameUniqueIndex(conn)
+        ensureCompanyIdUniqueIndex(conn)
     }
 
     /**

@@ -38,7 +38,7 @@ internal object SqliteDatabaseMigrations {
             conn,
             "ALTER TABLE app_settings ADD COLUMN uuid TEXT NOT NULL DEFAULT 'default-settings';"
         )
-        runCatching {
+        if (tableExists(conn, "app_settings")) {
             conn.prepare("UPDATE app_settings SET uuid = 'default-settings' WHERE uuid IS NULL OR uuid = '';").use { it.step() }
         }
         addColumnIfMissing(
@@ -308,8 +308,8 @@ internal object SqliteDatabaseMigrations {
         addColumnIfMissing(conn, "ALTER TABLE part_pricing ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE part_pricing ADD COLUMN partId INTEGER NOT NULL DEFAULT 0;")
 
-        // Explicitly backfill legacy part_pricing references from parts table
-        runCatching {
+        // Explicitly backfill legacy part_pricing references from parts table without suppressing errors
+        if (tableExists(conn, "part_pricing")) {
             conn.prepare("""
                 UPDATE part_pricing 
                 SET partId = (SELECT parts.id FROM parts WHERE parts.uuid = part_pricing.partUuid)
@@ -322,5 +322,12 @@ internal object SqliteDatabaseMigrations {
         addColumnIfMissing(conn, "ALTER TABLE bom_item_substitutes ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE bom_item_substitutes ADD COLUMN bomItemId INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE bom_item_substitutes ADD COLUMN partId INTEGER NOT NULL DEFAULT 0;")
+    }
+
+    fun tableExists(conn: SQLiteConnection, tableName: String): Boolean {
+        conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1").use { stmt ->
+            stmt.bindText(1, tableName)
+            return stmt.step()
+        }
     }
 }

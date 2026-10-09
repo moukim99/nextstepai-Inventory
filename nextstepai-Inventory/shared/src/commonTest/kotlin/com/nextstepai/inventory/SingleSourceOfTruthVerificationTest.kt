@@ -706,7 +706,7 @@ class SingleSourceOfTruthVerificationTest {
     }
 
     @Test
-    fun testLegacyMigrationExplicitlyUpgradesPartPricingAndRollsBackOnFailure() {
+    fun testLegacyMigrationExplicitlyUpgradesPartPricing() {
         val runToken = Clock.System.now().toEpochMilliseconds().toString().takeLast(6)
         val tempFile = File(System.getProperty("java.io.tmpdir"), "legacy_pricing_migration_$runToken.db")
         tempFile.deleteOnExit()
@@ -764,6 +764,92 @@ class SingleSourceOfTruthVerificationTest {
             }
             assertTrue("id" in columns, "عمود id موجود في part_pricing بعد الترحيل")
             assertTrue("partId" in columns, "عمود partId موجود في part_pricing بعد الترحيل")
+        } finally {
+            SqliteDatabaseManager.closeDatabase()
+            SqliteDatabaseManager.setCustomDatabasePath(tempDbFile.absolutePath)
+            runCatching { tempFile.delete() }
+        }
+    }
+
+    @Test
+    fun testLegacyMigrationRollsBackAtomicallyOnFailure() {
+        val runToken = Clock.System.now().toEpochMilliseconds().toString().takeLast(6)
+        val tempFile = File(System.getProperty("java.io.tmpdir"), "legacy_rollback_test_$runToken.db")
+        tempFile.deleteOnExit()
+
+        try {
+            val driver = androidx.sqlite.driver.bundled.BundledSQLiteDriver()
+            val raw = driver.open(tempFile.absolutePath)
+
+            // 1. Create a legacy database with parts and legacy part_pricing
+            raw.prepare("""
+                CREATE TABLE parts (
+                    uuid TEXT PRIMARY KEY NOT NULL,
+                    id INTEGER NOT NULL DEFAULT 0,
+                    name TEXT NOT NULL,
+                    isDeleted INTEGER NOT NULL DEFAULT 0
+                );
+            """.trimIndent()).use { it.step() }
+
+            raw.prepare("""
+                CREATE TABLE part_pricing (
+                    uuid TEXT PRIMARY KEY NOT NULL,
+                    partUuid TEXT NOT NULL UNIQUE,
+                    currency TEXT NOT NULL DEFAULT 'USD',
+                    overallMin REAL,
+                    overallMax REAL
+                );
+            """.trimIndent()).use { it.step() }
+
+            raw.prepare("INSERT INTO parts (uuid, id, name, isDeleted) VALUES ('part-fail-1', 501, 'Part Before Rollback', 0)").use { it.step() }
+            raw.prepare("INSERT INTO part_pricing (uuid, partUuid, overallMin, overallMax) VALUES ('pp-fail-1', 'part-fail-1', 9.9, 19.9)").use { it.step() }
+
+            // 2. Inject an intentional failure: attach a trigger to part_pricing that aborts any UPDATE
+            raw.prepare("""
+                CREATE TRIGGER fail_on_pricing_update 
+                BEFORE UPDATE ON part_pricing 
+                BEGIN 
+                    SELECT RAISE(ABORT, 'Intentional failure during part_pricing migration update'); 
+                END;
+            """.trimIndent()).use { it.step() }
+            raw.close()
+
+            SqliteDatabaseManager.setCustomDatabasePath(tempFile.absolutePath)
+
+            // 3. Opening via SqliteDatabaseManager MUST fail and trigger atomic ROLLBACK
+            assertFailsWith<IllegalStateException>("يجب أن يفشل فتح قاعدة البيانات ويتراجع ذرياً عند حدوث خطأ أثناء الترحيل") {
+                SqliteDatabaseManager.getConnection()
+            }
+
+            // 4. Verify that the rollback was clean and original data is uncorrupted
+            val rawCheck = driver.open(tempFile.absolutePath)
+            var partCount = 0L
+            rawCheck.prepare("SELECT COUNT(*) FROM parts WHERE uuid = 'part-fail-1'").use {
+                if (it.step()) partCount = it.getLong(0)
+            }
+            assertEquals(1L, partCount, "البيانات الأصلية لجدول القطع لم تُمس بعد التراجع الذري")
+
+            var pricingCount = 0L
+            rawCheck.prepare("SELECT COUNT(*) FROM part_pricing WHERE uuid = 'pp-fail-1'").use {
+                if (it.step()) pricingCount = it.getLong(0)
+            }
+            assertEquals(1L, pricingCount, "البيانات الأصلية لجدول الأسعار لم تُمس بعد التراجع الذري")
+
+            // 5. Heal the simulated failure by removing the failing trigger
+            rawCheck.prepare("DROP TRIGGER fail_on_pricing_update;").use { it.step() }
+            rawCheck.close()
+
+            // 6. Re-attempt opening: migration should now succeed and backfill relations
+            SqliteDatabaseManager.closeDatabase()
+            val recoveredConn = SqliteDatabaseManager.getConnection()
+            assertNotNull(recoveredConn)
+            assertTrue(SqliteDatabaseManager.isDatabaseOpen())
+
+            var recoveredPartId = 0L
+            recoveredConn.prepare("SELECT partId FROM part_pricing WHERE uuid = 'pp-fail-1'").use {
+                if (it.step()) recoveredPartId = it.getLong(0)
+            }
+            assertEquals(501L, recoveredPartId, "بعد زوال سبب الفشل، تم الترحيل بنجاح وربط معرّف القطعة 501")
         } finally {
             SqliteDatabaseManager.closeDatabase()
             SqliteDatabaseManager.setCustomDatabasePath(tempDbFile.absolutePath)
