@@ -173,6 +173,7 @@ fun SalesOrderScreen(
         AddSalesOrderBottomSheet(
             customers = uiState.customers,
             parts = uiState.parts,
+            initialCustomerId = uiState.preselectedCustomerId,
             onDismiss = { viewModel.setAddOrderDialogOpen(false) },
             onConfirm = { ref, custId, desc, targetDate, curr, lines ->
                 viewModel.addSalesOrderWithFulfillment(ref, custId, desc, targetDate, curr, lines)
@@ -400,13 +401,14 @@ private fun SalesOrderDetailsBottomSheet(
 private fun AddSalesOrderBottomSheet(
     customers: List<Company>,
     parts: List<Part>,
+    initialCustomerId: Long? = null,
     onDismiss: () -> Unit,
     onConfirm: (reference: String, customerId: Long, description: String, targetDate: String, currency: String, lines: List<SalesOrderLineItem>) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var reference by remember { mutableStateOf("SO-2025-101") }
-    var selectedCustomerId by remember { mutableStateOf<Long?>(customers.firstOrNull()?.id) }
+    var selectedCustomerId by remember(initialCustomerId) { mutableStateOf<Long?>(initialCustomerId ?: customers.firstOrNull()?.id) }
     var description by remember { mutableStateOf("") }
     var targetDate by remember { mutableStateOf("2025-04-15") }
     var currency by remember { mutableStateOf("USD") }
@@ -414,15 +416,8 @@ private fun AddSalesOrderBottomSheet(
     val initialLines = remember { mutableStateListOf<SalesOrderLineItem>() }
 
     var itemPartId by remember { mutableStateOf<Long?>(parts.firstOrNull()?.id) }
-    var itemQuantityText by remember { mutableStateOf("20.0") }
-    var itemPriceText by remember { mutableStateOf("100.0") }
-
-    LaunchedEffect(itemPartId) {
-        val pt = parts.find { it.id == itemPartId }
-        if (pt != null) {
-            itemPriceText = if (pt.minimumStock > 0) (pt.minimumStock * 0.15).formatMoney() else "100.0"
-        }
-    }
+    var itemQuantityText by remember { mutableStateOf("1.0") }
+    var itemPriceText by remember { mutableStateOf("0.0") }
 
     val totalPrice = remember(initialLines.toList()) { initialLines.sumOf { it.quantity * it.unitPrice } }
 
@@ -725,7 +720,7 @@ private fun AddSalesOrderBottomSheet(
                                 val pt = parts.find { it.id == itemPartId }
                                 val q = itemQuantityText.toDoubleOrNull() ?: 1.0
                                 val p = itemPriceText.toDoubleOrNull() ?: 0.0
-                                if (pt != null && q > 0) {
+                                if (pt != null && q > 0.0 && p >= 0.0) {
                                     initialLines.add(
                                         SalesOrderLineItem(
                                             orderId = 0L,
@@ -777,11 +772,11 @@ private fun AddSalesOrderBottomSheet(
                     Button(
                         onClick = {
                             val cId = selectedCustomerId
-                            if (reference.isNotBlank() && cId != null) {
+                            if (reference.isNotBlank() && cId != null && initialLines.isNotEmpty()) {
                                 onConfirm(reference, cId, description, targetDate, currency, initialLines.toList())
                             }
                         },
-                        enabled = reference.isNotBlank() && selectedCustomerId != null,
+                        enabled = reference.isNotBlank() && selectedCustomerId != null && initialLines.isNotEmpty(),
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
                         modifier = Modifier.weight(1.5f)

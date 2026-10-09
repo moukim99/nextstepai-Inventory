@@ -334,10 +334,64 @@ class PartDao {
         return changed > 0
     }
 
-    fun addStockToPart(partUuid: String, qty: Double): Boolean {
+    fun getPartById(id: Long): PartEntity? {
+        if (id <= 0L) return null
         val conn = SqliteDatabaseManager.getConnection()
-        conn.prepare("UPDATE parts SET totalInStock = totalInStock + ?, syncStatus = 'PENDING', version = version + 1, updatedAt = ? WHERE uuid = ? AND isDeleted = 0").use { stmt ->
-            stmt.bindDouble(1, qty)
+        conn.prepare("""
+            SELECT $selectColumns
+            FROM parts
+            WHERE (id = ? OR uuid = ?) AND isDeleted = 0
+            LIMIT 1
+        """.trimIndent()).use { stmt ->
+            stmt.bindLong(1, id)
+            stmt.bindText(2, "part-$id")
+            if (stmt.step()) {
+                return mapPartEntity(stmt)
+            }
+        }
+        return null
+    }
+
+    fun addStockToPart(partUuid: String, qty: Double): Boolean {
+        return adjustTotalInStockByUuid(partUuid, qty)
+    }
+
+    fun adjustTotalInStock(partId: Long, delta: Double): Boolean {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            UPDATE parts
+            SET totalInStock = MAX(0.0, totalInStock + ?),
+                syncStatus = 'PENDING',
+                version = version + 1,
+                updatedAt = ?
+            WHERE (id = ? OR uuid = ?) AND isDeleted = 0
+        """.trimIndent()).use { stmt ->
+            stmt.bindDouble(1, delta)
+            stmt.bindLong(2, Clock.System.now().toEpochMilliseconds())
+            stmt.bindLong(3, partId)
+            stmt.bindText(4, "part-$partId")
+            stmt.step()
+        }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
+    }
+
+    fun adjustTotalInStockByUuid(partUuid: String, delta: Double): Boolean {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            UPDATE parts
+            SET totalInStock = MAX(0.0, totalInStock + ?),
+                syncStatus = 'PENDING',
+                version = version + 1,
+                updatedAt = ?
+            WHERE uuid = ? AND isDeleted = 0
+        """.trimIndent()).use { stmt ->
+            stmt.bindDouble(1, delta)
             stmt.bindLong(2, Clock.System.now().toEpochMilliseconds())
             stmt.bindText(3, partUuid)
             stmt.step()

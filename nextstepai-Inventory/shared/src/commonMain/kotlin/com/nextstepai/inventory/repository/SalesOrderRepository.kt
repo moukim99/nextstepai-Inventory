@@ -10,6 +10,7 @@ import com.nextstepai.inventory.data.SOStatus
 import com.nextstepai.inventory.data.SalesOrder
 import com.nextstepai.inventory.data.SalesOrderLineItem
 import com.nextstepai.inventory.data.SalesOrderTable
+import com.nextstepai.inventory.data.db.PartPricingDao
 import com.nextstepai.inventory.data.db.SalesOrderDao
 import com.nextstepai.inventory.data.db.SalesOrderEntity
 import com.nextstepai.inventory.data.db.SalesOrderLineEntity
@@ -33,6 +34,7 @@ class SalesOrderRepository(
     private val salesOrderTable: SalesOrderTable = SalesOrderTable(),
     private val salesOrderDao: SalesOrderDao = SalesOrderDao(),
     private val partRepository: PartRepository = PartRepository(),
+    private val partPricingDao: PartPricingDao = PartPricingDao(),
     private val buildOrderRepository: BuildOrderRepository = BuildOrderRepository(),
     private val purchaseOrderRepository: PurchaseOrderRepository = PurchaseOrderRepository()
 ) {
@@ -51,9 +53,29 @@ class SalesOrderRepository(
         if (entities.isNotEmpty()) {
             val allTableOrders = salesOrderTable.getAllOrders()
             var result = entities.mapIndexed { index, entity ->
-                val matchingTableOrder = allTableOrders.find { it.reference.equals(entity.reference, ignoreCase = true) }
-                val numericId = entity.uuid.removePrefix("so-").toLongOrNull() ?: matchingTableOrder?.id ?: (index + 1L)
-                val lineItems = matchingTableOrder?.lineItems ?: emptyList()
+                val dbLines = salesOrderDao.getLinesForOrderUuid(entity.uuid)
+                val lineItems = if (dbLines.isNotEmpty()) {
+                    dbLines.mapIndexed { lineIdx, lineEntity ->
+                        val lineId = lineEntity.uuid.removePrefix("so-line-").toLongOrNull() ?: (lineIdx + 1L)
+                        SalesOrderLineItem(
+                            id = lineId,
+                            orderId = entity.uuid.removePrefix("so-").toLongOrNull() ?: (index + 1L),
+                            orderUuid = entity.uuid,
+                            partId = lineEntity.partId,
+                            partUuid = lineEntity.partUuid,
+                            partName = lineEntity.partName,
+                            quantity = lineEntity.quantity,
+                            unitPrice = lineEntity.unitPrice,
+                            allocatedQuantity = lineEntity.allocatedQuantity,
+                            shippedQuantity = lineEntity.shippedQuantity,
+                            notes = lineEntity.notes
+                        )
+                    }
+                } else {
+                    val matchingTableOrder = allTableOrders.find { it.reference.equals(entity.reference, ignoreCase = true) }
+                    matchingTableOrder?.lineItems ?: emptyList()
+                }
+                val numericId = entity.uuid.removePrefix("so-").toLongOrNull() ?: (index + 1L)
                 SalesOrder(
                     id = numericId,
                     uuid = entity.uuid,
@@ -78,7 +100,49 @@ class SalesOrderRepository(
             }
             return result
         }
-        return salesOrderTable.getAllOrders()
+
+        // إدراج بذور أولية لـ SQLite إذا كان الجدول فارغاً لضمان مصدر حقيقة دائم وموحد
+        val seedOrders = salesOrderTable.getAllOrders()
+        if (seedOrders.isNotEmpty()) {
+            seedOrders.forEach { seed ->
+                val entityUuid = if (seed.uuid.isNotBlank()) seed.uuid else "so-${seed.id}"
+                salesOrderDao.insertOrUpdateOrder(
+                    SalesOrderEntity(
+                        uuid = entityUuid,
+                        reference = seed.reference,
+                        customerId = seed.customerId,
+                        customerUuid = seed.customerUuid.ifBlank { "cust-${seed.customerId}" },
+                        customerName = seed.customerName,
+                        statusCode = seed.status.code,
+                        description = seed.description,
+                        orderCurrency = seed.orderCurrency,
+                        targetDate = seed.targetDate,
+                        totalPrice = seed.totalPrice,
+                        notes = seed.notes,
+                        syncStatus = SyncStatus.SYNCED
+                    )
+                )
+                seed.lineItems.forEach { line ->
+                    salesOrderDao.insertOrUpdateLine(
+                        SalesOrderLineEntity(
+                            uuid = "so-line-${line.id}",
+                            orderUuid = entityUuid,
+                            orderId = seed.id,
+                            partId = line.partId,
+                            partName = line.partName,
+                            quantity = line.quantity,
+                            unitPrice = line.unitPrice,
+                            allocatedQuantity = line.allocatedQuantity,
+                            shippedQuantity = line.shippedQuantity,
+                            notes = line.notes,
+                            syncStatus = SyncStatus.SYNCED
+                        )
+                    )
+                }
+            }
+            return searchOrders(query = query, customerId = customerId, status = status)
+        }
+        return emptyList()
     }
 
     /**
@@ -88,6 +152,18 @@ class SalesOrderRepository(
         order: SalesOrder,
         autoFulfill: Boolean = true
     ): SalesOrderFulfillmentResult {
+        require(order.reference.isNotBlank()) { "مرجع أمر البيع إلزامي" }
+        require(order.lineItems.isNotEmpty()) { "أمر البيع يجب أن يحتوي على بند واحد على الأقل" }
+        order.lineItems.forEach { line ->
+            require(line.quantity > 0.0) { "كمية البند يجب أن تكون أكبر من الصفر (${line.partName})" }
+            require(line.unitPrice >= 0.0) { "سعر الوحدة لا يمكن أن يكون سالباً (${line.partName})" }
+        }
+
+        val existingOrder = salesOrderDao.getOrderByReference(order.reference)
+        if (existingOrder != null) {
+            throw IllegalArgumentException("أمر البيع ذو المرجع '${order.reference}' موجود بالفعل مسبقاً")
+        }
+
         val inserted = salesOrderTable.insertOrder(order)
         order.lineItems.forEach { line ->
             salesOrderTable.insertLineItem(line.copy(orderId = inserted.id))
@@ -143,8 +219,14 @@ class SalesOrderRepository(
 
         inserted.lineItems.forEach { line ->
             val part = allParts.find { it.id == line.partId }
-            val inStock = part?.totalInStock ?: 0.0
-            val shortage = (line.quantity - inStock).coerceAtLeast(0.0)
+            val netAvailable = part?.availableStock ?: 0.0
+            val shortage = (line.quantity - netAvailable).coerceAtLeast(0.0)
+            val allocatedQty = minOf(line.quantity, netAvailable)
+
+            if (allocatedQty > 0.0) {
+                salesOrderDao.updateLineAllocatedQuantity("so-line-${line.id}", allocatedQty)
+                allocatedCount++
+            }
 
             if (part != null && part.assembly && shortage > 0.0) {
                 // 1. منتج يُصنع داخلياً وبه عجز ➔ إنشاء أمر تصنيع BuildOrder
@@ -200,12 +282,15 @@ class SalesOrderRepository(
             } else if (part != null && !part.assembly && shortage > 0.0) {
                 // 2. منتج يُشترى جاهزاً وبه عجز ➔ إنشاء أمر شراء PurchaseOrder بمصدر SALES_ORDER
                 val poRef = "PO-SO-${inserted.reference.removePrefix("SO-")}"
+                val pricing = partPricingDao.getForPart("part-${part.id}")
+                val resolvedPurchasePrice = pricing?.purchaseCostMin ?: pricing?.overallMin ?: 12.0
+
                 val poLine = PurchaseOrderLineItem(
                     orderId = 0L,
                     supplierPartId = part.id,
                     partName = part.name,
                     quantity = shortage,
-                    purchasePrice = if (part.minimumStock > 0) part.minimumStock * 0.05 else 12.0,
+                    purchasePrice = resolvedPurchasePrice,
                     notes = "شراء باك تو باك لتلبية أمر البيع #${inserted.reference}"
                 )
                 val po = PurchaseOrder(
@@ -221,10 +306,6 @@ class SalesOrderRepository(
                     lineItems = listOf(poLine)
                 )
                 createdPurchaseOrders.add(purchaseOrderRepository.addOrder(po))
-
-            } else {
-                // 3. الكمية متوفرة بالكامل بالمخزن ➔ حجز
-                allocatedCount++
             }
         }
 

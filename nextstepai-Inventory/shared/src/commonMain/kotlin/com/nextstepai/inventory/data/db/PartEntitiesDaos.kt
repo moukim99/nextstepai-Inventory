@@ -412,59 +412,106 @@ class PartSalePriceDao {
 @Dao
 class PartStarDao {
 
-    fun isStarred(partUuid: String, userUuid: String = "usr-1"): Boolean {
+    private val partDao: PartDao by lazy { PartDao() }
+
+    fun isStarred(partUuid: String, userUuid: String = "usr-001", partId: Long = 0L): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
-        conn.prepare("SELECT 1 FROM part_stars WHERE partUuid = ? AND userUuid = ? AND isDeleted = 0 LIMIT 1").use { stmt ->
+        val numericUserId = userUuid.removePrefix("usr-").toLongOrNull() ?: 1L
+        val canonicalUserUuid = "usr-${numericUserId.toString().padStart(3, '0')}"
+        val legacyUserUuid = "usr-$numericUserId"
+
+        conn.prepare("""
+            SELECT 1 FROM part_stars 
+            WHERE (partUuid = ? OR (partId > 0 AND partId = ?)) 
+              AND (userUuid = ? OR userUuid = ? OR userId = ?) 
+              AND isDeleted = 0 
+            LIMIT 1
+        """.trimIndent()).use { stmt ->
             stmt.bindText(1, partUuid)
-            stmt.bindText(2, userUuid)
+            stmt.bindLong(2, partId)
+            stmt.bindText(3, canonicalUserUuid)
+            stmt.bindText(4, legacyUserUuid)
+            stmt.bindLong(5, numericUserId)
             return stmt.step()
         }
     }
 
-    fun toggleStar(partUuid: String, userUuid: String = "usr-1"): Boolean {
+    fun toggleStar(partUuid: String, userUuid: String = "usr-001", partId: Long = 0L): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         val now = Clock.System.now().toEpochMilliseconds()
-        var exists = false
+        val numericUserId = userUuid.removePrefix("usr-").toLongOrNull() ?: 1L
+        val canonicalUserUuid = "usr-${numericUserId.toString().padStart(3, '0')}"
+        val legacyUserUuid = "usr-$numericUserId"
+
+        var foundUuid: String? = null
         var isCurrentlyDeleted = false
 
-        conn.prepare("SELECT isDeleted FROM part_stars WHERE partUuid = ? AND userUuid = ? LIMIT 1").use { stmt ->
+        conn.prepare("""
+            SELECT uuid, isDeleted FROM part_stars 
+            WHERE (partUuid = ? OR (partId > 0 AND partId = ?)) 
+              AND (userUuid = ? OR userUuid = ? OR userId = ?) 
+            LIMIT 1
+        """.trimIndent()).use { stmt ->
             stmt.bindText(1, partUuid)
-            stmt.bindText(2, userUuid)
+            stmt.bindLong(2, partId)
+            stmt.bindText(3, canonicalUserUuid)
+            stmt.bindText(4, legacyUserUuid)
+            stmt.bindLong(5, numericUserId)
             if (stmt.step()) {
-                exists = true
-                isCurrentlyDeleted = stmt.getLong(0) != 0L
+                foundUuid = stmt.getText(0)
+                isCurrentlyDeleted = stmt.getLong(1) != 0L
             }
         }
 
-        if (exists) {
+        if (foundUuid != null) {
             val newDeleted = if (isCurrentlyDeleted) 0L else 1L
-            conn.prepare("UPDATE part_stars SET isDeleted = ?, syncStatus = 'PENDING', version = version + 1, updatedAt = ? WHERE partUuid = ? AND userUuid = ?").use { stmt ->
+            conn.prepare("""
+                UPDATE part_stars 
+                SET isDeleted = ?, syncStatus = 'PENDING', version = version + 1, updatedAt = ? 
+                WHERE uuid = ?
+            """.trimIndent()).use { stmt ->
                 stmt.bindLong(1, newDeleted)
                 stmt.bindLong(2, now)
-                stmt.bindText(3, partUuid)
-                stmt.bindText(4, userUuid)
+                stmt.bindText(3, foundUuid)
                 stmt.step()
             }
             return newDeleted == 0L
         } else {
             val allocatedId = SqliteNumericIdAllocator.nextId("part_stars", "part-star-")
-            val uuid = "part-star-$allocatedId"
-            conn.prepare("INSERT INTO part_stars (uuid, partUuid, userUuid, version, syncStatus, isDeleted, updatedAt) VALUES (?, ?, ?, 1, 'PENDING', 0, ?)").use { stmt ->
-                stmt.bindText(1, uuid)
-                stmt.bindText(2, partUuid)
-                stmt.bindText(3, userUuid)
-                stmt.bindLong(4, now)
+            val recordUuid = "part-star-$allocatedId"
+            val targetPartId = if (partId > 0) partId else (partDao.getPartByUuid(partUuid)?.id ?: partUuid.removePrefix("part-uuid-").removePrefix("part-").toLongOrNull() ?: 0L)
+
+            conn.prepare("""
+                INSERT INTO part_stars (uuid, id, partId, partUuid, userId, userUuid, version, syncStatus, isDeleted, updatedAt) 
+                VALUES (?, ?, ?, ?, ?, ?, 1, 'PENDING', 0, ?)
+            """.trimIndent()).use { stmt ->
+                stmt.bindText(1, recordUuid)
+                stmt.bindLong(2, allocatedId)
+                stmt.bindLong(3, targetPartId)
+                stmt.bindText(4, partUuid)
+                stmt.bindLong(5, numericUserId)
+                stmt.bindText(6, canonicalUserUuid)
+                stmt.bindLong(7, now)
                 stmt.step()
             }
             return true
         }
     }
 
-    fun getStarredPartUuids(userUuid: String = "usr-1"): List<String> {
+    fun getStarredPartUuids(userUuid: String = "usr-001"): List<String> {
         val conn = SqliteDatabaseManager.getConnection()
+        val numericUserId = userUuid.removePrefix("usr-").toLongOrNull() ?: 1L
+        val canonicalUserUuid = "usr-${numericUserId.toString().padStart(3, '0')}"
+        val legacyUserUuid = "usr-$numericUserId"
         val results = mutableListOf<String>()
-        conn.prepare("SELECT partUuid FROM part_stars WHERE userUuid = ? AND isDeleted = 0").use { stmt ->
-            stmt.bindText(1, userUuid)
+
+        conn.prepare("""
+            SELECT partUuid FROM part_stars 
+            WHERE (userUuid = ? OR userUuid = ? OR userId = ?) AND isDeleted = 0
+        """.trimIndent()).use { stmt ->
+            stmt.bindText(1, canonicalUserUuid)
+            stmt.bindText(2, legacyUserUuid)
+            stmt.bindLong(3, numericUserId)
             while (stmt.step()) {
                 results.add(stmt.getText(0))
             }

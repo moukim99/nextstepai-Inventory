@@ -27,6 +27,7 @@ import com.nextstepai.inventory.data.db.StockItemTrackingDao
 import com.nextstepai.inventory.data.db.StockItemTrackingEntity
 import com.nextstepai.inventory.data.db.StockLocationDao
 import com.nextstepai.inventory.data.db.StockLocationEntity
+import com.nextstepai.inventory.data.db.SqliteDatabaseManager
 import com.nextstepai.inventory.data.db.StockLocationTypeDao
 import com.nextstepai.inventory.media.ImageProcessor
 import com.nextstepai.inventory.media.ProcessedImage
@@ -37,6 +38,53 @@ import com.nextstepai.inventory.util.AppUuid
 import com.nextstepai.inventory.util.DateTimeUtils
 import java.io.File
 import kotlin.time.Clock
+
+/**
+ * تمثيل بند فردي في جلسة الجرد الميداني والمقارنة بين الرصيد الدفتري والفعلي.
+ */
+data class StocktakeItem(
+    val stockItemId: Long,
+    val stockItemUuid: String,
+    val partId: Long,
+    val partName: String,
+    val locationId: Long?,
+    val locationUuid: String? = null,
+    val locationName: String = "",
+    val batch: String = "",
+    val bookQuantity: Double,
+    val countedQuantity: Double,
+    val notes: String = ""
+) {
+    val variance: Double get() = countedQuantity - bookQuantity
+    val isMatched: Boolean get() = kotlin.math.abs(variance) < 0.0001
+    val isSurplus: Boolean get() = variance > 0.0001
+    val isShortage: Boolean get() = variance < -0.0001
+}
+
+/**
+ * طلب اعتماد وتسوية فرق الجرد لوحدة مخزنية.
+ */
+data class StocktakeReconciliationRequest(
+    val stockItemId: Long,
+    val stockItemUuid: String? = null,
+    val countedQuantity: Double,
+    val reason: String,
+    val notes: String = "",
+    val userId: Long = 1L,
+    val stocktakeDate: String = DateTimeUtils.getCurrentDate()
+)
+
+/**
+ * ملخص نتائج وتدقيق جلسة الجرد المخزني.
+ */
+data class StocktakeSessionResult(
+    val totalItemsCounted: Int,
+    val matchedCount: Int,
+    val surplusCount: Int,
+    val shortageCount: Int,
+    val netVariance: Double,
+    val items: List<StocktakeItem>
+)
 
 /**
  * المستودع (Repository) المسؤول عن إدارة المخزون الفعلي ومواقع التخزين وسجلات التتبع
@@ -316,6 +364,12 @@ class StockRepository(
 
     /**
      * تنفيذ النقل المخزني السريع (Quick Stock Transfer) ونقل الكمية كلياً أو جزئياً وتوثيق المعاملة في سجل الحركات.
+     * مع تطبيق الضمانات الذرية:
+     * 1. منع النقل إلى نفس الموقع.
+     * 2. منع النقل إلى موقع هيكلي أو غير موجود.
+     * 3. التحقق من وجود موقع المصدر والوجهة.
+     * 4. التحقق من توفر الكمية المطلوبة داخل المعاملة.
+     * 5. ثبات إجمالي الكمية بين المصدر والهدف.
      */
     fun transferStockItem(
         itemId: Long,
@@ -325,48 +379,296 @@ class StockRepository(
         reason: String,
         notes: String = ""
     ): Boolean {
-        // التأكد من تحميل/مزامنة السجل في جدول الذاكرة إذا أُمُر بالنقل مباشرة
-        if (stockTable.getAllStockItems().none { it.id == itemId }) {
-            val entities = stockDao.getStockItemsPaged(limit = 1000, offset = 0)
-            val entity = entities.find { it.uuid == "stock-$itemId" || it.uuid.removePrefix("stock-").toLongOrNull() == itemId }
-            if (entity != null) {
-                val stockItem = StockItem(
-                    id = itemId,
-                    partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
-                    locationId = entity.locationUuid?.removePrefix("loc-")?.toLongOrNull() ?: 1L,
-                    quantity = entity.quantity,
-                    serial = entity.serial,
-                    batch = entity.batch,
-                    status = StockStatus.fromCode(entity.statusCode),
-                    packaging = entity.packaging,
-                    purchasePrice = entity.purchasePrice,
-                    expiryDate = entity.expiryDate,
-                    stocktakeDate = entity.stocktakeDate,
-                    notes = entity.notes
-                )
-                stockTable.insertStockItem(stockItem)
+        require(quantityToTransfer > 0.0) { "كمية النقل يجب أن تكون أكبر من الصفر" }
+        require(sourceLocationId != targetLocationId) { "لا يمكن نقل المواد إلى نفس موقع التخزين الحالي" }
+
+        // التحقق المسبق من وجود موقع الوجهة وأنه غير هيكلي
+        val targetLocEntity = locationDao.getLocationById(targetLocationId)
+            ?: locationDao.getLocationByUuid("loc-$targetLocationId")
+        val targetLocDomain = if (targetLocEntity == null) locationRepository.getLocations().find { it.id == targetLocationId } else null
+
+        if (targetLocEntity == null && targetLocDomain == null) {
+            throw IllegalArgumentException("موقع الوجهة غير موجود: $targetLocationId")
+        }
+
+        val isStructural = targetLocEntity?.structural ?: (targetLocDomain?.structural ?: false)
+        val locName = targetLocEntity?.name ?: targetLocDomain?.name ?: targetLocationId.toString()
+
+        if (isStructural) {
+            throw IllegalArgumentException("لا يمكن نقل مواد مباشرة إلى موقع هيكلي ('$locName')")
+        }
+
+        // التحقق من وجود موقع المصدر إن حُدد
+        if (sourceLocationId != null) {
+            val sourceLocEntity = locationDao.getLocationById(sourceLocationId)
+                ?: locationDao.getLocationByUuid("loc-$sourceLocationId")
+            val sourceLocDomain = if (sourceLocEntity == null) locationRepository.getLocations().find { it.id == sourceLocationId } else null
+            if (sourceLocEntity == null && sourceLocDomain == null) {
+                throw IllegalArgumentException("موقع المصدر غير موجود: $sourceLocationId")
             }
         }
 
-        val (sourceItem, targetItem) = stockTable.transferStockItem(
-            itemId = itemId,
-            sourceLocationId = sourceLocationId,
-            targetLocationId = targetLocationId,
-            quantityToTransfer = quantityToTransfer,
-            reason = reason,
-            notes = notes
-        )
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        try {
+            // التأكد من تحميل/مزامنة السجل في جدول الذاكرة إذا أُمُر بالنقل مباشرة
+            if (stockTable.getAllStockItems().none { it.id == itemId }) {
+                val entities = stockDao.getStockItemsPaged(limit = 1000, offset = 0)
+                val entity = entities.find { it.uuid == "stock-$itemId" || it.uuid.removePrefix("stock-").toLongOrNull() == itemId }
+                if (entity != null) {
+                    val stockItem = StockItem(
+                        id = itemId,
+                        partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
+                        locationId = entity.locationUuid?.removePrefix("loc-")?.toLongOrNull() ?: 1L,
+                        quantity = entity.quantity,
+                        serial = entity.serial,
+                        batch = entity.batch,
+                        status = StockStatus.fromCode(entity.statusCode),
+                        packaging = entity.packaging,
+                        purchasePrice = entity.purchasePrice,
+                        expiryDate = entity.expiryDate,
+                        stocktakeDate = entity.stocktakeDate,
+                        notes = entity.notes
+                    )
+                    stockTable.insertStockItem(stockItem)
+                }
+            }
 
-        stockDao.insertOrUpdate(sourceItem.toEntity())
-        val sourceTrackings = stockTable.getTrackingForStockItem(sourceItem.id)
-        sourceTrackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
+            val sourceEntity = stockDao.getStockItemById(itemId)
+            val tableItem = stockTable.getAllStockItems().find { it.id == itemId }
+            val currentQty = sourceEntity?.quantity ?: tableItem?.quantity
+                ?: throw IllegalArgumentException("العنصر المخزني المرتبط بطلب النقل غير موجود (#$itemId)")
 
-        if (targetItem != null) {
-            stockDao.insertOrUpdate(targetItem.toEntity())
-            val targetTrackings = stockTable.getTrackingForStockItem(targetItem.id)
-            targetTrackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
+            if (quantityToTransfer > currentQty) {
+                throw IllegalArgumentException("الكمية المطلوب نقلها ($quantityToTransfer) أكبر من الكمية المتاحة في السجل الحالي ($currentQty)")
+            }
+
+            val now = Clock.System.now().toEpochMilliseconds()
+            val targetLocationUuid = "loc-$targetLocationId"
+            val sourceUuid = sourceEntity?.uuid ?: "stock-$itemId"
+            val partUuid = sourceEntity?.partUuid ?: "part-${tableItem?.partId ?: 1L}"
+            val batch = sourceEntity?.batch ?: tableItem?.batch ?: ""
+            val statusCode = sourceEntity?.statusCode ?: tableItem?.status?.code ?: 10
+
+            val (sourceItem, targetItem) = stockTable.transferStockItem(
+                itemId = itemId,
+                sourceLocationId = sourceLocationId,
+                targetLocationId = targetLocationId,
+                quantityToTransfer = quantityToTransfer,
+                reason = reason,
+                notes = notes
+            )
+
+            if (quantityToTransfer == currentQty) {
+                // نقل كامل: تعديل موقع السجل الحالي
+                stockDao.updateStockItemLocation(sourceUuid, targetLocationUuid, now)
+            } else {
+                // نقل جزئي: خصم الكمية من المصدر
+                stockDao.updateStockItemQuantity(sourceUuid, currentQty - quantityToTransfer, now)
+
+                // البحث عن سجل متطابق في الموقع الجديد
+                val existingTarget = stockDao.findStockItemByPartAndLocation(partUuid, targetLocationUuid, batch, statusCode)
+                if (existingTarget != null) {
+                    stockDao.updateStockItemQuantity(existingTarget.uuid, existingTarget.quantity + quantityToTransfer, now)
+                } else if (targetItem != null) {
+                    stockDao.insertOrUpdate(targetItem.toEntity())
+                }
+            }
+
+            // توثيق حركة النقل في سجل التتبع
+            val reasonText = "نقل من موقع #${sourceLocationId ?: "بدون"} إلى #$targetLocationId | السبب: $reason${if (notes.isNotBlank()) " ($notes)" else ""}"
+            trackingDao.insertOrUpdate(
+                StockItemTrackingEntity(
+                    uuid = AppUuid.generate(),
+                    stockItemUuid = sourceUuid,
+                    trackingTypeCode = StockTrackingType.MOVE.code,
+                    label = if (quantityToTransfer == currentQty) "نقل موقع التخزين بالكامل" else "نقل جزئي للرصيد المخزني",
+                    notes = reasonText,
+                    deltas = "{\"sourceLocationId\": ${sourceLocationId ?: "null"}, \"targetLocationId\": $targetLocationId, \"transferredQuantity\": $quantityToTransfer}",
+                    createdAt = now
+                )
+            )
+
+            conn.prepare("COMMIT;").use { it.step() }
+            return true
+        } catch (e: Throwable) {
+            runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
+            throw e
         }
-        return true
+    }
+
+    /**
+     * إنشاء جلسة جرد مخزني ميداني (Stocktake Session) لموقع محدد أو صنف محدد أو لكامل المخزون.
+     */
+    fun createStocktakeSession(locationId: Long? = null, partId: Long? = null): List<StocktakeItem> {
+        val targetLocationUuid = locationId?.let { "loc-$it" }
+        val targetPartUuid = partId?.let { "part-$it" }
+
+        val dbItems = stockDao.getStockItemsPaged(
+            partUuid = targetPartUuid,
+            locationUuid = targetLocationUuid,
+            limit = 1000,
+            offset = 0
+        )
+        val allParts = runCatching { partDao.getPartsPaged(limit = 1000) }.getOrDefault(emptyList())
+        val partNameMap = allParts.associate { (it.uuid.removePrefix("part-").toLongOrNull() ?: 0L) to it.name }
+        val allLocations = locationRepository.getLocations()
+        val locNameMap = allLocations.associate { it.id to it.name }
+
+        if (dbItems.isNotEmpty()) {
+            return dbItems.mapIndexed { index, entity ->
+                val numericId = entity.uuid.removePrefix("stock-").toLongOrNull() ?: (index + 1L)
+                val numericPartId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L
+                val numericLocId = entity.locationUuid?.removePrefix("loc-")?.removePrefix("location-")?.toLongOrNull()
+                val partName = partNameMap[numericPartId] ?: "قطعة #$numericPartId"
+                val locName = if (numericLocId != null) locNameMap[numericLocId] ?: "موقع #$numericLocId" else "مستودع عام"
+
+                StocktakeItem(
+                    stockItemId = numericId,
+                    stockItemUuid = entity.uuid,
+                    partId = numericPartId,
+                    partName = partName,
+                    locationId = numericLocId,
+                    locationUuid = entity.locationUuid,
+                    locationName = locName,
+                    batch = entity.batch,
+                    bookQuantity = entity.quantity,
+                    countedQuantity = entity.quantity,
+                    notes = entity.notes
+                )
+            }
+        }
+
+        // السقوط على جدول الذاكرة إذا كانت قاعدة البيانات خالية
+        return stockTable.getAllStockItems()
+            .filter { (locationId == null || it.locationId == locationId) && (partId == null || it.partId == partId) }
+            .map { item ->
+                StocktakeItem(
+                    stockItemId = item.id,
+                    stockItemUuid = "stock-${item.id}",
+                    partId = item.partId,
+                    partName = "قطعة #${item.partId}",
+                    locationId = item.locationId,
+                    locationUuid = "loc-${item.locationId}",
+                    locationName = locNameMap[item.locationId] ?: "موقع #${item.locationId}",
+                    batch = item.batch,
+                    bookQuantity = item.quantity,
+                    countedQuantity = item.quantity,
+                    notes = item.notes
+                )
+            }
+    }
+
+    /**
+     * حساب وتدقيق الفروقات لجلسة الجرد الميداني قبل الاعتماد (Stocktake Audit).
+     */
+    fun calculateStocktakeAudit(items: List<StocktakeItem>): StocktakeSessionResult {
+        val totalCounted = items.size
+        val matched = items.count { it.isMatched }
+        val surplus = items.count { it.isSurplus }
+        val shortage = items.count { it.isShortage }
+        val netVar = items.sumOf { it.variance }
+        return StocktakeSessionResult(
+            totalItemsCounted = totalCounted,
+            matchedCount = matched,
+            surplusCount = surplus,
+            shortageCount = shortage,
+            netVariance = netVar,
+            items = items
+        )
+    }
+
+    /**
+     * اعتماد وتسوية الفارق لوحدة مخزنية ذرياً (Stocktake Reconciliation Atomic Transaction).
+     * 1. منع الكميات السالبة.
+     * 2. منع المعالجة بسجلات مخترعة أو غير موجودة.
+     * 3. تعديل رصيد المخزون الفعلي في stock_items مع تحديث تاريخ الجرد والمستخدم.
+     * 4. تعديل الرصيد التراكمي في parts بقيمة الفارق (الفعلي - الدفتري).
+     * 5. توثيق حركة التسوية في stock_item_tracking بنوع COUNT أو ADJUST مع السبب والملاحظات.
+     */
+    fun reconcileStocktake(request: StocktakeReconciliationRequest): Boolean {
+        require(request.countedQuantity >= 0.0) { "الكمية المجرودة الفعلية لا يمكن أن تكون سالبة" }
+        require(request.reason.isNotBlank()) { "سبب تسوية الجرد إلزامي" }
+
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        try {
+            val entity = if (!request.stockItemUuid.isNullOrBlank()) {
+                stockDao.getStockItemByUuid(request.stockItemUuid)
+            } else {
+                stockDao.getStockItemById(request.stockItemId)
+            }
+            val tableItem = stockTable.getAllStockItems().find { it.id == request.stockItemId }
+
+            if (entity == null && tableItem == null) {
+                throw IllegalArgumentException("سجل المخزون غير موجود (#${request.stockItemId})")
+            }
+
+            val itemUuid = entity?.uuid ?: tableItem?.let { "stock-${it.id}" }!!
+            val partUuid = entity?.partUuid ?: tableItem?.let { "part-${it.partId}" }!!
+            val currentBookQty = entity?.quantity ?: tableItem?.quantity ?: 0.0
+            val difference = request.countedQuantity - currentBookQty
+
+            val now = Clock.System.now().toEpochMilliseconds()
+            val userUuid = "usr-${request.userId}"
+
+            // 1. تحديث رصيد الوحدة المخزنية وبيانات الجرد
+            stockDao.updateStocktakeReconciliation(
+                uuid = itemUuid,
+                newQuantity = request.countedQuantity,
+                stocktakeDate = request.stocktakeDate,
+                stocktakeUserUuid = userUuid,
+                updatedAt = now,
+                deleteOnDeplete = entity?.deleteOnDeplete ?: tableItem?.deleteOnDeplete ?: false
+            )
+
+            // 2. تعديل الرصيد الإجمالي للصنف في جدول parts إذا وجد فارق
+            if (kotlin.math.abs(difference) > 0.0001) {
+                val adjusted = partDao.adjustTotalInStockByUuid(partUuid, difference)
+                if (!adjusted) {
+                    throw IllegalStateException("فشل تعديل رصيد الصنف التراكمي: $partUuid")
+                }
+            }
+
+            // 3. توثيق حركة التسوية في سجل التتبع
+            val trackingType = if (kotlin.math.abs(difference) < 0.0001) StockTrackingType.COUNT else StockTrackingType.ADJUST
+            val trackingUuid = AppUuid.generate()
+            trackingDao.insertOrUpdate(
+                StockItemTrackingEntity(
+                    uuid = trackingUuid,
+                    stockItemUuid = itemUuid,
+                    trackingTypeCode = trackingType.code,
+                    label = if (kotlin.math.abs(difference) < 0.0001) "جرد مطابق (Stock Count Matched)" else "تسوية جرد فعلي (Stocktake Audit)",
+                    notes = "السبب: ${request.reason}${if (request.notes.isNotBlank()) " | " + request.notes else ""}",
+                    deltas = "{\"bookQuantity\": $currentBookQty, \"countedQuantity\": ${request.countedQuantity}, \"variance\": $difference, \"reason\": \"${request.reason}\"}",
+                    createdAt = now
+                )
+            )
+
+            // 4. تحديث جدول الذاكرة المتزامن (إن وجد)
+            if (stockTable.getAllStockItems().any { it.id == request.stockItemId }) {
+                stockTable.performStocktake(request.stockItemId, request.userId, request.stocktakeDate)
+            }
+
+            conn.prepare("COMMIT;").use { it.step() }
+            return true
+        } catch (e: Throwable) {
+            runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
+            throw e
+        }
+    }
+
+    /**
+     * اعتماد مجمع لدفعات تسوية الجرد (Batch Stocktake Reconciliation).
+     */
+    fun reconcileStocktakeBatch(requests: List<StocktakeReconciliationRequest>): Int {
+        var count = 0
+        for (req in requests) {
+            if (reconcileStocktake(req)) {
+                count++
+            }
+        }
+        return count
     }
 
     /**

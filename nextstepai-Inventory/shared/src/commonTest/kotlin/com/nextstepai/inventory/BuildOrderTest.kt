@@ -8,12 +8,20 @@ import com.nextstepai.inventory.data.db.BuildOrderDao
 import com.nextstepai.inventory.data.db.BuildOrderEntity
 import com.nextstepai.inventory.auth.AuthTokens
 import com.nextstepai.inventory.auth.SecureTokenStorage
+import com.nextstepai.inventory.data.StockTrackingType
+import com.nextstepai.inventory.data.db.BomItemDao
+import com.nextstepai.inventory.data.db.BomItemEntity
+import com.nextstepai.inventory.data.db.StockItemDao
+import com.nextstepai.inventory.data.db.StockItemEntity
+import com.nextstepai.inventory.data.db.StockItemTrackingDao
 import com.nextstepai.inventory.repository.BuildOrderRepository
 import com.nextstepai.inventory.sync.SyncStatus
+import com.nextstepai.inventory.util.AppUuid
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 
@@ -212,6 +220,222 @@ class BuildOrderTest {
 
         assertTrue(results.size >= 100)
         assertTrue(searchDuration < 50, "استعلام البحث والتصفية المجرى على الفهارس المخصصة يجب أن يتم في أقل من 50 مللي ثانية")
+    }
+
+    @Test
+    fun testManufacturingClosedLoopSuccess() {
+        val repository = BuildOrderRepository()
+        val stockDao = StockItemDao()
+        val bomDao = BomItemDao()
+        val trackingDao = StockItemTrackingDao()
+        val now = Clock.System.now().toEpochMilliseconds()
+
+        val parentPartId = 910L
+        val subPart1Id = 911L
+        val subPart2Id = 912L
+
+        // 1. إضافة متطلبات قائمة المواد BOM في SQLite
+        bomDao.insertOrUpdate(
+            BomItemEntity(
+                uuid = "bom-test-911",
+                partId = parentPartId,
+                subPartId = subPart1Id,
+                quantity = 2.0,
+                syncStatus = SyncStatus.SYNCED
+            )
+        )
+        bomDao.insertOrUpdate(
+            BomItemEntity(
+                uuid = "bom-test-912",
+                partId = parentPartId,
+                subPartId = subPart2Id,
+                quantity = 1.0,
+                syncStatus = SyncStatus.SYNCED
+            )
+        )
+
+        // 2. توفير أرصدة أولية في المخزون للمكونات
+        stockDao.insertOrUpdate(
+            StockItemEntity(
+                uuid = "stock-comp-911",
+                partUuid = "part-$subPart1Id",
+                locationUuid = "loc-002",
+                quantity = 50.0,
+                statusCode = 10,
+                updatedAt = now
+            )
+        )
+        stockDao.insertOrUpdate(
+            StockItemEntity(
+                uuid = "stock-comp-912",
+                partUuid = "part-$subPart2Id",
+                locationUuid = "loc-003",
+                quantity = 25.0,
+                statusCode = 10,
+                updatedAt = now
+            )
+        )
+
+        // 3. إنشاء أمر تصنيع لـ 10 وحدات
+        val bo = repository.addBuildOrder(
+            BuildOrder(
+                id = 9100L,
+                reference = "BO-TEST-CLOSEDLOOP-01",
+                title = "أمر تصنيع مغلق الدورة لاختبار المخزون",
+                partId = parentPartId,
+                partName = "لوحة تجميعية 910",
+                quantity = 10.0,
+                destinationLocationId = 4L,
+                batch = "BATCH-910-FINAL"
+            )
+        )
+
+        // 4. تنفيذ التوريد الكامل لأمر التصنيع (10 وحدات)
+        val result = repository.completeBuildOutput(bo.id, 10.0)
+        assertTrue(result, "عملية التوريد المغلقة يجب أن تنجح")
+
+        // 5. التحقق من خصم كميات المكونات المستهلكة
+        val updatedStocks911 = stockDao.getAvailableStockItemsForPart(subPart1Id)
+        val remainingQty911 = updatedStocks911.sumOf { it.quantity }
+        assertEquals(30.0, remainingQty911, 0.001, "يجب خصم 20 وحدة (2 * 10) من رصيد المكون 911")
+
+        val updatedStocks912 = stockDao.getAvailableStockItemsForPart(subPart2Id)
+        val remainingQty912 = updatedStocks912.sumOf { it.quantity }
+        assertEquals(15.0, remainingQty912, 0.001, "يجب خصم 10 وحدات (1 * 10) من رصيد المكون 912")
+
+        // 6. التحقق من إدراج المنتج النهائي في المخزون
+        val finishedGoods = stockDao.getAvailableStockItemsForPart(parentPartId)
+        val finishedItem = finishedGoods.find { it.buildUuid == "build-${bo.id}" || it.batch == "BATCH-910-FINAL" }
+        assertNotNull(finishedItem, "يجب إنشاء سجل للمنتج النهائي في جدول المخزون stock_items")
+        assertEquals(10.0, finishedItem.quantity, "كمية المنتج النهائي يجب أن تطابق الكمية المصنعة")
+        assertEquals("loc-4", finishedItem.locationUuid)
+
+        // 7. التحقق من توثيق سجلات التتبع
+        val allTracking = trackingDao.getAllTrackingLogs()
+        val finishedTracking = allTracking.find { it.stockItemUuid == finishedItem.uuid }
+        assertNotNull(finishedTracking, "يجب توثيق قيد توريد المنتج النهائي في stock_item_tracking")
+        assertEquals(StockTrackingType.CREATED.code, finishedTracking.trackingTypeCode)
+
+        // 8. التحقق من إغلاق أمر التصنيع
+        val closedBo = BuildOrderDao().getBuildOrderById(bo.id)
+        assertNotNull(closedBo)
+        assertEquals(BuildStatus.COMPLETE.code, closedBo.statusCode, "حالة أمر التصنيع يجب أن تصبح COMPLETE")
+        assertEquals(10.0, closedBo.completedQuantity, "الكمية المنجزة يجب أن تصبح 10.0")
+    }
+
+    @Test
+    fun testManufacturingClosedLoopAtomicityAndRollbackOnShortage() {
+        val repository = BuildOrderRepository()
+        val stockDao = StockItemDao()
+        val bomDao = BomItemDao()
+        val now = Clock.System.now().toEpochMilliseconds()
+
+        val parentPartId = 920L
+        val subPartId = 921L
+
+        bomDao.insertOrUpdate(
+            BomItemEntity(
+                uuid = "bom-test-921",
+                partId = parentPartId,
+                subPartId = subPartId,
+                quantity = 5.0,
+                syncStatus = SyncStatus.SYNCED
+            )
+        )
+
+        // توفير 20 وحدة فقط في المخزون (عجز بمقدار 30 وحدة)
+        stockDao.insertOrUpdate(
+            StockItemEntity(
+                uuid = "stock-comp-921-scarce",
+                partUuid = "part-$subPartId",
+                locationUuid = "loc-002",
+                quantity = 20.0,
+                statusCode = 10,
+                updatedAt = now
+            )
+        )
+
+        val bo = repository.addBuildOrder(
+            BuildOrder(
+                id = 9200L,
+                reference = "BO-TEST-SHORTAGE-02",
+                partId = parentPartId,
+                quantity = 10.0
+            )
+        )
+
+        // محاولة التوريد يجب أن تفشل استباقياً وترمي استثناء بسبب نقص المخزون
+        val error = assertFailsWith<IllegalStateException> {
+            repository.completeBuildOutput(bo.id, 10.0)
+        }
+        assertTrue(error.message?.contains("رصيد المخزون غير كافٍ") == true)
+
+        // التحقق من الذرية والتراجع (Rollback): لا خصم، ولا منتج نهائي، وحالة الأمر لم تتغير
+        val remainingStock = stockDao.getAvailableStockItemsForPart(subPartId).sumOf { it.quantity }
+        assertEquals(20.0, remainingStock, "رصيد المخزون يجب ألا يتأثر عند فشل عملية التوريد (Atomicity)")
+
+        val finishedGoods = stockDao.getAvailableStockItemsForPart(parentPartId)
+        assertTrue(finishedGoods.isEmpty(), "يجب ألا يتم إنشاء أي منتج نهائي عند فشل المعاملة")
+
+        val unchangedBo = BuildOrderDao().getBuildOrderById(bo.id)
+        assertNotNull(unchangedBo)
+        assertEquals(0.0, unchangedBo.completedQuantity)
+        assertEquals(BuildStatus.PENDING.code, unchangedBo.statusCode)
+    }
+
+    @Test
+    fun testManufacturingClosedLoopIdempotency() {
+        val repository = BuildOrderRepository()
+        val stockDao = StockItemDao()
+        val bomDao = BomItemDao()
+        val now = Clock.System.now().toEpochMilliseconds()
+
+        val parentPartId = 930L
+        val subPartId = 931L
+
+        bomDao.insertOrUpdate(
+            BomItemEntity(
+                uuid = "bom-test-931",
+                partId = parentPartId,
+                subPartId = subPartId,
+                quantity = 1.0,
+                syncStatus = SyncStatus.SYNCED
+            )
+        )
+
+        stockDao.insertOrUpdate(
+            StockItemEntity(
+                uuid = "stock-comp-931",
+                partUuid = "part-$subPartId",
+                locationUuid = "loc-002",
+                quantity = 100.0,
+                statusCode = 10,
+                updatedAt = now
+            )
+        )
+
+        val bo = repository.addBuildOrder(
+            BuildOrder(
+                id = 9300L,
+                reference = "BO-TEST-IDEMPOTENT-03",
+                partId = parentPartId,
+                quantity = 5.0
+            )
+        )
+
+        // التوريد الأول الناجح
+        val firstResult = repository.completeBuildOutput(bo.id, 5.0)
+        assertTrue(firstResult)
+
+        // المحاولة الثانية بعد اكتمال الأمر يجب أن ترفض تماماً (Idempotency)
+        val error = assertFailsWith<IllegalStateException> {
+            repository.completeBuildOutput(bo.id, 5.0)
+        }
+        assertTrue(error.message?.contains("مكتمل بالفعل") == true)
+
+        // التأكد من أن الرصيد لم يخصم مرة ثانية (100 - 5 = 95)
+        val stockAfter = stockDao.getAvailableStockItemsForPart(subPartId).sumOf { it.quantity }
+        assertEquals(95.0, stockAfter, "لا يجوز خصم المخزون مرتين عند إعادة محاولة توريد أمر مكتمل")
     }
 }
 

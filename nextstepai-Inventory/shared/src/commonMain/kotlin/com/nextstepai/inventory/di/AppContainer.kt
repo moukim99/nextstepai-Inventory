@@ -72,6 +72,12 @@ class AppContainer(
         partRepository = partRepository,
         userRepository = userRepository
     )
+
+    fun createSalesOrderViewModel() = SalesOrderViewModel(
+        salesRepository = salesRepository,
+        companyRepository = companyRepository,
+        partRepository = partRepository
+    )
 }
 
 val LocalAppContainer = staticCompositionLocalOf<AppContainer> {

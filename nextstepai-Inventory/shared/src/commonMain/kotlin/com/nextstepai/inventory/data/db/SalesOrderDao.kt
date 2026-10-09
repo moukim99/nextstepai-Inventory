@@ -1,4 +1,4 @@
-﻿package com.nextstepai.inventory.data.db
+package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -119,6 +119,39 @@ class SalesOrderDao {
             stmt.bindLong(14, entity.updatedAt)
             stmt.step()
         }
+    }
+
+    fun getOrderByReference(reference: String): SalesOrderEntity? {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            SELECT $selectOrderColumns
+            FROM sales_orders
+            WHERE isDeleted = 0 AND reference = ?
+            LIMIT 1
+        """.trimIndent()).use { stmt ->
+            stmt.bindText(1, reference.trim())
+            if (stmt.step()) return mapOrderEntity(stmt)
+        }
+        return null
+    }
+
+    fun updateLineAllocatedQuantity(lineUuid: String, allocatedQty: Double, updatedAt: Long = kotlin.time.Clock.System.now().toEpochMilliseconds()): Boolean {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            UPDATE sales_order_lines
+            SET allocatedQuantity = ?, updatedAt = ?, syncStatus = 'PENDING'
+            WHERE uuid = ? AND isDeleted = 0
+        """.trimIndent()).use { stmt ->
+            stmt.bindDouble(1, allocatedQty)
+            stmt.bindLong(2, updatedAt)
+            stmt.bindText(3, lineUuid)
+            stmt.step()
+        }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) changed = stmt.getLong(0).toInt()
+        }
+        return changed > 0
     }
 
     private fun mapOrderEntity(stmt: SQLiteStatement): SalesOrderEntity {

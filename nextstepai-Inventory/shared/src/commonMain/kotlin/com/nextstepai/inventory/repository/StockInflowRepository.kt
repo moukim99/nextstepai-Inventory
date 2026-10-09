@@ -1,5 +1,6 @@
 package com.nextstepai.inventory.repository
 
+import com.nextstepai.inventory.data.POStatus
 import com.nextstepai.inventory.data.ScannedInflowItem
 import com.nextstepai.inventory.data.StockInflowSessionState
 import com.nextstepai.inventory.data.db.PartDao
@@ -130,14 +131,36 @@ class StockInflowRepository(
             val conn = SqliteDatabaseManager.getConnection()
             val now = Clock.System.now().toEpochMilliseconds()
 
+            conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
             try {
-                conn.prepare("BEGIN TRANSACTION").use { it.step() }
+                // 1. التحقق المسبق من صحة المواقع والأصناف لكافة العناصر في السلة
+                sessionState.scannedItems.forEach { item ->
+                    val loc = locationDao.getLocationById(item.locationId)
+                        ?: locationDao.getLocationByUuid("loc-${item.locationId}")
+                        ?: throw IllegalArgumentException("موقع التخزين غير موجود: ${item.locationId}")
+                    if (loc.structural) {
+                        throw IllegalArgumentException("لا يمكن الاستلام في موقع هيكلي أو تجميعي: ${loc.name}")
+                    }
+
+                    if (!item.isNewPart) {
+                        val partExists = if (!item.partUuid.isNullOrBlank()) {
+                            partDao.getPartByUuid(item.partUuid) != null
+                        } else if (item.partId != null && item.partId > 0) {
+                            partDao.getPartById(item.partId) != null || partDao.getPartByUuid("part-${item.partId}") != null
+                        } else {
+                            false
+                        }
+                        if (!partExists) {
+                            throw IllegalArgumentException("الصنف المراد استلامه غير موجود في قاعدة البيانات: ${item.name} (${item.barcode})")
+                        }
+                    }
+                }
 
                 sessionState.scannedItems.forEach { item ->
                     var activePartUuid = item.partUuid ?: "part-${item.partId}"
 
-                    // 2. إنشاء الصنف الجديد بحساب المعرف الذري
-                    if (item.isNewPart || item.partUuid == null) {
+                    // 2. إنشاء الصنف الجديد بحساب المعرف الذري إن لزم
+                    if (item.isNewPart || (item.partUuid == null && item.partId == null)) {
                         activePartUuid = item.partUuid ?: AppUuid.generate()
 
                         val newPart = PartEntity(
@@ -167,8 +190,11 @@ class StockInflowRepository(
                     )
                     stockItemDao.insertOrUpdate(stockItem)
 
-                    // 4. تحديث الرصيد التراكمي في parts
-                    partDao.addStockToPart(partUuid = activePartUuid, qty = item.quantity)
+                    // 4. تحديث الرصيد التراكمي في parts ذرياً
+                    val stockAdjusted = partDao.adjustTotalInStockByUuid(activePartUuid, item.quantity)
+                    if (!stockAdjusted) {
+                        throw IllegalStateException("فشل تحديث رصيد الصنف التراكمي: $activePartUuid")
+                    }
 
                     // 5. تسجيل حركة التتبع في stock_item_tracking
                     val tracking = StockItemTrackingEntity(
@@ -202,37 +228,66 @@ class StockInflowRepository(
 
                 // 7. تحديث كمية الاستلام في purchase_order_lines إن وجد أمر شراء مرتبط
                 sessionState.purchaseOrderId?.let { poId ->
-                    updatePoLinesReceivedQuantities(poId, sessionState.scannedItems)
+                    updatePoLinesReceivedQuantities(poId, sessionState.scannedItems, now)
                 }
 
-                conn.prepare("COMMIT").use { it.step() }
+                conn.prepare("COMMIT;").use { it.step() }
                 true
             } catch (e: Exception) {
-                runCatching { conn.prepare("ROLLBACK").use { it.step() } }
+                runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
                 throw e
             }
         }
     }
 
-    private suspend fun updatePoLinesReceivedQuantities(poId: Long, items: List<ScannedInflowItem>) {
-        val conn = SqliteDatabaseManager.getConnection()
-        val partQtyMap = items.groupBy { it.partId }.mapValues { entry -> entry.value.sumOf { it.quantity } }
+    private suspend fun updatePoLinesReceivedQuantities(
+        poId: Long,
+        items: List<ScannedInflowItem>,
+        now: Long = Clock.System.now().toEpochMilliseconds()
+    ) {
+        val orderUuid = "po-$poId"
+        val order = purchaseOrderDao.getOrderByUuid(orderUuid)
+            ?: purchaseOrderDao.getOrderById(poId)
+            ?: throw IllegalArgumentException("أمر الشراء غير موجود: $poId")
 
-        partQtyMap.forEach { (partId, totalQty) ->
-            if (partId != null) {
-                val sql = """
-                    UPDATE purchase_order_lines
-                    SET receivedQuantity = receivedQuantity + ?, updatedAt = ?
-                    WHERE orderUuid IN (SELECT uuid FROM purchase_orders WHERE supplierUuid = ? OR uuid = ?)
-                """.trimIndent()
-                conn.prepare(sql).use { stmt ->
-                    stmt.bindDouble(1, totalQty)
-                    stmt.bindLong(2, Clock.System.now().toEpochMilliseconds())
-                    stmt.bindText(3, "po-$poId")
-                    stmt.bindText(4, "po-$poId")
-                    stmt.step()
+        if (order.statusCode == POStatus.COMPLETE.code || order.statusCode == POStatus.CANCELLED.code) {
+            throw IllegalStateException("أمر الشراء مغلق أو ملغي ولا يقبل الاستلام: ${order.reference}")
+        }
+
+        val openLines = purchaseOrderDao.getLinesForOrder(order.uuid).toMutableList()
+        val partQtyMap = items.groupBy { it.partId }
+
+        partQtyMap.forEach { (partId, scannedItemList) ->
+            if (partId != null && partId > 0) {
+                var remainingToAllocate = scannedItemList.sumOf { it.quantity }
+                val matchingLines = openLines.filter { it.supplierPartId == partId }
+                if (matchingLines.isEmpty()) {
+                    throw IllegalArgumentException("لا يوجد بند في أمر الشراء ${order.reference} مطابق للصنف رقم $partId")
+                }
+
+                for (line in matchingLines) {
+                    if (remainingToAllocate <= 0.0001) break
+                    val lineCapacity = maxOf(0.0, line.quantity - line.receivedQuantity)
+                    if (lineCapacity <= 0.0001) continue
+
+                    val deltaToApply = minOf(remainingToAllocate, lineCapacity)
+                    val updated = purchaseOrderDao.updateLineReceivedQuantityConditional(line.uuid, deltaToApply, now)
+                    if (!updated) {
+                        throw IllegalStateException("فشل تحديث كمية استلام البند ${line.uuid}، ربما تم تحديثه متزامناً")
+                    }
+                    remainingToAllocate -= deltaToApply
+                }
+
+                if (remainingToAllocate > 0.0001) {
+                    throw IllegalArgumentException("الكمية المستلمة للصنف #$partId تتجاوز الكمية المتبقية غير المستلمة في أمر الشراء")
                 }
             }
+        }
+
+        // فحص اكتمال أمر الشراء تلقائياً عند استيفاء كامل البنود
+        val reloadedLines = purchaseOrderDao.getLinesForOrder(order.uuid)
+        if (reloadedLines.isNotEmpty() && reloadedLines.all { it.receivedQuantity >= it.quantity - 0.0001 }) {
+            purchaseOrderDao.updateOrderStatus(order.uuid, POStatus.COMPLETE.code, now)
         }
     }
 }

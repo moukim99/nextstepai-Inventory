@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarOutline
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Warehouse
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -34,6 +35,7 @@ object AppIcons {
     val Stock: ImageVector = Icons.Default.Inventory2
     val Companies: ImageVector = Icons.Default.CorporateFare
     val Orders: ImageVector = Icons.Default.ShoppingCart
+    val Sales: ImageVector = Icons.Default.TrendingUp
     val Builds: ImageVector = Icons.Default.PrecisionManufacturing
     val Search: ImageVector = Icons.Default.Search
     val Add: ImageVector = Icons.Default.Add

@@ -1,4 +1,4 @@
-﻿package com.nextstepai.inventory.data.db
+package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -116,6 +116,136 @@ class BuildOrderDao {
                 stmt.bindText(2, uuid)
                 stmt.step()
             }
+        }
+    }
+
+    fun findBuildOrder(identifier: String): BuildOrderEntity? {
+        if (identifier.isBlank()) return null
+        val conn = SqliteDatabaseManager.getConnection()
+        val numericId = identifier.toLongOrNull()
+        val buildIdStr = if (numericId != null) "build-$numericId" else identifier
+        val paddedBo = if (numericId != null) "bo-" + numericId.toString().padStart(3, '0') else identifier
+        val boStr = if (numericId != null) "bo-$numericId" else identifier
+
+        val sql = """
+            SELECT $selectColumns
+            FROM build_orders
+            WHERE isDeleted = 0
+              AND (
+                  uuid = ?
+                  OR uuid = ?
+                  OR uuid = ?
+                  OR uuid = ?
+                  OR reference = ?
+              )
+            LIMIT 1
+        """.trimIndent()
+        conn.prepare(sql).use { stmt ->
+            stmt.bindText(1, identifier)
+            stmt.bindText(2, buildIdStr)
+            stmt.bindText(3, paddedBo)
+            stmt.bindText(4, boStr)
+            stmt.bindText(5, identifier)
+            if (stmt.step()) {
+                return mapBuildEntity(stmt)
+            }
+        }
+        return null
+    }
+
+    fun getBuildOrderByUuid(uuid: String): BuildOrderEntity? = findBuildOrder(uuid)
+
+    fun getBuildOrderById(buildId: Long): BuildOrderEntity? = findBuildOrder(buildId.toString())
+
+    fun updateBuildOrderOutput(
+        uuid: String,
+        newCompletedQty: Double,
+        newStatusCode: Int,
+        completionDate: String,
+        updatedAt: Long
+    ) {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            UPDATE build_orders
+            SET completedQuantity = ?,
+                statusCode = ?,
+                completionDate = CASE WHEN ? != '' THEN ? ELSE completionDate END,
+                syncStatus = 'PENDING',
+                updatedAt = ?
+            WHERE uuid = ?
+        """.trimIndent()).use { stmt ->
+            stmt.bindDouble(1, newCompletedQty)
+            stmt.bindLong(2, newStatusCode.toLong())
+            stmt.bindText(3, completionDate)
+            stmt.bindText(4, completionDate)
+            stmt.bindLong(5, updatedAt)
+            stmt.bindText(6, uuid)
+            stmt.step()
+        }
+    }
+
+    fun updateBuildOrderOutputConditional(
+        uuid: String,
+        expectedStatusCode: Int,
+        expectedCompletedQty: Double,
+        newCompletedQty: Double,
+        newStatusCode: Int,
+        completionDate: String,
+        updatedAt: Long
+    ): Boolean {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            UPDATE build_orders
+            SET completedQuantity = ?,
+                statusCode = ?,
+                completionDate = CASE WHEN ? != '' THEN ? ELSE completionDate END,
+                syncStatus = 'PENDING',
+                updatedAt = ?
+            WHERE uuid = ?
+              AND statusCode = ?
+              AND ABS(completedQuantity - ?) < 0.0001
+              AND isDeleted = 0
+        """.trimIndent()).use { stmt ->
+            stmt.bindDouble(1, newCompletedQty)
+            stmt.bindLong(2, newStatusCode.toLong())
+            stmt.bindText(3, completionDate)
+            stmt.bindText(4, completionDate)
+            stmt.bindLong(5, updatedAt)
+            stmt.bindText(6, uuid)
+            stmt.bindLong(7, expectedStatusCode.toLong())
+            stmt.bindDouble(8, expectedCompletedQty)
+            stmt.step()
+        }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
+    }
+
+    fun updateBuildStatus(
+        uuid: String,
+        newStatusCode: Int,
+        startDate: String = "",
+        updatedAt: Long
+    ) {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            UPDATE build_orders
+            SET statusCode = ?,
+                startDate = CASE WHEN ? != '' THEN ? ELSE startDate END,
+                syncStatus = 'PENDING',
+                updatedAt = ?
+            WHERE uuid = ?
+        """.trimIndent()).use { stmt ->
+            stmt.bindLong(1, newStatusCode.toLong())
+            stmt.bindText(2, startDate)
+            stmt.bindText(3, startDate)
+            stmt.bindLong(4, updatedAt)
+            stmt.bindText(5, uuid)
+            stmt.step()
         }
     }
 

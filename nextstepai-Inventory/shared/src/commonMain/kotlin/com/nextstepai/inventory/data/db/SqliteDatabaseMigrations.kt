@@ -239,7 +239,15 @@ internal object SqliteDatabaseMigrations {
         )
         addColumnIfMissing(
             conn,
+            "ALTER TABLE part_allocations ADD COLUMN uuid TEXT NOT NULL DEFAULT '';"
+        )
+        addColumnIfMissing(
+            conn,
             "ALTER TABLE part_allocations ADD COLUMN partId INTEGER NOT NULL DEFAULT 0;"
+        )
+        addColumnIfMissing(
+            conn,
+            "ALTER TABLE part_allocations ADD COLUMN partUuid TEXT NOT NULL DEFAULT '';"
         )
         addColumnIfMissing(
             conn,
@@ -247,8 +255,78 @@ internal object SqliteDatabaseMigrations {
         )
         addColumnIfMissing(
             conn,
+            "ALTER TABLE part_allocations ADD COLUMN referenceUuid TEXT NOT NULL DEFAULT '';"
+        )
+        addColumnIfMissing(
+            conn,
             "ALTER TABLE part_allocations ADD COLUMN createdByUserId TEXT NOT NULL DEFAULT '1';"
         )
+        addColumnIfMissing(
+            conn,
+            "ALTER TABLE part_allocations ADD COLUMN createdByUserUuid TEXT NOT NULL DEFAULT '';"
+        )
+        addColumnIfMissing(
+            conn,
+            "ALTER TABLE part_allocations ADD COLUMN referenceTitle TEXT NOT NULL DEFAULT '';"
+        )
+        addColumnIfMissing(
+            conn,
+            "ALTER TABLE part_allocations ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE';"
+        )
+        addColumnIfMissing(
+            conn,
+            "ALTER TABLE part_allocations ADD COLUMN allocationType TEXT NOT NULL DEFAULT 'HARD';"
+        )
+        addColumnIfMissing(
+            conn,
+            "ALTER TABLE part_allocations ADD COLUMN referenceType TEXT NOT NULL DEFAULT 'BUILD_ORDER';"
+        )
+        addColumnIfMissing(
+            conn,
+            "ALTER TABLE part_allocations ADD COLUMN allocatedQuantity REAL NOT NULL DEFAULT 0.0;"
+        )
+        addColumnIfMissing(
+            conn,
+            "ALTER TABLE part_allocations ADD COLUMN createdAt INTEGER NOT NULL DEFAULT 0;"
+        )
+        addColumnIfMissing(
+            conn,
+            "ALTER TABLE part_allocations ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0;"
+        )
+        addColumnIfMissing(
+            conn,
+            "ALTER TABLE part_allocations ADD COLUMN notes TEXT;"
+        )
+        addColumnIfMissing(
+            conn,
+            "ALTER TABLE part_allocations ADD COLUMN version INTEGER NOT NULL DEFAULT 1;"
+        )
+        addColumnIfMissing(
+            conn,
+            "ALTER TABLE part_allocations ADD COLUMN syncStatus TEXT NOT NULL DEFAULT 'PENDING';"
+        )
+        addColumnIfMissing(
+            conn,
+            "ALTER TABLE part_allocations ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0;"
+        )
+        addColumnIfMissing(
+            conn,
+            "ALTER TABLE part_allocations ADD COLUMN lastModifiedByDeviceUuid TEXT;"
+        )
+        if (tableExists(conn, "part_allocations")) {
+            if (hasColumn(conn, "part_allocations", "id")) {
+                conn.prepare("UPDATE part_allocations SET id = rowid WHERE id IS NULL OR id = 0;").use { it.step() }
+            }
+            if (hasColumn(conn, "part_allocations", "uuid")) {
+                conn.prepare("UPDATE part_allocations SET uuid = 'alloc-' || rowid WHERE uuid IS NULL OR uuid = '';").use { it.step() }
+            }
+            if (hasColumn(conn, "part_allocations", "partUuid") && hasColumn(conn, "part_allocations", "partId")) {
+                conn.prepare("UPDATE part_allocations SET partUuid = 'part-' || partId WHERE (partUuid IS NULL OR partUuid = '') AND partId > 0;").use { it.step() }
+            }
+            if (hasColumn(conn, "part_allocations", "partId") && hasColumn(conn, "part_allocations", "partUuid")) {
+                conn.prepare("UPDATE part_allocations SET partId = CAST(REPLACE(partUuid, 'part-', '') AS INTEGER) WHERE (partId IS NULL OR partId = 0) AND partUuid LIKE 'part-%';").use { it.step() }
+            }
+        }
 
         // Core tables UUID and numeric ID migrations
         addColumnIfMissing(conn, "ALTER TABLE parts ADD COLUMN uuid TEXT;")
