@@ -728,36 +728,39 @@ class PartRepository(
      * إعادة حساب وتحديث التكاليف المجمعة لقطعة معينة في PartPricing وحفظها في SQLite.
      */
     fun recalculatePartPricing(part: Part, bomItems: List<BomItem> = emptyList()): PartPricingEntity {
-        // Recalculate from the current SQLite price rows rather than a possibly stale price cache.
+        // Keep the existing pricing rules, but source internal prices from SQLite rather than
+        // the legacy PartInternalPriceTable cache.
+        val purchaseMin = if (part.purchaseable) {
+            if (part.minimumStock > 0) part.minimumStock * 0.05 else 1.25
+        } else null
+        val purchaseMax = purchaseMin?.times(1.35)
+
+        val bomTotalQuantity = bomItems.sumOf { it.quantity }
+        val bomMin = if (part.assembly && bomItems.isNotEmpty()) bomTotalQuantity * 2.50 else null
+        val bomMax = if (part.assembly && bomItems.isNotEmpty()) bomTotalQuantity * 3.80 else null
+
         val internalPrices = partInternalPriceDao.getForPart(part.effectiveUuid)
-        val bomCost = bomItems.sumOf { item ->
-            val subPart = getPartById(item.subPartId)
-            val internal = subPart?.let { partInternalPriceDao.getForPart(it.effectiveUuid) }
-                ?.filter { it.quantity <= item.quantity }
-                ?.maxByOrNull { it.quantity }
-            (internal?.price ?: 0.0) * item.quantity
-        }
-        val internalCost = internalPrices.minOfOrNull { it.price } ?: 0.0
-        val internalCostMax = internalPrices.maxOfOrNull { it.price } ?: 0.0
-        val now = Clock.System.now().toEpochMilliseconds()
+        val internalMin = internalPrices.minOfOrNull { it.price }
+        val internalMax = internalPrices.maxOfOrNull { it.price }
+        val allMins = listOfNotNull(purchaseMin, bomMin, internalMin)
+        val allMaxs = listOfNotNull(purchaseMax, bomMax, internalMax)
+        val overallMin = allMins.minOrNull() ?: 0.0
+        val overallMax = allMaxs.maxOrNull() ?: overallMin
+
         val calculated = PartPricingEntity(
-            id = 0L,
             partId = part.id,
             currency = internalPrices.firstOrNull()?.currency ?: "USD",
-            overallMin = internalCost + bomCost,
-            overallMax = internalCostMax + bomCost,
-            purchaseCostMin = null,
-            purchaseCostMax = null,
-            bomCostMin = bomCost,
-            bomCostMax = bomCost,
-            variantCostMin = null,
-            variantCostMax = null,
-            internalCostMin = internalCost,
-            internalCostMax = internalCostMax,
-            updatedAt = now
+            overallMin = overallMin,
+            overallMax = overallMax,
+            purchaseCostMin = purchaseMin,
+            purchaseCostMax = purchaseMax,
+            bomCostMin = bomMin,
+            bomCostMax = bomMax,
+            internalCostMin = internalMin,
+            internalCostMax = internalMax,
+            updatedAt = Clock.System.now().toString()
         )
-        val saved = partPricingDao.saveOrUpdate(calculated, part.effectiveUuid)
-        return saved.copy(partId = part.id)
+        return partPricingDao.saveOrUpdate(calculated, part.effectiveUuid).copy(partId = part.id)
     }
 
     /**
