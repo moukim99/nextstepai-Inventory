@@ -105,13 +105,13 @@ internal object SqliteDatabaseSchema {
             );
         """.trimIndent()).use { it.step() }
 
-        // 3. Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ù…ÙˆØ§Ø¯ ÙˆØ§Ù„ØªØµÙ†ÙŠØ¹ (BOM)
-        conn.prepare("""
-
         // Backfill legacy/domain IDs for existing rows before repositories map them.
         conn.prepare("UPDATE parts SET id = CAST(SUBSTR(uuid, 6) AS INTEGER) WHERE id = 0 AND uuid LIKE 'part-%' AND SUBSTR(uuid, 6) GLOB '[0-9]*'").use { it.step() }
         backfillMissingNumericIds(conn, "parts", "part-")
 
+
+        // 3. Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ù…ÙˆØ§Ø¯ ÙˆØ§Ù„ØªØµÙ†ÙŠØ¹ (BOM)
+        conn.prepare("""
             CREATE TABLE IF NOT EXISTS bom_items (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 partUuid TEXT NOT NULL DEFAULT '',
@@ -344,8 +344,6 @@ internal object SqliteDatabaseSchema {
             );
         """.trimIndent()).use { it.step() }
 
-        conn.prepare("""
-
         // Upgrade databases created before companies carried a stable numeric ID.
         val companyColumns = mutableSetOf<String>()
         conn.prepare("PRAGMA table_info(companies)").use { stmt ->
@@ -357,6 +355,8 @@ internal object SqliteDatabaseSchema {
         conn.prepare("UPDATE companies SET id = CAST(SUBSTR(uuid, 9) AS INTEGER) WHERE id = 0 AND uuid LIKE 'company-%' AND SUBSTR(uuid, 9) GLOB '[0-9]*'").use { it.step() }
         backfillMissingNumericIds(conn, "companies", "company-")
 
+
+        conn.prepare("""
             CREATE TABLE IF NOT EXISTS company_attachments (
                 uuid TEXT PRIMARY KEY NOT NULL,
                 companyUuid TEXT NOT NULL,
