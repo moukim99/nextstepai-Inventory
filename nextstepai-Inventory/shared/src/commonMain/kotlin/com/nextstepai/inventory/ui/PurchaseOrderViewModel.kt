@@ -229,7 +229,7 @@ class PurchaseOrderViewModel(
         }
         return matchingParts.take(4).map { part ->
             val neededQty = if (part.minimumStock > 0) part.minimumStock * 1.5 else 50.0
-            val price = if (part.minimumStock > 0) part.minimumStock * 0.05 else 3.50
+            val price = 3.50
             PurchaseOrderLineItem(
                 orderId = 0L,
                 supplierPartId = part.id,

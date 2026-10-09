@@ -7,6 +7,8 @@ import com.nextstepai.inventory.data.BuildOrderLineItem
 import com.nextstepai.inventory.data.BuildOrderLineItemTable
 import com.nextstepai.inventory.data.BuildOrderTable
 import com.nextstepai.inventory.data.BuildStatus
+import com.nextstepai.inventory.data.db.PartDao
+import com.nextstepai.inventory.data.db.StockLocationDao
 import com.nextstepai.inventory.data.StockTrackingType
 import com.nextstepai.inventory.data.db.BomItemDao
 import com.nextstepai.inventory.data.db.BuildItemDao
@@ -41,6 +43,8 @@ class BuildOrderRepository(
     private val bomItemDao: BomItemDao = BomItemDao(),
     private val stockDao: StockItemDao = StockItemDao(),
     private val trackingDao: StockItemTrackingDao = StockItemTrackingDao(),
+    private val partDao: PartDao = PartDao(),
+    private val locationDao: StockLocationDao = StockLocationDao(),
     private val partPricingTable: PartPricingTable = PartPricingTable(),
     private val batchSyncService: BatchSyncService = BatchSyncService()
 ) {
@@ -462,91 +466,113 @@ class BuildOrderRepository(
     fun completeBuildOutput(buildId: Long, completedQty: Double): Boolean {
         require(completedQty > 0.0) { "الكمية المكتملة يجب أن تكون أكبر من الصفر" }
 
-        val build = buildDao.getBuildOrderById(buildId) ?: run {
-            searchBuilds()
-            buildDao.getBuildOrderById(buildId)
-        } ?: throw IllegalArgumentException("أمر التصنيع برقم $buildId غير موجود في قاعدة البيانات")
-
-        // 1. التحقق من حالة الأمر والفرادة التكرارية (Idempotency)
-        if (build.statusCode == BuildStatus.COMPLETE.code || build.completedQuantity >= build.quantity) {
-            throw IllegalStateException("أمر التصنيع '${build.reference}' مكتمل بالفعل ولا يمكن توريد كميات إضافية منه.")
-        }
-        if (build.statusCode == BuildStatus.CANCELLED.code) {
-            throw IllegalStateException("لا يمكن توريد مخرجات لأمر تصنيع ملغي.")
-        }
-
-        val remainingNeeded = build.quantity - build.completedQuantity
-        require(completedQty <= remainingNeeded + 0.0001) {
-            "الكمية المكتملة ($completedQty) تتجاوز الكمية المتبقية المطلوبة ($remainingNeeded) لأمر التصنيع '${build.reference}'"
-        }
-
-        // 2. تجميع متطلبات المواد من بنود الأمر أو من جدول BOM
-        data class ComponentRequirement(
-            val subPartId: Long,
-            val subPartUuid: String,
-            val requiredQty: Double,
-            val lineItemUuid: String? = null,
-            val consumedSoFar: Double = 0.0
-        )
-
-        val dbLineItems = if (build.uuid.isNotBlank()) {
-            lineItemDao.getLineItemsForBuildUuid(build.uuid)
-        } else {
-            lineItemDao.getLineItemsForBuild(buildId)
-        }
-
-        val componentRequirements = mutableListOf<ComponentRequirement>()
-        if (dbLineItems.isNotEmpty()) {
-            for (line in dbLineItems) {
-                val ratio = if (build.quantity > 0.0) line.quantity / build.quantity else 1.0
-                val need = ratio * completedQty
-                componentRequirements.add(
-                    ComponentRequirement(
-                        subPartId = line.subPartId,
-                        subPartUuid = "part-${line.subPartId}",
-                        requiredQty = need,
-                        lineItemUuid = line.uuid,
-                        consumedSoFar = line.consumedQuantity
-                    )
-                )
-            }
-        } else {
-            val bomItems = bomItemDao.getBomItemsPaged(partId = build.partId, limit = 500)
-            for (bom in bomItems) {
-                if (bom.optional) continue
-                val need = bom.quantity * completedQty
-                componentRequirements.add(
-                    ComponentRequirement(
-                        subPartId = bom.subPartId,
-                        subPartUuid = "part-${bom.subPartId}",
-                        requiredQty = need
-                    )
-                )
-            }
-        }
-
-        // 3. التحقق المسبق الإلزامي من توفر أرصدة المكونات في المخزون
-        for (req in componentRequirements) {
-            val availableStocks = stockDao.getAvailableStockItemsForPart(req.subPartId, req.subPartUuid)
-            val totalAvailable = availableStocks.sumOf { it.quantity }
-            if (totalAvailable < req.requiredQty - 0.0001) {
-                throw IllegalStateException(
-                    "رصيد المخزون غير كافٍ للمكون #${req.subPartId}. المطلوب للتصنيع: ${req.requiredQty}، المتوفر حالياً في المخزون: $totalAvailable"
-                )
-            }
-        }
-
-        // 4. تنفيذ العملية كمعاملة ذرية واحدة متكاملة (Atomic SQLite Transaction)
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
         try {
             val now = Clock.System.now().toEpochMilliseconds()
             val todayStr = DateTimeUtils.getCurrentDate()
 
-            // أ. خصم كميات المكونات المستهلكة وتوثيقها في سجل التتبع
-            for (req in componentRequirements) {
-                var remainingToDeduct = req.requiredQty
-                val availableStocks = stockDao.getAvailableStockItemsForPart(req.subPartId, req.subPartUuid)
+            // 1. قراءة حالة أمر التصنيع داخل المعاملة والتحقق من صلاحيتها والفرادة
+            val build = buildDao.getBuildOrderById(buildId)
+                ?: throw IllegalArgumentException("أمر التصنيع برقم $buildId غير موجود في قاعدة البيانات")
+
+            if (build.statusCode == BuildStatus.COMPLETE.code || build.completedQuantity >= build.quantity) {
+                throw IllegalStateException("أمر التصنيع '${build.reference}' مكتمل بالفعل ولا يمكن توريد كميات إضافية منه.")
+            }
+            if (build.statusCode == BuildStatus.CANCELLED.code) {
+                throw IllegalStateException("لا يمكن توريد مخرجات لأمر تصنيع ملغي.")
+            }
+
+            val remainingNeeded = build.quantity - build.completedQuantity
+            require(completedQty <= remainingNeeded + 0.0001) {
+                "الكمية المكتملة ($completedQty) تتجاوز الكمية المتبقية المطلوبة ($remainingNeeded) لأمر التصنيع '${build.reference}'"
+            }
+
+            // 2. التحقق الصارم من موقع الوجهة وموقع السحب (Review Point 6)
+            val destLocId = build.destinationLocationId
+                ?: throw IllegalArgumentException("موقع الوجهة غير محدد لأمر التصنيع '${build.reference}'")
+            val destLocation = locationDao.getLocationById(destLocId)
+                ?: throw IllegalArgumentException("موقع الوجهة (#$destLocId) غير موجود في النظام")
+            if (destLocation.structural) {
+                throw IllegalArgumentException("لا يمكن استقبال المنتجات النهائية في موقع هيكلي ('${destLocation.name}')")
+            }
+
+            if (build.takeFromLocationId != null) {
+                val sourceLoc = locationDao.getLocationById(build.takeFromLocationId)
+                    ?: throw IllegalArgumentException("موقع سحب المواد (#${build.takeFromLocationId}) غير موجود في النظام")
+                if (sourceLoc.structural) {
+                    throw IllegalArgumentException("موقع سحب المواد لا يمكن أن يكون موقعاً هيكلياً ('${sourceLoc.name}')")
+                }
+            }
+
+            // 3. تجميع متطلبات المواد من بنود الأمر أو من جدول BOM
+            data class ComponentRequirement(
+                val subPartId: Long,
+                val subPartUuid: String,
+                val requiredQty: Double,
+                val lineItemUuid: String? = null,
+                val consumedSoFar: Double = 0.0
+            )
+
+            val dbLineItems = if (build.uuid.isNotBlank()) {
+                lineItemDao.getLineItemsForBuildUuid(build.uuid)
+            } else {
+                lineItemDao.getLineItemsForBuild(buildId)
+            }
+
+            val rawRequirements = mutableListOf<ComponentRequirement>()
+            if (dbLineItems.isNotEmpty()) {
+                for (line in dbLineItems) {
+                    val ratio = if (build.quantity > 0.0) line.quantity / build.quantity else 1.0
+                    val need = ratio * completedQty
+                    rawRequirements.add(
+                        ComponentRequirement(
+                            subPartId = line.subPartId,
+                            subPartUuid = "part-${line.subPartId}",
+                            requiredQty = need,
+                            lineItemUuid = line.uuid,
+                            consumedSoFar = line.consumedQuantity
+                        )
+                    )
+                }
+            } else {
+                val bomItems = bomItemDao.getBomItemsPaged(partId = build.partId, limit = 500)
+                for (bom in bomItems) {
+                    if (bom.optional) continue
+                    val need = bom.quantity * completedQty
+                    rawRequirements.add(
+                        ComponentRequirement(
+                            subPartId = bom.subPartId,
+                            subPartUuid = "part-${bom.subPartId}",
+                            requiredQty = need
+                        )
+                    )
+                }
+            }
+
+            // تجميع متطلبات الأصناف المتكررة لمنع الخلل الحسابي (Review Point 1.3)
+            val aggregatedNeeds = rawRequirements.groupBy { it.subPartId }
+                .mapValues { entry -> entry.value.sumOf { it.requiredQty } }
+
+            // 4. التحقق الصارم من توفر الرصيد الإجمالي لكل صنف مجمع داخل المعاملة
+            val sourceLocUuid = build.takeFromLocationId?.let { "loc-$it" }
+            for ((subPartId, totalNeed) in aggregatedNeeds) {
+                val availableStocks = stockDao.getAvailableStockItemsForPart(subPartId, "part-$subPartId")
+                    .filter { stock -> sourceLocUuid == null || stock.locationUuid == sourceLocUuid }
+                val totalAvailable = availableStocks.sumOf { it.quantity }
+                if (totalAvailable < totalNeed - 0.0001) {
+                    throw IllegalStateException(
+                        "رصيد المخزون غير كافٍ للمكون #$subPartId. المطلوب للتصنيع: $totalNeed، المتوفر حالياً في المخزون: $totalAvailable"
+                    )
+                }
+            }
+
+            // 5. خصم كميات المكونات المستهلكة من stock_items وتحديث parts.totalInStock وتوثيق الحركة
+            for ((subPartId, totalNeed) in aggregatedNeeds) {
+                var remainingToDeduct = totalNeed
+                val availableStocks = stockDao.getAvailableStockItemsForPart(subPartId, "part-$subPartId")
+                    .filter { stock -> sourceLocUuid == null || stock.locationUuid == sourceLocUuid }
+
                 for (stock in availableStocks) {
                     if (remainingToDeduct <= 0.0001) break
                     val deductFromThis = minOf(stock.quantity, remainingToDeduct)
@@ -565,8 +591,8 @@ class BuildOrderRepository(
                             stockItemUuid = stock.uuid,
                             trackingTypeCode = StockTrackingType.ADJUST.code,
                             label = "استهلاك مواد في أمر تصنيع #${build.reference}",
-                            notes = "تم سحب $deductFromThis وحدة للمكون #${req.subPartId} لصالح تصنيع الدفعة '${build.batch}'",
-                            deltas = "{\"consumed\": $deductFromThis, \"buildUuid\": \"${build.uuid}\", \"subPartId\": ${req.subPartId}}",
+                            notes = "تم سحب $deductFromThis وحدة للمكون #$subPartId لصالح تصنيع الدفعة '${build.batch}'",
+                            deltas = "{\"consumed\": $deductFromThis, \"buildUuid\": \"${build.uuid}\", \"subPartId\": $subPartId}",
                             createdAt = now,
                             syncStatus = SyncStatus.PENDING
                         )
@@ -574,15 +600,25 @@ class BuildOrderRepository(
                     remainingToDeduct -= deductFromThis
                 }
 
+                // التحقق الحاسم من خصم كامل الكمية المطلوبة دون أي عجز متبقٍ (Review Point 1.4)
+                if (remainingToDeduct > 0.0001) {
+                    throw IllegalStateException("فشل استكمال خصم الكمية المطلوبة للمكون #$subPartId (المتبقي غير مخصوم: $remainingToDeduct)")
+                }
+
+                // مزامنة الرصيد التراكمي في parts (خصم المواد المستهلكة) (Review Point 2)
+                partDao.adjustTotalInStock(subPartId, -totalNeed)
+            }
+
+            // تحديث الكميات المستهلكة في بنود الأمر build_order_lines إن وجدت
+            for (req in rawRequirements) {
                 if (req.lineItemUuid != null) {
                     val updatedConsumed = req.consumedSoFar + req.requiredQty
                     lineItemDao.updateConsumedQuantity(req.lineItemUuid, updatedConsumed, now)
                 }
             }
 
-            // ب. إدراج سجل المنتج النهائي في stock_items
+            // 6. إدراج سجل المنتج النهائي في stock_items
             val finishedItemUuid = AppUuid.generate()
-            val destLocId = build.destinationLocationId ?: 4L
             val finishedStockEntity = StockItemEntity(
                 uuid = finishedItemUuid,
                 partUuid = "part-${build.partId}",
@@ -598,7 +634,10 @@ class BuildOrderRepository(
             )
             stockDao.insertOrUpdate(finishedStockEntity)
 
-            // ج. إدراج سجل تتبع توريد المنتج النهائي
+            // مزامنة الرصيد التراكمي في parts للمنتج النهائي (Review Point 2)
+            partDao.adjustTotalInStock(build.partId, completedQty)
+
+            // 7. إدراج سجل تتبع توريد المنتج النهائي
             val finishedTrackUuid = AppUuid.generate()
             trackingDao.insertOrUpdate(
                 StockItemTrackingEntity(
@@ -613,22 +652,28 @@ class BuildOrderRepository(
                 )
             )
 
-            // د. تحديث كمية الإنجاز وحالة أمر التصنيع
+            // 8. تحديث كمية الإنجاز وحالة أمر التصنيع المشروطة (Review Point 1.5)
             val newCompleted = build.completedQuantity + completedQty
             val isFullyCompleted = newCompleted >= (build.quantity - 0.0001)
             val newStatus = if (isFullyCompleted) BuildStatus.COMPLETE else BuildStatus.IN_PRODUCTION
-            buildDao.updateBuildOrderOutput(
+
+            val updateSuccess = buildDao.updateBuildOrderOutputConditional(
                 uuid = build.uuid,
+                expectedStatusCode = build.statusCode,
+                expectedCompletedQty = build.completedQuantity,
                 newCompletedQty = newCompleted,
                 newStatusCode = newStatus.code,
                 completionDate = if (isFullyCompleted) todayStr else build.completionDate,
                 updatedAt = now
             )
+            if (!updateSuccess) {
+                throw IllegalStateException("تعارض متزامن في تحديث حالة أمر التصنيع '${build.reference}'.")
+            }
 
             // تثبيت المعاملة
             conn.prepare("COMMIT;").use { it.step() }
 
-            // مزامنة الذاكرة المؤقتة القديمة
+            // مزامنة الذاكرة المؤقتة القديمة بأمان
             runCatching { buildTable.completeBuildOutput(buildId, completedQty) }
 
             return true

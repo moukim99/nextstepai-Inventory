@@ -184,6 +184,47 @@ class BuildOrderDao {
         }
     }
 
+    fun updateBuildOrderOutputConditional(
+        uuid: String,
+        expectedStatusCode: Int,
+        expectedCompletedQty: Double,
+        newCompletedQty: Double,
+        newStatusCode: Int,
+        completionDate: String,
+        updatedAt: Long
+    ): Boolean {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            UPDATE build_orders
+            SET completedQuantity = ?,
+                statusCode = ?,
+                completionDate = CASE WHEN ? != '' THEN ? ELSE completionDate END,
+                syncStatus = 'PENDING',
+                updatedAt = ?
+            WHERE uuid = ?
+              AND statusCode = ?
+              AND ABS(completedQuantity - ?) < 0.0001
+              AND isDeleted = 0
+        """.trimIndent()).use { stmt ->
+            stmt.bindDouble(1, newCompletedQty)
+            stmt.bindLong(2, newStatusCode.toLong())
+            stmt.bindText(3, completionDate)
+            stmt.bindText(4, completionDate)
+            stmt.bindLong(5, updatedAt)
+            stmt.bindText(6, uuid)
+            stmt.bindLong(7, expectedStatusCode.toLong())
+            stmt.bindDouble(8, expectedCompletedQty)
+            stmt.step()
+        }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
+    }
+
     fun updateBuildStatus(
         uuid: String,
         newStatusCode: Int,

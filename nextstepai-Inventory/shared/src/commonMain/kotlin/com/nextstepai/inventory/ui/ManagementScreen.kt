@@ -471,7 +471,7 @@ private fun ManagementMainDashboard(
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Text(
-                            text = stringResource(Res.string.card_sales_orders_title),
+                            text = "جدول أوامر البيع للعملاء",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
@@ -479,7 +479,7 @@ private fun ManagementMainDashboard(
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Text(
-                            text = stringResource(Res.string.card_sales_orders_subtitle),
+                            text = "متابعة وإصدار أوامر البيع وربطها بالعملاء والتسليم والفوترة",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -534,7 +534,7 @@ private fun ManagementMainDashboard(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     ) {
                         Text(
-                            text = stringResource(Res.string.open_sales_orders),
+                            text = "فتح أوامر البيع",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.Bold,
                             ),

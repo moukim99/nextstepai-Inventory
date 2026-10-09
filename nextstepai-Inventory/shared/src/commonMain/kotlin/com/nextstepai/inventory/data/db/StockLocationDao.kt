@@ -50,6 +50,21 @@ class StockLocationDao {
         }.getOrNull()
     }
 
+    fun getLocationById(id: Long): StockLocationEntity? {
+        if (id <= 0L) return null
+        return runCatching {
+            val conn = SqliteDatabaseManager.getConnection()
+            val sql = "SELECT $selectColumns FROM stock_locations WHERE (id = ? OR locationId = ? OR uuid = ? OR uuid = ?) AND isDeleted = 0 LIMIT 1"
+            conn.prepare(sql).use { stmt ->
+                stmt.bindLong(1, id)
+                stmt.bindLong(2, id)
+                stmt.bindText(3, "loc-$id")
+                stmt.bindText(4, "location-$id")
+                if (stmt.step()) mapStockLocationEntity(stmt) else null
+            }
+        }.getOrNull()
+    }
+
     fun insertOrUpdate(entity: StockLocationEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""

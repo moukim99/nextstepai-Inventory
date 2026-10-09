@@ -887,16 +887,7 @@ private fun AddPurchaseOrderBottomSheet(
     // حقول إضافة بند جديد داخل الحوار
     var itemPartId by remember { mutableStateOf<Long?>(filteredParts.firstOrNull()?.id) }
     var itemQuantityText by remember { mutableStateOf("100.0") }
-    var itemPriceText by remember { mutableStateOf("5.0") }
-
-    // جلب السعر التلقائي الافتراضي للقطعة فور اختيارها
-    LaunchedEffect(itemPartId) {
-        val selectedPart = parts.find { it.id == itemPartId }
-        if (selectedPart != null) {
-            val autoPrice = if (selectedPart.minimumStock > 0) selectedPart.minimumStock * 0.05 else 5.0
-            itemPriceText = autoPrice.formatMoney()
-        }
-    }
+    var itemPriceText by remember { mutableStateOf("0.0") }
 
     val totalCost = remember(initialLines.toList()) { initialLines.sumOf { it.quantity * it.purchasePrice } }
 

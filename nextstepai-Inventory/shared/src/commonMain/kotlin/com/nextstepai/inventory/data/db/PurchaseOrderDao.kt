@@ -257,6 +257,37 @@ class PurchaseOrderDao {
         }
     }
 
+    fun updateLineReceivedQuantityConditional(
+        lineUuid: String,
+        deltaQty: Double,
+        updatedAt: Long
+    ): Boolean {
+        val conn = SqliteDatabaseManager.getConnection()
+        val sql = """
+            UPDATE purchase_order_lines
+            SET receivedQuantity = receivedQuantity + ?,
+                updatedAt = ?,
+                syncStatus = 'PENDING'
+            WHERE uuid = ?
+              AND (receivedQuantity + ?) <= (quantity + 0.0001)
+              AND isDeleted = 0
+        """.trimIndent()
+        conn.prepare(sql).use { stmt ->
+            stmt.bindDouble(1, deltaQty)
+            stmt.bindLong(2, updatedAt)
+            stmt.bindText(3, lineUuid)
+            stmt.bindDouble(4, deltaQty)
+            stmt.step()
+        }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
+    }
+
     fun updateOrderStatus(orderUuid: String, newStatusCode: Int, updatedAt: Long) {
         val conn = SqliteDatabaseManager.getConnection()
         val sql = """
