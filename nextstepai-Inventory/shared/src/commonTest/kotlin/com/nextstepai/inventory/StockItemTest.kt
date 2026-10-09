@@ -5,6 +5,7 @@ import com.nextstepai.inventory.data.StockItem
 import com.nextstepai.inventory.data.StockItemTable
 import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.data.StockStatus
+import com.nextstepai.inventory.data.StockTrackingType
 import com.nextstepai.inventory.data.withCapacityUnit
 import com.nextstepai.inventory.data.withWeightInfo
 import com.nextstepai.inventory.data.unitWeight
@@ -14,17 +15,23 @@ import com.nextstepai.inventory.data.getOccupancySummary
 import com.nextstepai.inventory.data.isLabelStale
 import com.nextstepai.inventory.data.labelSnapshotData
 import com.nextstepai.inventory.data.getLabelDiffDetails
+import com.nextstepai.inventory.data.db.PartDao
+import com.nextstepai.inventory.data.db.PartEntity
 import com.nextstepai.inventory.data.db.StockItemDao
 import com.nextstepai.inventory.data.db.StockItemEntity
+import com.nextstepai.inventory.data.db.StockItemTrackingDao
 import com.nextstepai.inventory.auth.AuthTokens
 import com.nextstepai.inventory.auth.SecureTokenStorage
 import com.nextstepai.inventory.repository.StockRepository
+import com.nextstepai.inventory.repository.StocktakeItem
+import com.nextstepai.inventory.repository.StocktakeReconciliationRequest
 import com.nextstepai.inventory.sync.SyncStatus
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
@@ -562,5 +569,191 @@ class StockItemTest {
         val diffs = updatedLoc.getLabelDiffDetails()
         assertTrue(diffs.isNotEmpty())
         assertTrue(diffs.any { it.contains("السعة") && it.contains("300") && it.contains("800") })
+    }
+
+    @Test
+    fun testStocktakeSessionAuditAndReconciliationClosedLoop() {
+        val stockRepository = StockRepository()
+        val partDao = PartDao()
+        val stockDao = StockItemDao()
+        val trackingDao = StockItemTrackingDao()
+
+        val partId = 7100L
+        val stockItemId = 7101L
+        val now = Clock.System.now().toEpochMilliseconds()
+
+        partDao.insertOrUpdate(
+            PartEntity(
+                uuid = "part-$partId",
+                name = "مكثف سيراميكي 100nF",
+                ipn = "CAP-100NF-0805",
+                units = "pcs",
+                totalInStock = 50.0,
+                updatedAt = now
+            )
+        )
+
+        stockRepository.addStockItem(
+            StockItem(
+                id = stockItemId,
+                partId = partId,
+                locationId = 711L,
+                quantity = 50.0,
+                batch = "BATCH-CAP-710"
+            )
+        )
+
+        // 1. توليد جلسة جرد ميداني للصنف
+        val sessionItems = stockRepository.createStocktakeSession(partId = partId)
+        val sessionItem = sessionItems.find { it.stockItemId == stockItemId }
+        assertNotNull(sessionItem)
+        assertEquals(50.0, sessionItem.bookQuantity)
+        assertEquals(50.0, sessionItem.countedQuantity)
+        assertTrue(sessionItem.isMatched)
+
+        // 2. محاكاة فحص فعلي ينتج عنه عجز بمقدار 5 وحدات (الفعلي 45 والدفتري 50)
+        val auditedItems = listOf(sessionItem.copy(countedQuantity = 45.0))
+        val auditResult = stockRepository.calculateStocktakeAudit(auditedItems)
+        assertEquals(1, auditResult.totalItemsCounted)
+        assertEquals(0, auditResult.matchedCount)
+        assertEquals(1, auditResult.shortageCount)
+        assertEquals(-5.0, auditResult.netVariance)
+
+        // 3. اعتماد التسوية الذرية للفارق
+        val reconcileSuccess = stockRepository.reconcileStocktake(
+            StocktakeReconciliationRequest(
+                stockItemId = stockItemId,
+                countedQuantity = 45.0,
+                reason = "تلف عينات أثناء الفحص المخبري",
+                notes = "تم إتلاف 5 وحدات تالفة",
+                userId = 2L
+            )
+        )
+        assertTrue(reconcileSuccess)
+
+        // 4. التحقق من تحديث رصيد الوحدة المخزنية في SQLite
+        val updatedStock = stockDao.getStockItemById(stockItemId)
+        assertNotNull(updatedStock)
+        assertEquals(45.0, updatedStock.quantity)
+        assertEquals("usr-2", updatedStock.stocktakeUserUuid)
+
+        // 5. التحقق من تعديل الرصيد التراكمي للصنف في جدول parts (50 - 5 = 45)
+        val updatedPart = partDao.getPartByUuid("part-$partId")
+        assertNotNull(updatedPart)
+        assertEquals(45.0, updatedPart.totalInStock, "يجب تسوية رصيد الصنف الإجمالي بالفارق الفعلي")
+
+        // 6. التحقق من توثيق حركة التسوية في سجل التتبع
+        val allTrackings = trackingDao.getAllTrackingLogs()
+        val adjustTracking = allTrackings.find { it.stockItemUuid == "stock-$stockItemId" && it.trackingTypeCode == StockTrackingType.ADJUST.code }
+        assertNotNull(adjustTracking, "يجب تسجيل حركة تسوية الجرد (ADJUST) في سجل التتبع")
+        assertTrue(adjustTracking.notes.contains("تلف عينات أثناء الفحص"))
+
+        // 7. التحقق من حماية ومنع الكميات السالبة
+        assertFailsWith<IllegalArgumentException> {
+            stockRepository.reconcileStocktake(
+                StocktakeReconciliationRequest(
+                    stockItemId = stockItemId,
+                    countedQuantity = -10.0,
+                    reason = "خطأ مدخل سالب"
+                )
+            )
+        }
+    }
+
+    @Test
+    fun testWarehouseTransferAtomicityAndGuards() {
+        val stockRepository = StockRepository()
+        val stockDao = StockItemDao()
+        val trackingDao = StockItemTrackingDao()
+
+        val partId = 7200L
+        val stockItemId = 7201L
+        val now = Clock.System.now().toEpochMilliseconds()
+
+        val loc1 = stockRepository.locationRepository.addLocation(
+            StockLocation(name = "مستودع أ - رف 1", locationType = "SHELF", structural = false)
+        )
+        val loc2 = stockRepository.locationRepository.addLocation(
+            StockLocation(name = "مستودع ب - رف 2", locationType = "SHELF", structural = false)
+        )
+        val structuralLoc = stockRepository.locationRepository.addLocation(
+            StockLocation(name = "مبنى الإدارة العام", locationType = "BUILDING", structural = true)
+        )
+
+        stockRepository.addStockItem(
+            StockItem(
+                id = stockItemId,
+                partId = partId,
+                locationId = loc1.id,
+                quantity = 20.0,
+                batch = "BATCH-TRANS-720"
+            )
+        )
+
+        // 1. حماية: منع النقل لنفس الموقع الحالي
+        val sameLocError = assertFailsWith<IllegalArgumentException> {
+            stockRepository.transferStockItem(
+                itemId = stockItemId,
+                sourceLocationId = loc1.id,
+                targetLocationId = loc1.id,
+                quantityToTransfer = 5.0,
+                reason = "نقل لنفس الموقع"
+            )
+        }
+        assertTrue(sameLocError.message?.contains("نفس موقع التخزين") == true)
+
+        // 2. حماية: منع النقل إلى موقع هيكلي
+        val structError = assertFailsWith<IllegalArgumentException> {
+            stockRepository.transferStockItem(
+                itemId = stockItemId,
+                sourceLocationId = loc1.id,
+                targetLocationId = structuralLoc.id,
+                quantityToTransfer = 5.0,
+                reason = "نقل لموقع هيكلي"
+            )
+        }
+        assertTrue(structError.message?.contains("موقع هيكلي") == true)
+
+        // 3. حماية: منع نقل كمية أكبر من المتاح (25 > 20)
+        val overflowError = assertFailsWith<IllegalArgumentException> {
+            stockRepository.transferStockItem(
+                itemId = stockItemId,
+                sourceLocationId = loc1.id,
+                targetLocationId = loc2.id,
+                quantityToTransfer = 25.0,
+                reason = "كمية زائدة"
+            )
+        }
+        assertTrue(overflowError.message?.contains("أكبر من الكمية المتاحة") == true)
+
+        // 4. تنفيذ نقل جزئي ناجح (8 وحدات من أصل 20 إلى الموقع 2)
+        val partialTransferSuccess = stockRepository.transferStockItem(
+            itemId = stockItemId,
+            sourceLocationId = loc1.id,
+            targetLocationId = loc2.id,
+            quantityToTransfer = 8.0,
+            reason = "تغذية خط الإنتاج B"
+        )
+        assertTrue(partialTransferSuccess)
+
+        // التحقق من الرصيد في المصدر والوجهة (12 في المصدر و 8 في الوجهة)
+        val sourceAfter = stockDao.getStockItemById(stockItemId)
+        assertNotNull(sourceAfter)
+        assertEquals(12.0, sourceAfter.quantity, 0.001)
+
+        val targetItems = stockDao.getStockItemsPaged(locationUuid = "loc-${loc2.id}")
+        val targetItem = targetItems.find { it.partUuid == "part-$partId" }
+        assertNotNull(targetItem)
+        assertEquals(8.0, targetItem.quantity, 0.001)
+
+        // 5. التحقق من ثبات مجموع الكميات (12 + 8 = 20)
+        val allStocksForPart = stockDao.getAvailableStockItemsForPart(partId)
+        val totalQuantity = allStocksForPart.sumOf { it.quantity }
+        assertEquals(20.0, totalQuantity, 0.001, "يجب بقاء مجموع الكميات ثابتاً تماماً بعد النقل (Conservation of Stock)")
+
+        // 6. التحقق من توثيق حركة النقل في سجل التتبع
+        val trackings = trackingDao.getAllTrackingLogs().filter { it.stockItemUuid == "stock-$stockItemId" }
+        val moveLog = trackings.find { it.trackingTypeCode == StockTrackingType.MOVE.code }
+        assertNotNull(moveLog, "يجب توثيق حركة النقل (MOVE) في سجل التتبع")
     }
 }
