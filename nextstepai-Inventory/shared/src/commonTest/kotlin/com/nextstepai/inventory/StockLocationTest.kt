@@ -491,6 +491,34 @@ class StockLocationTest {
         repo.getLocations().filter { it.parentId == wh.id }.forEach { repo.deleteLocation(it.id) }
         repo.deleteLocation(wh.id)
     }
+
+    @Test
+    fun testLocationDaoPrioritizedIdentifierResolution() {
+        val dao = StockLocationDao()
+
+        // 1. فحص المطابقة المباشرة بالـ UUID الصريح
+        val loc002 = dao.getLocationByUuid("loc-002")
+        kotlin.test.assertNotNull(loc002)
+        assertEquals("loc-002", loc002.uuid)
+        assertEquals(false, loc002.structural)
+
+        // 2. فحص المطابقة بالصيغة المختصرة غير المبطنة
+        val locShort = dao.getLocationByUuid("loc-2")
+        kotlin.test.assertNotNull(locShort)
+        assertEquals("loc-002", locShort.uuid)
+
+        // 3. فحص المطابقة بالمعرف الرقمي id
+        val locById = dao.getLocationById(2L)
+        kotlin.test.assertNotNull(locById)
+        assertEquals("loc-002", locById.uuid)
+
+        // 4. فحص عدم وجود تداخل أو نتائج خاطئة لمعرفات غير موجودة
+        val nonExistentByUuid = dao.getLocationByUuid("loc-non-existent-999")
+        kotlin.test.assertNull(nonExistentByUuid)
+
+        val nonExistentById = dao.getLocationById(999999L)
+        kotlin.test.assertNull(nonExistentById)
+    }
 }
 
 

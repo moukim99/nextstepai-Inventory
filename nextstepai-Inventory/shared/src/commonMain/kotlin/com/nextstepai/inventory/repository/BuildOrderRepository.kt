@@ -9,6 +9,7 @@ import com.nextstepai.inventory.data.BuildOrderTable
 import com.nextstepai.inventory.data.BuildStatus
 import com.nextstepai.inventory.data.db.PartDao
 import com.nextstepai.inventory.data.db.StockLocationDao
+import com.nextstepai.inventory.data.db.StockLocationEntity
 import com.nextstepai.inventory.data.StockTrackingType
 import com.nextstepai.inventory.data.db.BomItemDao
 import com.nextstepai.inventory.data.db.BuildItemDao
@@ -488,19 +489,27 @@ class BuildOrderRepository(
                 "الكمية المكتملة ($completedQty) تتجاوز الكمية المتبقية المطلوبة ($remainingNeeded) لأمر التصنيع '${build.reference}'"
             }
 
-            // 2. التحقق الصارم من موقع الوجهة وموقع السحب (Review Point 6)
-            val destLocId = build.destinationLocationId
-                ?: locationDao.getAllLocations().firstOrNull { !it.structural && (it.locationType == "LINE" || it.id == 4L || it.uuid.contains("004")) }?.id
-                ?: 4L
-            val destLocation = locationDao.getLocationById(destLocId)
-                ?: locationDao.getLocationByUuid("loc-$destLocId")
-                ?: locationDao.getLocationByUuid("loc-${destLocId.toString().padStart(3, '0')}")
-                ?: locationDao.getAllLocations().firstOrNull { !it.structural }
-                ?: throw IllegalArgumentException("موقع الوجهة (#$destLocId) غير موجود في النظام")
-
-            if (destLocation.structural) {
-                throw IllegalArgumentException("لا يمكن استقبال المنتجات النهائية في موقع هيكلي ('${destLocation.name}')")
+            // 2. التحقق الصارم من موقع الوجهة وموقع السحب (Review Point: Explicit Location Resolution)
+            val destLocation: StockLocationEntity = if (build.destinationLocationId != null) {
+                val reqId = build.destinationLocationId
+                val loc = locationDao.getLocationById(reqId)
+                    ?: locationDao.getLocationByUuid("loc-$reqId")
+                    ?: locationDao.getLocationByUuid("loc-${reqId.toString().padStart(3, '0')}")
+                    ?: throw IllegalArgumentException("موقع الوجهة (#$reqId) غير موجود في النظام")
+                if (loc.structural) {
+                    throw IllegalArgumentException("لا يمكن استقبال المنتجات النهائية في موقع هيكلي ('${loc.name}')")
+                }
+                loc
+            } else {
+                // لم يحدد أمر التصنيع موقع وجهة، يتم اختيار موقع خط الإنتاج غير الهيكلي الفعلي أو أول موقع تخزين غير هيكلي مع التحقق الصارم من وجوده وصلاحيته
+                locationDao.getAllLocations().firstOrNull { !it.structural && it.locationType == "LINE" }
+                    ?: locationDao.getAllLocations().firstOrNull { !it.structural }
+                    ?: throw IllegalStateException("لا يوجد أي موقع تخزين غير هيكلي متاح في النظام لاستقبال المنتجات المصنعة")
             }
+
+            val destLocId = destLocation.id.takeIf { it > 0L }
+                ?: build.destinationLocationId
+                ?: (destLocation.uuid.removePrefix("location-").removePrefix("loc-").toLongOrNull() ?: 1L)
 
             if (build.takeFromLocationId != null) {
                 val sourceLoc = locationDao.getLocationById(build.takeFromLocationId)
@@ -624,10 +633,11 @@ class BuildOrderRepository(
 
             // 6. إدراج سجل المنتج النهائي في stock_items
             val finishedItemUuid = AppUuid.generate()
+            val finalFinishedLocUuid = if (build.destinationLocationId != null) "loc-${build.destinationLocationId}" else destLocation.uuid
             val finishedStockEntity = StockItemEntity(
                 uuid = finishedItemUuid,
                 partUuid = "part-${build.partId}",
-                locationUuid = "loc-$destLocId",
+                locationUuid = finalFinishedLocUuid,
                 quantity = completedQty,
                 batch = build.batch.ifBlank { "BATCH-${build.reference}" },
                 statusCode = 10,

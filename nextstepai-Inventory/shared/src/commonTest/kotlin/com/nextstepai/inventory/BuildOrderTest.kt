@@ -14,6 +14,7 @@ import com.nextstepai.inventory.data.db.BomItemEntity
 import com.nextstepai.inventory.data.db.StockItemDao
 import com.nextstepai.inventory.data.db.StockItemEntity
 import com.nextstepai.inventory.data.db.StockItemTrackingDao
+import com.nextstepai.inventory.data.db.StockLocationDao
 import com.nextstepai.inventory.repository.BuildOrderRepository
 import com.nextstepai.inventory.sync.SyncStatus
 import com.nextstepai.inventory.util.AppUuid
@@ -436,6 +437,91 @@ class BuildOrderTest {
         // التأكد من أن الرصيد لم يخصم مرة ثانية (100 - 5 = 95)
         val stockAfter = stockDao.getAvailableStockItemsForPart(subPartId).sumOf { it.quantity }
         assertEquals(95.0, stockAfter, "لا يجوز خصم المخزون مرتين عند إعادة محاولة توريد أمر مكتمل")
+    }
+
+    @Test
+    fun testManufacturingRejectNonExistentDestinationLocation() {
+        val repository = BuildOrderRepository()
+        val boDao = BuildOrderDao()
+        val stockDao = StockItemDao()
+
+        val parentPartId = 940L
+        val bo = repository.addBuildOrder(
+            BuildOrder(
+                id = 9400L,
+                reference = "BO-TEST-NON-EXISTENT-LOC",
+                partId = parentPartId,
+                quantity = 5.0,
+                destinationLocationId = 99999L
+            )
+        )
+
+        // محاولة التوريد مع موقع وجهة غير موجود على الإطلاق
+        val error = assertFailsWith<IllegalArgumentException> {
+            repository.completeBuildOutput(bo.id, 5.0)
+        }
+        assertTrue(error.message?.contains("غير موجود في النظام") == true)
+
+        val uncompleted = boDao.getBuildOrderById(bo.id)
+        assertNotNull(uncompleted)
+        assertEquals(0.0, uncompleted.completedQuantity)
+        val stocks = stockDao.getAvailableStockItemsForPart(parentPartId)
+        assertTrue(stocks.none { it.buildUuid == "build-${bo.id}" })
+    }
+
+    @Test
+    fun testManufacturingRejectStructuralDestinationLocation() {
+        val repository = BuildOrderRepository()
+        val boDao = BuildOrderDao()
+
+        val parentPartId = 950L
+        val bo = repository.addBuildOrder(
+            BuildOrder(
+                id = 9500L,
+                reference = "BO-TEST-STRUCTURAL-LOC",
+                partId = parentPartId,
+                quantity = 4.0,
+                destinationLocationId = 1L // المستودع المركزي وهو هيكلي
+            )
+        )
+
+        // محاولة التوريد في موقع هيكلي
+        val error = assertFailsWith<IllegalArgumentException> {
+            repository.completeBuildOutput(bo.id, 4.0)
+        }
+        assertTrue(error.message?.contains("موقع هيكلي") == true)
+
+        val uncompleted = boDao.getBuildOrderById(bo.id)
+        assertNotNull(uncompleted)
+        assertEquals(0.0, uncompleted.completedQuantity)
+    }
+
+    @Test
+    fun testManufacturingValidFallbackWhenLocationUnspecified() {
+        val repository = BuildOrderRepository()
+        val stockDao = StockItemDao()
+        val locationDao = StockLocationDao()
+
+        val parentPartId = 960L
+        val bo = repository.addBuildOrder(
+            BuildOrder(
+                id = 9600L,
+                reference = "BO-TEST-FALLBACK-DEST",
+                partId = parentPartId,
+                quantity = 2.0,
+                destinationLocationId = null // غير محدد
+            )
+        )
+
+        val success = repository.completeBuildOutput(bo.id, 2.0)
+        assertTrue(success)
+
+        val stocks = stockDao.getAvailableStockItemsForPart(parentPartId).filter { it.buildUuid == "build-${bo.id}" }
+        assertEquals(1, stocks.size)
+        val locUuid = stocks.first().locationUuid.orEmpty()
+        val resolvedLoc = locationDao.getLocationByUuid(locUuid)
+        assertNotNull(resolvedLoc)
+        assertTrue(!resolvedLoc.structural, "موقع الوجهة المختار افتراضياً يجب أن يكون غير هيكلي وصالح للتخزين")
     }
 }
 

@@ -42,41 +42,83 @@ class StockLocationDao {
         if (uuid.isBlank()) return null
         return runCatching {
             val conn = SqliteDatabaseManager.getConnection()
-            val numericSuffix = uuid.removePrefix("location-").removePrefix("loc-").toLongOrNull()
-            val paddedUuid = numericSuffix?.let { "loc-${it.toString().padStart(3, '0')}" } ?: uuid
-            val shortUuid = numericSuffix?.let { "loc-$it" } ?: uuid
-            val sql = "SELECT $selectColumns FROM stock_locations WHERE (uuid = ? OR uuid = ? OR uuid = ?) AND isDeleted = 0 LIMIT 1"
-            conn.prepare(sql).use { stmt ->
+            // 1. الأولوية القصوى للمطابقة التامة الصريحة على عمود uuid
+            val exactSql = "SELECT $selectColumns FROM stock_locations WHERE uuid = ? AND isDeleted = 0 LIMIT 1"
+            conn.prepare(exactSql).use { stmt ->
                 stmt.bindText(1, uuid)
-                stmt.bindText(2, paddedUuid)
-                stmt.bindText(3, shortUuid)
-                if (stmt.step()) mapStockLocationEntity(stmt) else null
+                if (stmt.step()) return@runCatching mapStockLocationEntity(stmt)
             }
+
+            // 2. مطابقة مرنة مرتبة بدقة لمنع أي تعارض عند وجود صيغ متعددة للمعرف نفسه
+            val numericSuffix = uuid.removePrefix("location-").removePrefix("loc-").toLongOrNull()
+            if (numericSuffix != null && numericSuffix > 0L) {
+                val paddedUuid = "loc-${numericSuffix.toString().padStart(3, '0')}"
+                val shortUuid = "loc-$numericSuffix"
+                val flexSql = """
+                    SELECT $selectColumns FROM stock_locations 
+                    WHERE (uuid = ? OR uuid = ? OR id = ? OR locationId = ?) AND isDeleted = 0 
+                    ORDER BY CASE 
+                        WHEN uuid = ? THEN 1 
+                        WHEN uuid = ? THEN 2 
+                        WHEN id = ? THEN 3 
+                        ELSE 4 
+                    END 
+                    LIMIT 1
+                """.trimIndent()
+                conn.prepare(flexSql).use { stmt ->
+                    stmt.bindText(1, paddedUuid)
+                    stmt.bindText(2, shortUuid)
+                    stmt.bindLong(3, numericSuffix)
+                    stmt.bindLong(4, numericSuffix)
+                    stmt.bindText(5, paddedUuid)
+                    stmt.bindText(6, shortUuid)
+                    stmt.bindLong(7, numericSuffix)
+                    if (stmt.step()) return@runCatching mapStockLocationEntity(stmt)
+                }
+            }
+            null
         }.getOrNull()
     }
 
     fun getLocationById(id: Long): StockLocationEntity? {
         if (id <= 0L) return null
-        val formatted = id.toString()
-        val padded = formatted.padStart(3, '0')
         return runCatching {
             val conn = SqliteDatabaseManager.getConnection()
-            val sql = "SELECT $selectColumns FROM stock_locations WHERE (id = ? OR locationId = ? OR uuid = ? OR uuid = ? OR uuid = ? OR uuid = ?) AND isDeleted = 0 LIMIT 1"
-            conn.prepare(sql).use { stmt ->
+            // 1. الأولوية للمطابقة المباشرة على المعرف الرقمي
+            val exactIdSql = "SELECT $selectColumns FROM stock_locations WHERE (id = ? OR locationId = ?) AND isDeleted = 0 ORDER BY id DESC LIMIT 1"
+            conn.prepare(exactIdSql).use { stmt ->
                 stmt.bindLong(1, id)
                 stmt.bindLong(2, id)
-                stmt.bindText(3, "loc-$formatted")
-                stmt.bindText(4, "loc-$padded")
-                stmt.bindText(5, "location-$formatted")
-                stmt.bindText(6, "location-$padded")
-                if (stmt.step()) mapStockLocationEntity(stmt) else null
+                if (stmt.step()) return@runCatching mapStockLocationEntity(stmt)
             }
+
+            // 2. المطابقة عبر نمط الـ UUID المرتبط بالمعرف الرقمي بترتيب أولوية صريح
+            val formatted = id.toString()
+            val padded = formatted.padStart(3, '0')
+            val flexSql = """
+                SELECT $selectColumns FROM stock_locations 
+                WHERE (uuid = ? OR uuid = ? OR uuid = ? OR uuid = ?) AND isDeleted = 0 
+                ORDER BY CASE 
+                    WHEN uuid = ? THEN 1 
+                    WHEN uuid = ? THEN 2 
+                    ELSE 3 
+                END 
+                LIMIT 1
+            """.trimIndent()
+            conn.prepare(flexSql).use { stmt ->
+                stmt.bindText(1, "loc-$padded")
+                stmt.bindText(2, "loc-$formatted")
+                stmt.bindText(3, "location-$padded")
+                stmt.bindText(4, "location-$formatted")
+                stmt.bindText(5, "loc-$padded")
+                stmt.bindText(6, "loc-$formatted")
+                if (stmt.step()) return@runCatching mapStockLocationEntity(stmt)
+            }
+            null
         }.getOrNull() ?: getAllLocations().firstOrNull {
             it.id == id ||
-            it.uuid == "loc-$formatted" ||
-            it.uuid == "loc-$padded" ||
-            it.uuid == "location-$formatted" ||
-            it.uuid == "location-$padded" ||
+            it.uuid == "loc-${id.toString().padStart(3, '0')}" ||
+            it.uuid == "loc-$id" ||
             it.uuid.removePrefix("loc-").removePrefix("location-").toLongOrNull() == id
         }
     }

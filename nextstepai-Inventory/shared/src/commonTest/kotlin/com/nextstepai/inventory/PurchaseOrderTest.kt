@@ -12,6 +12,8 @@ import com.nextstepai.inventory.data.db.PurchaseOrderEntity
 import com.nextstepai.inventory.data.db.StockItemDao
 import com.nextstepai.inventory.data.db.StockItemEntity
 import com.nextstepai.inventory.data.db.StockItemTrackingDao
+import com.nextstepai.inventory.data.db.StockLocationDao
+import com.nextstepai.inventory.data.db.StockLocationEntity
 import com.nextstepai.inventory.auth.AuthTokens
 import com.nextstepai.inventory.auth.SecureTokenStorage
 import com.nextstepai.inventory.repository.PurchaseOrderRepository
@@ -166,6 +168,14 @@ class PurchaseOrderTest {
                 units = "pcs",
                 totalInStock = 0.0,
                 updatedAt = now
+            )
+        )
+
+        StockLocationDao().insertOrUpdate(
+            StockLocationEntity(
+                uuid = "loc-recv-01",
+                name = "موقع الاستلام التجريبي",
+                structural = false
             )
         )
 
@@ -338,5 +348,122 @@ class PurchaseOrderTest {
 
         val stocks = stockDao.getAvailableStockItemsForPart(partId).filter { it.purchaseOrderUuid == "po-8300" }
         assertTrue(stocks.isEmpty(), "يجب ألا يتم إنشاء أي سجل مخزون عند رفض المعاملة")
+    }
+
+    @Test
+    fun testProcurementRejectNonExistentDestinationLocation() {
+        val repository = PurchaseOrderRepository()
+        val poDao = PurchaseOrderDao()
+        val stockDao = StockItemDao()
+
+        val partId = 841L
+        repository.addOrder(
+            PurchaseOrder(
+                id = 8400L,
+                reference = "PO-TEST-NON-EXISTENT-LOC",
+                supplierId = 15L,
+                status = POStatus.PENDING,
+                lineItems = listOf(
+                    PurchaseOrderLineItem(
+                        id = 8401L,
+                        orderId = 8400L,
+                        supplierPartId = partId,
+                        quantity = 5.0,
+                        receivedQuantity = 0.0,
+                        purchasePrice = 15.0
+                    )
+                )
+            )
+        )
+        repository.updateOrderStatus(8400L, POStatus.PLACED)
+
+        // محاولة استلام مع تحديد موقع غير موجود على الإطلاق
+        val error = assertFailsWith<IllegalArgumentException> {
+            repository.receiveLineItem(8401L, 5.0, destinationLocationUuid = "non-existent-loc-999")
+        }
+        assertTrue(error.message?.contains("غير موجود في النظام") == true)
+
+        // التأكد من الذرية التامة وعدم إدراج أي سجل مخزون وعدم تعديل البند
+        val line = poDao.getLineById(8401L)
+        assertNotNull(line)
+        assertEquals(0.0, line.receivedQuantity)
+        val stocks = stockDao.getAvailableStockItemsForPart(partId).filter { it.purchaseOrderUuid == "po-8400" }
+        assertTrue(stocks.isEmpty())
+    }
+
+    @Test
+    fun testProcurementRejectStructuralDestinationLocation() {
+        val repository = PurchaseOrderRepository()
+        val poDao = PurchaseOrderDao()
+
+        val partId = 851L
+        repository.addOrder(
+            PurchaseOrder(
+                id = 8500L,
+                reference = "PO-TEST-STRUCTURAL-LOC",
+                supplierId = 16L,
+                status = POStatus.PENDING,
+                lineItems = listOf(
+                    PurchaseOrderLineItem(
+                        id = 8501L,
+                        orderId = 8500L,
+                        supplierPartId = partId,
+                        quantity = 8.0,
+                        receivedQuantity = 0.0,
+                        purchasePrice = 20.0
+                    )
+                )
+            )
+        )
+        repository.updateOrderStatus(8500L, POStatus.PLACED)
+
+        // محاولة استلام في موقع هيكلي (المستودع الرئيسي loc-001)
+        val error = assertFailsWith<IllegalArgumentException> {
+            repository.receiveLineItem(8501L, 4.0, destinationLocationUuid = "loc-001")
+        }
+        assertTrue(error.message?.contains("موقع هيكلي") == true)
+
+        val line = poDao.getLineById(8501L)
+        assertNotNull(line)
+        assertEquals(0.0, line.receivedQuantity)
+    }
+
+    @Test
+    fun testProcurementValidFallbackWhenLocationUnspecified() {
+        val repository = PurchaseOrderRepository()
+        val stockDao = StockItemDao()
+        val locationDao = StockLocationDao()
+
+        val partId = 861L
+        repository.addOrder(
+            PurchaseOrder(
+                id = 8600L,
+                reference = "PO-TEST-FALLBACK-LOC",
+                supplierId = 17L,
+                status = POStatus.PENDING,
+                destinationLocationUuid = null,
+                lineItems = listOf(
+                    PurchaseOrderLineItem(
+                        id = 8601L,
+                        orderId = 8600L,
+                        supplierPartId = partId,
+                        quantity = 6.0,
+                        receivedQuantity = 0.0,
+                        purchasePrice = 10.0
+                    )
+                )
+            )
+        )
+        repository.updateOrderStatus(8600L, POStatus.PLACED)
+
+        // استلام بدون تمرير موقع وجهة وبدون وجود موقع في أمر الشراء
+        val success = repository.receiveLineItem(8601L, 6.0, destinationLocationUuid = null)
+        assertTrue(success)
+
+        val stocks = stockDao.getAvailableStockItemsForPart(partId).filter { it.purchaseOrderUuid == "po-8600" }
+        val locUuid = stocks.first().locationUuid.orEmpty()
+        val resolvedLoc = locationDao.getLocationByUuid(locUuid)
+        assertNotNull(resolvedLoc)
+        assertTrue(!resolvedLoc.structural, "الموقع المختار بالـ fallback يجب أن يكون غير هيكلي وصالح للتخزين")
     }
 }

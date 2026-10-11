@@ -168,27 +168,27 @@ internal object SqliteDatabaseSeeder {
                     }
                 }
 
-                // تحديث السجلات القائمة لضمان صحة القيم الهيكلية والمعرفات الرقمية حتى في قواعد البيانات السابقة
+                // تحديث السجلات القائمة لضمان صحة القيم الهيكلية والمعرفات الرقمية دون تعارض مع أي معرفات أخرى قائمة
                 conn.prepare("""
                     UPDATE stock_locations SET structural = 0 WHERE uuid IN ('loc-002', 'loc-003', 'loc-004', 'loc-006');
                 """.trimIndent()).use { it.step() }
                 conn.prepare("""
-                    UPDATE stock_locations SET id = 1, locationId = 1 WHERE uuid = 'loc-001' AND (id = 0 OR id IS NULL);
+                    UPDATE stock_locations SET id = 1, locationId = 1 WHERE uuid = 'loc-001' AND (id = 0 OR id IS NULL) AND NOT EXISTS (SELECT 1 FROM stock_locations WHERE id = 1 AND uuid != 'loc-001');
                 """.trimIndent()).use { it.step() }
                 conn.prepare("""
-                    UPDATE stock_locations SET id = 2, locationId = 2 WHERE uuid = 'loc-002' AND (id = 0 OR id IS NULL);
+                    UPDATE stock_locations SET id = 2, locationId = 2 WHERE uuid = 'loc-002' AND (id = 0 OR id IS NULL) AND NOT EXISTS (SELECT 1 FROM stock_locations WHERE id = 2 AND uuid != 'loc-002');
                 """.trimIndent()).use { it.step() }
                 conn.prepare("""
-                    UPDATE stock_locations SET id = 3, locationId = 3 WHERE uuid = 'loc-003' AND (id = 0 OR id IS NULL);
+                    UPDATE stock_locations SET id = 3, locationId = 3 WHERE uuid = 'loc-003' AND (id = 0 OR id IS NULL) AND NOT EXISTS (SELECT 1 FROM stock_locations WHERE id = 3 AND uuid != 'loc-003');
                 """.trimIndent()).use { it.step() }
                 conn.prepare("""
-                    UPDATE stock_locations SET id = 4, locationId = 4 WHERE uuid = 'loc-004' AND (id = 0 OR id IS NULL);
+                    UPDATE stock_locations SET id = 4, locationId = 4 WHERE uuid = 'loc-004' AND (id = 0 OR id IS NULL) AND NOT EXISTS (SELECT 1 FROM stock_locations WHERE id = 4 AND uuid != 'loc-004');
                 """.trimIndent()).use { it.step() }
                 conn.prepare("""
-                    UPDATE stock_locations SET id = 5, locationId = 5 WHERE uuid = 'loc-005' AND (id = 0 OR id IS NULL);
+                    UPDATE stock_locations SET id = 5, locationId = 5 WHERE uuid = 'loc-005' AND (id = 0 OR id IS NULL) AND NOT EXISTS (SELECT 1 FROM stock_locations WHERE id = 5 AND uuid != 'loc-005');
                 """.trimIndent()).use { it.step() }
                 conn.prepare("""
-                    UPDATE stock_locations SET id = 6, locationId = 6 WHERE uuid = 'loc-006' AND (id = 0 OR id IS NULL);
+                    UPDATE stock_locations SET id = 6, locationId = 6 WHERE uuid = 'loc-006' AND (id = 0 OR id IS NULL) AND NOT EXISTS (SELECT 1 FROM stock_locations WHERE id = 6 AND uuid != 'loc-006');
                 """.trimIndent()).use { it.step() }
             }
         }

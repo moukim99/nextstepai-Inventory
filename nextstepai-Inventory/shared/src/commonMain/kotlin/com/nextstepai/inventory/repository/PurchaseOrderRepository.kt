@@ -21,6 +21,7 @@ import com.nextstepai.inventory.sync.SyncStatus
 import kotlin.time.Clock
 
 import com.nextstepai.inventory.data.db.StockLocationDao
+import com.nextstepai.inventory.data.db.StockLocationEntity
 import com.nextstepai.inventory.data.db.getRoomDatabase
 
 /**
@@ -238,20 +239,23 @@ class PurchaseOrderRepository(
                 "الكمية المستلمة ($qty) تتجاوز الكمية المتبقية المطلوبة ($remainingNeeded) للبند في أمر الشراء '$orderRef'."
             }
 
-            // 3. التحقق من صحة موقع الاستلام وعدم كونه موقعاً هيكلياً
-            val nonStructuralFallback = locationDao.getAllLocations().firstOrNull { !it.structural }?.uuid ?: "loc-002"
+            // 3. التحقق الصارم من موقع الاستلام داخل المعاملة (Review Point: Location Validation & Fallback Policy)
             val requestedLocationUuid = destinationLocationUuid ?: orderEntity.destinationLocationUuid?.takeIf { it.isNotBlank() }
-            val finalLocationUuid: String
-            if (requestedLocationUuid != null) {
+            val targetLocation: StockLocationEntity = if (requestedLocationUuid != null) {
                 val loc = locationDao.getLocationByUuid(requestedLocationUuid)
-                    ?: locationDao.getLocationById(requestedLocationUuid.removePrefix("loc-").toLongOrNull() ?: -1L)
-                if (loc != null && loc.structural) {
+                    ?: locationDao.getLocationById(requestedLocationUuid.removePrefix("location-").removePrefix("loc-").toLongOrNull() ?: -1L)
+                    ?: throw IllegalArgumentException("موقع الاستلام المحدد ('$requestedLocationUuid') غير موجود في النظام")
+                if (loc.structural) {
                     throw IllegalArgumentException("لا يمكن استلام المواد في موقع هيكلي ('${loc.name}')")
                 }
-                finalLocationUuid = requestedLocationUuid
+                loc
             } else {
-                finalLocationUuid = nonStructuralFallback
+                // في حال عدم تحديد موقع استلام صريح، يتم اختيار أول موقع استلام غير هيكلي فعلي في النظام مع التحقق من وجوده
+                locationDao.getAllLocations().firstOrNull { !it.structural && it.locationType == "RECEIVING" }
+                    ?: locationDao.getAllLocations().firstOrNull { !it.structural }
+                    ?: throw IllegalStateException("لا يوجد أي موقع تخزين غير هيكلي صالح للاستلام في النظام")
             }
+            val finalLocationUuid = targetLocation.uuid
 
             // 4. تحديث كمية الاستلام المشروطة في purchase_order_lines مع فحص الصفوف المتأثرة
             val updateSuccess = orderDao.updateLineReceivedQuantityConditional(lineEntity.uuid, qty, now)
