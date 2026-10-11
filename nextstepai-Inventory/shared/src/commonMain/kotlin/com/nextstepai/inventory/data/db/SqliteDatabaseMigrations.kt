@@ -338,6 +338,7 @@ internal object SqliteDatabaseMigrations {
 
         addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN uuid TEXT;")
         addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN description TEXT NOT NULL DEFAULT '';")
         addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN phone TEXT NOT NULL DEFAULT '';")
         addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN email TEXT NOT NULL DEFAULT '';")
         addColumnIfMissing(conn, "ALTER TABLE companies ADD COLUMN isSupplier INTEGER NOT NULL DEFAULT 1;")

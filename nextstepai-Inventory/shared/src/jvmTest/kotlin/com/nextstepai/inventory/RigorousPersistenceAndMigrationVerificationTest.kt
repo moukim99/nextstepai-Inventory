@@ -449,7 +449,7 @@ class RigorousPersistenceAndMigrationVerificationTest {
         val driver = BundledSQLiteDriver()
         val rawConn = driver.open(tempDbFile.absolutePath)
         try {
-            // إنشاء جدول مواقع قديم وإدراج سجل بـ id = 0 وسجل بـ id = NULL
+            // 1. إنشاء جدول stock_locations قديم وإدراج سجل بـ id = 0 وسجل بـ id = NULL
             rawConn.prepare("""
                 CREATE TABLE stock_locations (
                     uuid TEXT PRIMARY KEY NOT NULL,
@@ -474,21 +474,86 @@ class RigorousPersistenceAndMigrationVerificationTest {
                 VALUES ('loc-null-test', NULL, NULL, 'موقع ذو معرّف فارغ');
             """.trimIndent()).use { it.step() }
 
+            // 2. إنشاء جدول parts قديم وإدراج سجل بـ id = 0 وسجل بـ id = NULL
+            rawConn.prepare("""
+                CREATE TABLE parts (
+                    uuid TEXT PRIMARY KEY NOT NULL,
+                    id INTEGER,
+                    name TEXT NOT NULL,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                    isDeleted INTEGER NOT NULL DEFAULT 0,
+                    updatedAt INTEGER NOT NULL DEFAULT 0
+                );
+            """.trimIndent()).use { it.step() }
+
+            rawConn.prepare("""
+                INSERT INTO parts (uuid, id, name)
+                VALUES ('part-zero-test', 0, 'قطعة ذات معرّف صفر');
+            """.trimIndent()).use { it.step() }
+
+            rawConn.prepare("""
+                INSERT INTO parts (uuid, id, name)
+                VALUES ('part-null-test', NULL, 'قطعة ذات معرّف فارغ');
+            """.trimIndent()).use { it.step() }
+
+            // 3. إنشاء جدول companies قديم وإدراج سجل بـ id = 0 وسجل بـ id = NULL
+            rawConn.prepare("""
+                CREATE TABLE companies (
+                    uuid TEXT PRIMARY KEY NOT NULL,
+                    id INTEGER,
+                    name TEXT NOT NULL,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                    isDeleted INTEGER NOT NULL DEFAULT 0,
+                    updatedAt INTEGER NOT NULL DEFAULT 0
+                );
+            """.trimIndent()).use { it.step() }
+
+            rawConn.prepare("""
+                INSERT INTO companies (uuid, id, name)
+                VALUES ('comp-zero-test', 0, 'شركة ذات معرّف صفر');
+            """.trimIndent()).use { it.step() }
+
+            rawConn.prepare("""
+                INSERT INTO companies (uuid, id, name)
+                VALUES ('comp-null-test', NULL, 'شركة ذات معرّف فارغ');
+            """.trimIndent()).use { it.step() }
+
             rawConn.close()
 
             // تشغيل مسار الترقية الكامل عبر SqliteDatabaseManager
             SqliteDatabaseManager.setCustomDatabasePath(tempDbFile.absolutePath)
             val locationDao = StockLocationDao()
+            val partDao = PartDao()
+            val companyDao = CompanyDao()
 
+            // التحقق من stock_locations
             val zeroLoc = locationDao.getLocationByUuid("loc-zero-test")
             val nullLoc = locationDao.getLocationByUuid("loc-null-test")
+            assertNotNull(zeroLoc, "يجب العثور على الموقع ذو المعرف 0 بعد الترقية")
+            assertNotNull(nullLoc, "يجب العثور على الموقع ذو المعرف NULL بعد الترقية")
+            assertTrue(zeroLoc.id > 0, "يجب أن يتم إسناد معرّف رقمي موجب لسجل الموقع الذي كان يحمل id = 0")
+            assertTrue(nullLoc.id > 0, "يجب أن يتم إسناد معرّف رقمي موجب لسجل الموقع الذي كان يحمل id = NULL")
+            assertTrue(zeroLoc.id != nullLoc.id, "يجب أن تكون المعرّفات الرقمية للمواقع مسندة بشكل فريد ومتباين")
 
-            assertNotNull(zeroLoc, "يجب العثور على الموقع الأول بعد الترقية")
-            assertNotNull(nullLoc, "يجب العثور على الموقع الثاني بعد الترقية")
+            // التحقق من parts
+            val zeroPart = partDao.getPartByUuid("part-zero-test")
+            val nullPart = partDao.getPartByUuid("part-null-test")
+            assertNotNull(zeroPart, "يجب العثور على القطعة ذات المعرف 0 بعد الترقية")
+            assertNotNull(nullPart, "يجب العثور على القطعة ذات المعرف NULL بعد الترقية")
+            assertTrue(zeroPart.id > 0, "يجب أن يتم إسناد معرّف رقمي موجب لسجل القطعة الذي كان يحمل id = 0")
+            assertTrue(nullPart.id > 0, "يجب أن يتم إسناد معرّف رقمي موجب لسجل القطعة الذي كان يحمل id = NULL")
+            assertTrue(zeroPart.id != nullPart.id, "يجب أن تكون المعرّفات الرقمية للقطع مسندة بشكل فريد ومتباين")
 
-            assertTrue(zeroLoc.id > 0, "يجب أن يتم إسناد معرّف رقمي موجب للسجل الذي كان يحمل id = 0")
-            assertTrue(nullLoc.id > 0, "يجب أن يتم إسناد معرّف رقمي موجب للسجل الذي كان يحمل id = NULL")
-            assertTrue(zeroLoc.id != nullLoc.id, "يجب أن تكون المعرّفات الرقمية المسندة فريدة ومتباينة")
+            // التحقق من companies
+            val zeroComp = companyDao.getCompanyByUuid("comp-zero-test")
+            val nullComp = companyDao.getCompanyByUuid("comp-null-test")
+            assertNotNull(zeroComp, "يجب العثور على الشركة ذات المعرف 0 بعد الترقية")
+            assertNotNull(nullComp, "يجب العثور على الشركة ذات المعرف NULL بعد الترقية")
+            assertTrue(zeroComp.id > 0, "يجب أن يتم إسناد معرّف رقمي موجب لسجل الشركة الذي كان يحمل id = 0")
+            assertTrue(nullComp.id > 0, "يجب أن يتم إسناد معرّف رقمي موجب لسجل الشركة الذي كان يحمل id = NULL")
+            assertTrue(zeroComp.id != nullComp.id, "يجب أن تكون المعرّفات الرقمية للشركات مسندة بشكل فريد ومتباين")
         } finally {
             SqliteDatabaseManager.closeDatabase()
             SqliteDatabaseManager.setCustomDatabasePath(null)
