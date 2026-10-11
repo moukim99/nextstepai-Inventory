@@ -428,10 +428,16 @@ class StockRepository(
     }
 
     /**
-     * تجزئة كمية مخزنية إلى تشغيلة أصل وفرع وتسجيل حركات التجزئة.
-     * يدعم [onBeforeCommit] لحقن فحص أو خطأ اختباري قبل تأكيد المعاملة للتأكد من التراجع الذري التام (Atomic Rollback).
+     * تجزئة كمية مخزنية إلى تشغيلة أصل وفرع وتسجيل حركات التجزئة في واجهة الإنتاج العامة.
      */
-    fun splitStockItem(
+    fun splitStockItem(parentId: Long, splitQuantity: Double): StockItem {
+        return splitStockItemInternal(parentId, splitQuantity, null)
+    }
+
+    /**
+     * دالة التجزئة الداخلية المحمية، تُتيح حقن [onBeforeCommit] حصراً لأغراض الاختبار والتحقق الذري.
+     */
+    internal fun splitStockItemInternal(
         parentId: Long,
         splitQuantity: Double,
         onBeforeCommit: (() -> Unit)? = null

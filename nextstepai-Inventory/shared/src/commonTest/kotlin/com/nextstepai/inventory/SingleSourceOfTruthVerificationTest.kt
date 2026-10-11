@@ -1180,7 +1180,7 @@ class SingleSourceOfTruthVerificationTest {
         val allTrackingCountBefore = (StockItemTrackingDao().getAllTrackingLogs()).size
 
         val internalFailureEx = assertFailsWith<IllegalStateException> {
-            stockRepo.splitStockItem(initialStock.id, 40.0, onBeforeCommit = {
+            stockRepo.splitStockItemInternal(initialStock.id, 40.0, onBeforeCommit = {
                 // إلقاء استثناء داخلي في منتصف المعاملة قبل COMMIT
                 throw IllegalStateException("خطأ داخلي متعمد لمحاكاة انقطاع أو عطل قبل تأكيد المعاملة")
             })
