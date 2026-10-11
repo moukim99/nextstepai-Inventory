@@ -429,8 +429,13 @@ class StockRepository(
 
     /**
      * تجزئة كمية مخزنية إلى تشغيلة أصل وفرع وتسجيل حركات التجزئة.
+     * يدعم [onBeforeCommit] لحقن فحص أو خطأ اختباري قبل تأكيد المعاملة للتأكد من التراجع الذري التام (Atomic Rollback).
      */
-    fun splitStockItem(parentId: Long, splitQuantity: Double): StockItem {
+    fun splitStockItem(
+        parentId: Long,
+        splitQuantity: Double,
+        onBeforeCommit: (() -> Unit)? = null
+    ): StockItem {
         require(splitQuantity > 0.0) { "كمية التجزئة يجب أن تكون أكبر من الصفر" }
 
         val childId = SqliteNumericIdAllocator.nextId("stock_items", "stock-")
@@ -475,6 +480,8 @@ class StockRepository(
             )
             trackingDao.insertOrUpdate(parentTracking)
             trackingDao.insertOrUpdate(childTracking)
+
+            onBeforeCommit?.invoke()
 
             conn.prepare("COMMIT;").use { it.step() }
 

@@ -1175,16 +1175,36 @@ class SingleSourceOfTruthVerificationTest {
         val trackingAfterFailed = stockRepo.getTrackingForStockItem(initialStock.id)
         assertEquals(originalTrackingCount, trackingAfterFailed.size, "لا يجوز توليد أي سجلات تتبع عند فشل التجزئة")
 
-        // محاكاة فشل ذري داخلي في SQLite داخل المعاملة (مثل قيد استثنائي على المعاملة)
-        val conn = SqliteDatabaseManager.getConnection()
-        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
-        val parentEntity = StockItemDao().getStockItemById(initialStock.id)!!
-        StockItemDao().updateStockItemQuantity(parentEntity.uuid, 50.0, Clock.System.now().toEpochMilliseconds())
-        // التراجع الصريح (Simulated Failure & Rollback)
-        conn.prepare("ROLLBACK;").use { it.step() }
+        // محاكاة فشل داخلي حقيقي في منتصف عملية splitStockItem (بعد تحديث رصيد الأصل وإدراج الوحدة الفرعية وسجلات التتبع)
+        val stockCountBefore = stockRepo.getStockItems().size
+        val allTrackingCountBefore = (StockItemTrackingDao().getAllTrackingLogs()).size
 
-        val afterRollbackStock = stockRepo.getStockItems().find { it.id == initialStock.id }!!
-        assertEquals(100.0, afterRollbackStock.quantity, "معاملة SQLite المتراجعة يجب ألا تترك أي أثر على الرصيد الدفتري")
+        val internalFailureEx = assertFailsWith<IllegalStateException> {
+            stockRepo.splitStockItem(initialStock.id, 40.0, onBeforeCommit = {
+                // إلقاء استثناء داخلي في منتصف المعاملة قبل COMMIT
+                throw IllegalStateException("خطأ داخلي متعمد لمحاكاة انقطاع أو عطل قبل تأكيد المعاملة")
+            })
+        }
+        assertTrue(internalFailureEx.message?.contains("خطأ داخلي متعمد") == true)
+
+        // 1. التحقق الصارم من بقاء رصيد الأصل 100.0 كما هو دون أي اقتطاع جزئي
+        val afterMidFailureStock = stockRepo.getStockItems().find { it.id == initialStock.id }!!
+        assertEquals(100.0, afterMidFailureStock.quantity, "فشل التجزئة الداخلي يجب أن يتراجع ويلغي تخفيض رصيد الأصل")
+
+        // 2. التحقق من عدم حفظ أي وحدة فرعية جديدة في جدول المخزون
+        val stockCountAfter = stockRepo.getStockItems().size
+        assertEquals(stockCountBefore, stockCountAfter, "لا يجوز إنشاء أي وحدة فرعية في المخزون عند فشل المعاملة")
+
+        // 3. التحقق من عدم حفظ أي سجلات تتبع جزئية (سواء للأصل أو للفرع)
+        val allTrackingCountAfter = (StockItemTrackingDao().getAllTrackingLogs()).size
+        assertEquals(allTrackingCountBefore, allTrackingCountAfter, "لا يجوز حفظ أي سجل تتبع جزئي عند فشل المعاملة")
+
+        // 4. استمرار قاعدة البيانات في العمل بصورة طبيعية وإجراء تجزئة ناجحة تالية
+        val successfulSplit = stockRepo.splitStockItem(initialStock.id, 25.0)
+        assertTrue(successfulSplit.id > 0)
+        assertEquals(25.0, successfulSplit.quantity)
+        val finalParentStock = stockRepo.getStockItems().find { it.id == initialStock.id }!!
+        assertEquals(75.0, finalParentStock.quantity, "قاعدة البيانات تستمر في العمل طبيعياً وتنفذ العمليات اللاحقة بنجاح")
     }
 }
 
