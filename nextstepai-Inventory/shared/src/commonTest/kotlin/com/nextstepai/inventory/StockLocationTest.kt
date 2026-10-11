@@ -530,51 +530,53 @@ class StockLocationTest {
         val locWithIdUuid = "loc-target-id-7777"
         val locWithLocIdUuid = "loc-target-locid-7777"
 
+        fun cleanup() {
+            conn.prepare("DELETE FROM stock_locations WHERE uuid IN (?, ?)").use { stmt ->
+                stmt.bindText(1, locWithIdUuid)
+                stmt.bindText(2, locWithLocIdUuid)
+                stmt.step()
+            }
+        }
+
         // تنظيف مسبق لأي بيانات قديمة
-        conn.prepare("DELETE FROM stock_locations WHERE uuid IN (?, ?)").use { stmt ->
-            stmt.bindText(1, locWithIdUuid)
-            stmt.bindText(2, locWithLocIdUuid)
-            stmt.step()
-        }
+        cleanup()
 
-        // إنشاء سجلين بتعارض متعمد بين عمود id وعمود locationId مباشرة عبر SQL
-        conn.prepare("""
-            INSERT INTO stock_locations (uuid, id, locationId, name, structural)
-            VALUES (?, ?, ?, ?, ?)
-        """.trimIndent()).use { stmt ->
-            // السجل 1: id = 7777, locationId = 8888
-            stmt.bindText(1, locWithIdUuid)
-            stmt.bindLong(2, targetId)
-            stmt.bindLong(3, 8888L)
-            stmt.bindText(4, "موقع مع id صريح")
-            stmt.bindLong(5, 0L)
-            stmt.step()
-        }
+        try {
+            // إنشاء سجلين بتعارض متعمد بين عمود id وعمود locationId مباشرة عبر SQL
+            conn.prepare("""
+                INSERT INTO stock_locations (uuid, id, locationId, name, structural)
+                VALUES (?, ?, ?, ?, ?)
+            """.trimIndent()).use { stmt ->
+                // السجل 1: id = 7777, locationId = 8888
+                stmt.bindText(1, locWithIdUuid)
+                stmt.bindLong(2, targetId)
+                stmt.bindLong(3, 8888L)
+                stmt.bindText(4, "موقع مع id صريح")
+                stmt.bindLong(5, 0L)
+                stmt.step()
+            }
 
-        conn.prepare("""
-            INSERT INTO stock_locations (uuid, id, locationId, name, structural)
-            VALUES (?, ?, ?, ?, ?)
-        """.trimIndent()).use { stmt ->
-            // السجل 2: id = 9999, locationId = 7777
-            stmt.bindText(1, locWithLocIdUuid)
-            stmt.bindLong(2, 9999L)
-            stmt.bindLong(3, targetId)
-            stmt.bindText(4, "موقع مع locationId مطابق")
-            stmt.bindLong(5, 0L)
-            stmt.step()
-        }
+            conn.prepare("""
+                INSERT INTO stock_locations (uuid, id, locationId, name, structural)
+                VALUES (?, ?, ?, ?, ?)
+            """.trimIndent()).use { stmt ->
+                // السجل 2: id = 9999, locationId = 7777
+                stmt.bindText(1, locWithLocIdUuid)
+                stmt.bindLong(2, 9999L)
+                stmt.bindLong(3, targetId)
+                stmt.bindText(4, "موقع مع locationId مطابق")
+                stmt.bindLong(5, 0L)
+                stmt.step()
+            }
 
-        // التحقق من أن الاستعلام عن targetId يختار دائماً السجل الذي يملك id = targetId وليس locationId
-        val result = dao.getLocationById(targetId)
-        kotlin.test.assertNotNull(result)
-        assertEquals(locWithIdUuid, result.uuid, "يجب إعطاء الأولوية الصريحة لعمود id على عمود locationId عند التعارض")
-        assertEquals(targetId, result.id)
-
-        // تنظيف بعد الاختبار
-        conn.prepare("DELETE FROM stock_locations WHERE uuid IN (?, ?)").use { stmt ->
-            stmt.bindText(1, locWithIdUuid)
-            stmt.bindText(2, locWithLocIdUuid)
-            stmt.step()
+            // التحقق من أن الاستعلام عن targetId يختار دائماً السجل الذي يملك id = targetId وليس locationId
+            val result = dao.getLocationById(targetId)
+            kotlin.test.assertNotNull(result)
+            assertEquals(locWithIdUuid, result.uuid, "يجب إعطاء الأولوية الصريحة لعمود id على عمود locationId عند التعارض")
+            assertEquals(targetId, result.id)
+        } finally {
+            // تنظيف بعد الاختبار حتمي حتى لو فشل أحد التأكيدات
+            cleanup()
         }
     }
 }
