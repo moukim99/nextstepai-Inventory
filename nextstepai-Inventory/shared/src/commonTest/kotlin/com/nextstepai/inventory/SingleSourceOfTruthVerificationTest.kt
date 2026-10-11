@@ -1043,5 +1043,77 @@ class SingleSourceOfTruthVerificationTest {
         assertNull(boRepo.searchBuilds("").find { it.id == 9999L })
         assertNull(catRepo.getCategories().find { it.id == 9999L })
     }
+
+    @Test
+    fun testPhase6FullLifecyclePersistenceAcrossColdRestart() {
+        // 1. إنشاء وتهيئة سجلات في المستودعات
+        val locRepo1 = com.nextstepai.inventory.repository.StockLocationRepository()
+        val catRepo1 = com.nextstepai.inventory.repository.PartCategoryRepository()
+        val partRepo1 = com.nextstepai.inventory.repository.PartRepository()
+        val stockRepo1 = com.nextstepai.inventory.repository.StockRepository()
+
+        val loc = locRepo1.addLocation(StockLocation(name = "مستودع الاختبار الدوري", locationType = "WAREHOUSE"))
+        assertTrue(loc.id > 0)
+
+        val cat = catRepo1.addCategory(name = "تصنيف إلكترونيات اختبارية", description = "تصنيف مرحلي")
+        assertTrue(cat.id > 0)
+
+        val part = partRepo1.addPart(
+            Part(
+                name = "شريحة مرحلة 6",
+                ipn = "PHASE6-CHIP-01",
+                categoryId = cat.id,
+                totalInStock = 100.0
+            )
+        )
+        assertTrue(part.id > 0)
+
+        val stock = stockRepo1.addStockItem(
+            StockItem(
+                partId = part.id,
+                locationId = loc.id,
+                quantity = 50.0,
+                batch = "BATCH-P6-INITIAL"
+            )
+        )
+        assertTrue(stock.id > 0)
+
+        // اختبار تجزئة المخزون الذرية
+        val childStock = stockRepo1.splitStockItem(stock.id, 20.0)
+        assertTrue(childStock.id > 0)
+        assertEquals(20.0, childStock.quantity)
+        assertEquals(30.0, stockRepo1.getStockItems().find { it.id == stock.id }?.quantity)
+
+        // 2. إغلاق قاعدة البيانات وإعادة فتحها (Cold Restart المحاكي لإعادة تشغيل التطبيق بالكامل)
+        val currentDbPath = tempDbFile.absolutePath
+        SqliteDatabaseManager.closeDatabase()
+        SqliteDatabaseManager.setCustomDatabasePath(currentDbPath)
+
+        // 3. استخدام نسخ مستودعات جديدة كلياً
+        val freshLocRepo = com.nextstepai.inventory.repository.StockLocationRepository()
+        val freshCatRepo = com.nextstepai.inventory.repository.PartCategoryRepository()
+        val freshStockRepo = com.nextstepai.inventory.repository.StockRepository()
+
+        // التحقق من استمرارية البيانات المكتوبة
+        val restoredLoc = freshLocRepo.getLocations().find { it.id == loc.id }
+        assertNotNull(restoredLoc, "الموقع يجب أن يستمر في SQLite بعد إعادة التشغيل")
+        assertEquals("مستودع الاختبار الدوري", restoredLoc.name)
+
+        val restoredCat = freshCatRepo.getCategories().find { it.id == cat.id }
+        assertNotNull(restoredCat, "التصنيف يجب أن يستمر في SQLite بعد إعادة التشغيل")
+
+        val restoredParentStock = freshStockRepo.getStockItems().find { it.id == stock.id }
+        assertNotNull(restoredParentStock, "الوحدة المخزنية الأصلية يجب أن تستمر")
+        assertEquals(30.0, restoredParentStock.quantity, "رصيد الوحدة الأصلية بعد التجزئة يجب أن يكون 30.0")
+
+        val restoredChildStock = freshStockRepo.getStockItems().find { it.id == childStock.id }
+        assertNotNull(restoredChildStock, "الوحدة المجزأة يجب أن تستمر برصيدها")
+        assertEquals(20.0, restoredChildStock.quantity)
+
+        // التحقق من نتيجة الحذف الصريحة
+        assertFalse(freshLocRepo.deleteLocationInternal(999999L), "حذف موقع غير موجود يجب أن يرجع false")
+        assertTrue(freshLocRepo.deleteLocationInternal(loc.id), "حذف موقع موجود وخالٍ يجب أن يرجع true")
+        assertNull(freshLocRepo.getLocations().find { it.id == loc.id }, "الموقع المحذوف يجب ألا يظهر في القوائم النشطة")
+    }
 }
 

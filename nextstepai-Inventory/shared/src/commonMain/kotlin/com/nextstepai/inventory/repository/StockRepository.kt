@@ -432,61 +432,71 @@ class StockRepository(
      */
     fun splitStockItem(parentId: Long, splitQuantity: Double): StockItem {
         require(splitQuantity > 0.0) { "كمية التجزئة يجب أن تكون أكبر من الصفر" }
-        val parentEntity = stockDao.getStockItemById(parentId)
-            ?: throw IllegalArgumentException("الوحدة المخزنية الأصلية غير موجودة (#$parentId)")
-        require(parentEntity.quantity >= splitQuantity) { "الكمية المطلوبة للتجزئة أكبر من الرصيد المتوفر" }
 
-        val now = Clock.System.now().toEpochMilliseconds()
-        val childId = runCatching {
-            SqliteNumericIdAllocator.nextId("stock_items", "stock-")
-        }.getOrElse { (getStockItems().maxOfOrNull { it.id } ?: 0L) + 1L }
+        val childId = SqliteNumericIdAllocator.nextId("stock_items", "stock-")
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        try {
+            val parentEntity = stockDao.getStockItemById(parentId)
+                ?: throw IllegalArgumentException("الوحدة المخزنية الأصلية غير موجودة (#$parentId)")
+            require(parentEntity.quantity >= splitQuantity) { "الكمية المطلوبة للتجزئة أكبر من الرصيد المتوفر" }
 
-        val newParentQty = parentEntity.quantity - splitQuantity
-        stockDao.updateStockItemQuantity(parentEntity.uuid, newParentQty, now)
+            val now = Clock.System.now().toEpochMilliseconds()
 
-        val childEntity = parentEntity.copy(
-            uuid = "stock-$childId",
-            quantity = splitQuantity,
-            parentStockItemUuid = parentEntity.uuid,
-            updatedAt = now,
-            syncStatus = SyncStatus.PENDING
-        )
-        stockDao.insertOrUpdate(childEntity)
+            val newParentQty = parentEntity.quantity - splitQuantity
+            stockDao.updateStockItemQuantity(parentEntity.uuid, newParentQty, now)
 
-        val parentTracking = StockItemTrackingEntity(
-            uuid = AppUuid.generate(),
-            stockItemUuid = parentEntity.uuid,
-            trackingTypeCode = StockTrackingType.SPLIT.code,
-            label = "تجزئة مخزنية (اقتطاع كمية)",
-            notes = "تم اقتطاع $splitQuantity لإنشاء الوحدة #$childId",
-            deltas = "{\"splitQuantity\": $splitQuantity, \"remainingQuantity\": $newParentQty}",
-            createdAt = now
-        )
-        val childTracking = StockItemTrackingEntity(
-            uuid = AppUuid.generate(),
-            stockItemUuid = childEntity.uuid,
-            trackingTypeCode = StockTrackingType.SPLIT.code,
-            label = "وحدة مجزأة جديدة من الأصل",
-            notes = "مجزأة من الوحدة #${parentEntity.uuid}",
-            deltas = "{\"initialQuantity\": $splitQuantity, \"parentUuid\": \"${parentEntity.uuid}\"}",
-            createdAt = now
-        )
-        trackingDao.insertOrUpdate(parentTracking)
-        trackingDao.insertOrUpdate(childTracking)
+            val childEntity = parentEntity.copy(
+                uuid = "stock-$childId",
+                quantity = splitQuantity,
+                parentStockItemUuid = parentEntity.uuid,
+                updatedAt = now,
+                syncStatus = SyncStatus.PENDING
+            )
+            stockDao.insertOrUpdate(childEntity)
 
-        return StockItem(
-            id = childId,
-            partId = childEntity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
-            locationId = childEntity.locationUuid?.removePrefix("loc-")?.toLongOrNull(),
-            quantity = childEntity.quantity,
-            serial = childEntity.serial,
-            batch = childEntity.batch,
-            status = StockStatus.fromCode(childEntity.statusCode),
-            packaging = childEntity.packaging,
-            purchasePrice = childEntity.purchasePrice,
-            purchasePriceCurrency = childEntity.purchasePriceCurrency,
-            parentId = parentId
-        )
+            val parentTracking = StockItemTrackingEntity(
+                uuid = AppUuid.generate(),
+                stockItemUuid = parentEntity.uuid,
+                trackingTypeCode = StockTrackingType.SPLIT.code,
+                label = "تجزئة مخزنية (اقتطاع كمية)",
+                notes = "تم اقتطاع $splitQuantity لإنشاء الوحدة #$childId",
+                deltas = "{\"splitQuantity\": $splitQuantity, \"remainingQuantity\": $newParentQty}",
+                createdAt = now
+            )
+            val childTracking = StockItemTrackingEntity(
+                uuid = AppUuid.generate(),
+                stockItemUuid = childEntity.uuid,
+                trackingTypeCode = StockTrackingType.SPLIT.code,
+                label = "وحدة مجزأة جديدة من الأصل",
+                notes = "مجزأة من الوحدة #${parentEntity.uuid}",
+                deltas = "{\"initialQuantity\": $splitQuantity, \"parentUuid\": \"${parentEntity.uuid}\"}",
+                createdAt = now
+            )
+            trackingDao.insertOrUpdate(parentTracking)
+            trackingDao.insertOrUpdate(childTracking)
+
+            conn.prepare("COMMIT;").use { it.step() }
+
+            return StockItem(
+                id = childId,
+                partId = childEntity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
+                locationId = childEntity.locationUuid?.removePrefix("loc-")?.toLongOrNull(),
+                quantity = childEntity.quantity,
+                serial = childEntity.serial,
+                batch = childEntity.batch,
+                status = StockStatus.fromCode(childEntity.statusCode),
+                packaging = childEntity.packaging,
+                purchasePrice = childEntity.purchasePrice,
+                purchasePriceCurrency = childEntity.purchasePriceCurrency,
+                notes = childEntity.notes,
+                link = childEntity.link,
+                parentId = parentId
+            )
+        } catch (e: Throwable) {
+            runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
+            throw e
+        }
     }
 
     /**

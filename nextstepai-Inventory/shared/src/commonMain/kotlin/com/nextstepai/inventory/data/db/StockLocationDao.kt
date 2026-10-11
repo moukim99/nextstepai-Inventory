@@ -222,20 +222,25 @@ class StockLocationDao {
         return insertedCount
     }
 
-    fun softDeleteLocation(uuid: String, updatedAt: Long = Clock.System.now().toEpochMilliseconds()) {
-        runCatching {
+    fun softDeleteLocation(uuid: String, updatedAt: Long = Clock.System.now().toEpochMilliseconds()): Boolean {
+        return runCatching {
             val conn = SqliteDatabaseManager.getConnection()
             val sql = """
                 UPDATE stock_locations
                 SET isDeleted = 1, syncStatus = 'PENDING', version = version + 1, updatedAt = ?
-                WHERE uuid = ?
+                WHERE uuid = ? AND isDeleted = 0
             """.trimIndent()
             conn.prepare(sql).use { stmt ->
                 stmt.bindLong(1, updatedAt)
                 stmt.bindText(2, uuid)
                 stmt.step()
             }
-        }
+            var changes = 0
+            conn.prepare("SELECT changes()").use { stmt ->
+                if (stmt.step()) changes = stmt.getInt(0)
+            }
+            changes > 0
+        }.getOrDefault(false)
     }
 
     fun getRootSitesCount(): Int {

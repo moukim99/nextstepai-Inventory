@@ -272,8 +272,9 @@ class StockLocationTest {
     }
 
     @Test
-    fun testDaoCountAndFindPrimaryQueries() = runBlocking {
-        val dao = StockLocationDao()
+    fun testDaoCountAndFindPrimaryQueries() {
+        runBlocking {
+            val dao = StockLocationDao()
         val now = Clock.System.now().toEpochMilliseconds()
 
         val siteEntity = StockLocationEntity(
@@ -311,6 +312,7 @@ class StockLocationTest {
 
         dao.softDeleteLocation("site-primary-test-1")
         dao.softDeleteLocation("wh-primary-test-1")
+        }
     }
 
     @Test

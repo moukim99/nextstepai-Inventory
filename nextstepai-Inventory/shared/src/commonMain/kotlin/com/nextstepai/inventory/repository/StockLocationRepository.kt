@@ -267,19 +267,21 @@ class StockLocationRepository(
      * حذف موقع تخزيني حذفاً مرناً (Soft Delete).
      */
     fun deleteLocationInternal(locationId: Long): Boolean {
-        val targetLoc = getLocations().find { it.id == locationId }
-        val wasPrimary = targetLoc?.isPrimary == true
-        val targetType = targetLoc?.locationType ?: ""
+        val targetLoc = getLocations().find { it.id == locationId } ?: return false
+        val wasPrimary = targetLoc.isPrimary
+        val targetType = targetLoc.locationType
 
-        locationDao.softDeleteLocation(targetLoc?.uuid ?: "loc-$locationId")
-        targetLoc?.labelImagePath?.let { path ->
+        val deleted = locationDao.softDeleteLocation(targetLoc.uuid)
+        if (!deleted) return false
+
+        targetLoc.labelImagePath?.let { path ->
             runCatching {
                 val file = File(path)
                 if (file.exists()) file.delete()
             }
         }
 
-        if (wasPrimary && targetLoc != null) {
+        if (wasPrimary) {
             val remainingOfSameType = getLocations().filter { loc ->
                 loc.id != locationId &&
                         when {
