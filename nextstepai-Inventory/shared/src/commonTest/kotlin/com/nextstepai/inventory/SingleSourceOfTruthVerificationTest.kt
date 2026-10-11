@@ -1110,10 +1110,81 @@ class SingleSourceOfTruthVerificationTest {
         assertNotNull(restoredChildStock, "الوحدة المجزأة يجب أن تستمر برصيدها")
         assertEquals(20.0, restoredChildStock.quantity)
 
-        // التحقق من نتيجة الحذف الصريحة
-        assertFalse(freshLocRepo.deleteLocationInternal(999999L), "حذف موقع غير موجود يجب أن يرجع false")
-        assertTrue(freshLocRepo.deleteLocationInternal(loc.id), "حذف موقع موجود وخالٍ يجب أن يرجع true")
+        // التحقق من استعادة القطعة نفسها (Part) وسجلات التتبع (Tracking Records)
+        val freshPartRepo = com.nextstepai.inventory.repository.PartRepository()
+        val restoredPart = freshPartRepo.getPartById(part.id)
+        assertNotNull(restoredPart, "القطعة Part يجب أن تستمر ببياناتها كاملة بعد إعادة التشغيل")
+        assertEquals("شريحة مرحلة 6", restoredPart.name)
+        assertEquals("PHASE6-CHIP-01", restoredPart.ipn)
+
+        val trackingLogs = freshStockRepo.getTrackingForStockItem(stock.id)
+        assertTrue(trackingLogs.isNotEmpty(), "سجلات التتبع لحركة التجزئة يجب أن تستمر بعد إعادة التشغيل")
+        assertTrue(trackingLogs.any { it.trackingType == StockTrackingType.SPLIT }, "يجب وجود قيد تتبع من نوع SPLIT للوحدة الأصل")
+
+        val childTrackingLogs = freshStockRepo.getTrackingForStockItem(childStock.id)
+        assertTrue(childTrackingLogs.isNotEmpty(), "سجلات التتبع للوحدة الفرعية يجب أن تستمر")
+
+        // التحقق من سياسة حذف موقع يحتوي على مخزون:
+        // StockRepository.deleteLocation يمنع الحذف برمي IllegalArgumentException لحماية المواد المخزنة
+        val locWithStockException = assertFailsWith<IllegalArgumentException> {
+            freshStockRepo.deleteLocation(loc.id)
+        }
+        assertTrue(locWithStockException.message?.contains("قطعة مادية مخزنة") == true, "يجب منع حذف موقع يحتوي على وحدات مخزنية نشطة")
+
+        // نقل المخزون إلى موقع آخر لتفريغ الموقع الأصلي تماماً
+        val targetLoc = freshLocRepo.addLocation(StockLocation(name = "مستودع الوجهة البديل", locationType = "WAREHOUSE"))
+        assertTrue(freshStockRepo.transferStockItem(stock.id, loc.id, targetLoc.id, restoredParentStock.quantity, "نقل لتفريغ الموقع"))
+        assertTrue(freshStockRepo.transferStockItem(childStock.id, loc.id, targetLoc.id, restoredChildStock.quantity, "نقل لتفريغ الموقع"))
+
+        // الآن حذف الموقع الأصلي الخالي ينجح تماماً
+        assertTrue(freshStockRepo.deleteLocation(loc.id), "حذف موقع خالٍ من المخزون والأبناء يجب أن ينجح ويعيد true")
         assertNull(freshLocRepo.getLocations().find { it.id == loc.id }, "الموقع المحذوف يجب ألا يظهر في القوائم النشطة")
+        assertFalse(freshLocRepo.deleteLocationInternal(999999L), "حذف موقع غير موجود يجب أن يرجع false")
+    }
+
+    @Test
+    fun testPhase6AtomicRollbackOnSplitFailure() {
+        val stockRepo = com.nextstepai.inventory.repository.StockRepository()
+        val locRepo = com.nextstepai.inventory.repository.StockLocationRepository()
+        val partRepo = com.nextstepai.inventory.repository.PartRepository()
+
+        val loc = locRepo.addLocation(StockLocation(name = "مستودع اختبار التراجع الذري", locationType = "WAREHOUSE"))
+        val part = partRepo.addPart(Part(name = "صنف اختبار التراجع", ipn = "ROLLBACK-TEST-01"))
+        val initialStock = stockRepo.addStockItem(
+            StockItem(
+                partId = part.id,
+                locationId = loc.id,
+                quantity = 100.0,
+                batch = "BATCH-ROLLBACK-01"
+            )
+        )
+
+        val originalParentQty = stockRepo.getStockItems().find { it.id == initialStock.id }!!.quantity
+        val originalTrackingCount = stockRepo.getTrackingForStockItem(initialStock.id).size
+
+        // محاكاة فشل متعمد أثناء التجزئة: كمية تفوق الرصيد المتوفر
+        assertFailsWith<IllegalArgumentException> {
+            stockRepo.splitStockItem(initialStock.id, 150.0)
+        }
+
+        // التحقق الصارم من التراجع التام وعدم تغير رصيد الأصل
+        val afterFailedSplitParent = stockRepo.getStockItems().find { it.id == initialStock.id }!!
+        assertEquals(originalParentQty, afterFailedSplitParent.quantity, "رصيد الوحدة الأصلية يجب ألا يتغير عند فشل التجزئة")
+
+        // التحقق من عدم إنشاء أي وحدات فرعية أو سجلات تتبع إضافية
+        val trackingAfterFailed = stockRepo.getTrackingForStockItem(initialStock.id)
+        assertEquals(originalTrackingCount, trackingAfterFailed.size, "لا يجوز توليد أي سجلات تتبع عند فشل التجزئة")
+
+        // محاكاة فشل ذري داخلي في SQLite داخل المعاملة (مثل قيد استثنائي على المعاملة)
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        val parentEntity = StockItemDao().getStockItemById(initialStock.id)!!
+        StockItemDao().updateStockItemQuantity(parentEntity.uuid, 50.0, Clock.System.now().toEpochMilliseconds())
+        // التراجع الصريح (Simulated Failure & Rollback)
+        conn.prepare("ROLLBACK;").use { it.step() }
+
+        val afterRollbackStock = stockRepo.getStockItems().find { it.id == initialStock.id }!!
+        assertEquals(100.0, afterRollbackStock.quantity, "معاملة SQLite المتراجعة يجب ألا تترك أي أثر على الرصيد الدفتري")
     }
 }
 
