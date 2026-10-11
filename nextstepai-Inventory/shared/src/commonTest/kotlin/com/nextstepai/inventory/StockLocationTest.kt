@@ -16,6 +16,7 @@ import com.nextstepai.inventory.data.getFullHierarchyPath
 import com.nextstepai.inventory.ui.StockViewModel
 import com.nextstepai.inventory.data.db.StockLocationDao
 import com.nextstepai.inventory.data.db.StockLocationEntity
+import com.nextstepai.inventory.data.db.SqliteDatabaseManager
 import com.nextstepai.inventory.repository.StockRepository
 import com.nextstepai.inventory.sync.SyncStatus
 import kotlinx.coroutines.runBlocking
@@ -490,6 +491,93 @@ class StockLocationTest {
         insertedList.forEach { repo.deleteLocation(it.id) }
         repo.getLocations().filter { it.parentId == wh.id }.forEach { repo.deleteLocation(it.id) }
         repo.deleteLocation(wh.id)
+    }
+
+    @Test
+    fun testLocationDaoPrioritizedIdentifierResolution() {
+        val dao = StockLocationDao()
+
+        // 1. فحص المطابقة المباشرة بالـ UUID الصريح
+        val loc002 = dao.getLocationByUuid("loc-002")
+        kotlin.test.assertNotNull(loc002)
+        assertEquals("loc-002", loc002.uuid)
+        assertEquals(false, loc002.structural)
+
+        // 2. فحص المطابقة بالصيغة المختصرة غير المبطنة
+        val locShort = dao.getLocationByUuid("loc-2")
+        kotlin.test.assertNotNull(locShort)
+        assertEquals("loc-002", locShort.uuid)
+
+        // 3. فحص المطابقة بالمعرف الرقمي id
+        val locById = dao.getLocationById(2L)
+        kotlin.test.assertNotNull(locById)
+        assertEquals("loc-002", locById.uuid)
+
+        // 4. فحص عدم وجود تداخل أو نتائج خاطئة لمعرفات غير موجودة
+        val nonExistentByUuid = dao.getLocationByUuid("loc-non-existent-999")
+        kotlin.test.assertNull(nonExistentByUuid)
+
+        val nonExistentById = dao.getLocationById(999999L)
+        kotlin.test.assertNull(nonExistentById)
+    }
+
+    @Test
+    fun testLocationDaoNumericIdPriorityOverLocationIdConflict() {
+        val dao = StockLocationDao()
+        val conn = SqliteDatabaseManager.getConnection()
+
+        val targetId = 7777L
+        val locWithIdUuid = "loc-target-id-7777"
+        val locWithLocIdUuid = "loc-target-locid-7777"
+
+        fun cleanup() {
+            conn.prepare("DELETE FROM stock_locations WHERE uuid IN (?, ?)").use { stmt ->
+                stmt.bindText(1, locWithIdUuid)
+                stmt.bindText(2, locWithLocIdUuid)
+                stmt.step()
+            }
+        }
+
+        // تنظيف مسبق لأي بيانات قديمة
+        cleanup()
+
+        try {
+            // إنشاء سجلين بتعارض متعمد بين عمود id وعمود locationId مباشرة عبر SQL
+            conn.prepare("""
+                INSERT INTO stock_locations (uuid, id, locationId, name, structural)
+                VALUES (?, ?, ?, ?, ?)
+            """.trimIndent()).use { stmt ->
+                // السجل 1: id = 7777, locationId = 8888
+                stmt.bindText(1, locWithIdUuid)
+                stmt.bindLong(2, targetId)
+                stmt.bindLong(3, 8888L)
+                stmt.bindText(4, "موقع مع id صريح")
+                stmt.bindLong(5, 0L)
+                stmt.step()
+            }
+
+            conn.prepare("""
+                INSERT INTO stock_locations (uuid, id, locationId, name, structural)
+                VALUES (?, ?, ?, ?, ?)
+            """.trimIndent()).use { stmt ->
+                // السجل 2: id = 9999, locationId = 7777
+                stmt.bindText(1, locWithLocIdUuid)
+                stmt.bindLong(2, 9999L)
+                stmt.bindLong(3, targetId)
+                stmt.bindText(4, "موقع مع locationId مطابق")
+                stmt.bindLong(5, 0L)
+                stmt.step()
+            }
+
+            // التحقق من أن الاستعلام عن targetId يختار دائماً السجل الذي يملك id = targetId وليس locationId
+            val result = dao.getLocationById(targetId)
+            kotlin.test.assertNotNull(result)
+            assertEquals(locWithIdUuid, result.uuid, "يجب إعطاء الأولوية الصريحة لعمود id على عمود locationId عند التعارض")
+            assertEquals(targetId, result.id)
+        } finally {
+            // تنظيف بعد الاختبار حتمي حتى لو فشل أحد التأكيدات
+            cleanup()
+        }
     }
 }
 

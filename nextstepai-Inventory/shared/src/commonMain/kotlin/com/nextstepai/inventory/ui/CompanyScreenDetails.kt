@@ -60,6 +60,7 @@ internal fun CompanyDetailsBottomSheet(
     company: Company,
     uiState: CompanyUiState,
     viewModel: CompanyViewModel,
+    onCreateSalesOrder: ((Company) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -634,6 +635,23 @@ internal fun CompanyDetailsBottomSheet(
                                             }
                                         }
                                     }
+                                }
+                            }
+
+                            if (company.isCustomer && onCreateSalesOrder != null) {
+                                Button(
+                                    onClick = {
+                                        onDismiss()
+                                        onCreateSalesOrder(company)
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                                    contentPadding = PaddingValues(vertical = 10.dp)
+                                ) {
+                                    Icon(Icons.Default.TrendingUp, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("إنشاء أمر بيع جديد لهذا العميل", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 }
                             }
 

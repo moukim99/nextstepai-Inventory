@@ -46,6 +46,10 @@
     <string name="card_orders_subtitle">إدارة طلبات التوريد، تسعير البنود، دورة اعتمادات الشراء، ومطابقة استلام الشحنات.</string>
     <string name="open_orders">فتح الطلبات</string>
 
+    <string name="card_sales_orders_title">جدول أوامر البيع للعملاء</string>
+    <string name="card_sales_orders_subtitle">إدارة طلبات البيع، تتبع متطلبات العملاء، وفحص جاهزية المخزون وتلبيتها.</string>
+    <string name="open_sales_orders">فتح أوامر البيع</string>
+
     <string name="card_companies_title">جدول الشركات والعلاقات</string>
     <string name="card_companies_subtitle">سجلات الموردين، المصنعين الخارجيين، جهات الشحن، ومحددات العملات والاتفاقيات.</string>
     <string name="open_companies">فتح الشركات</string>

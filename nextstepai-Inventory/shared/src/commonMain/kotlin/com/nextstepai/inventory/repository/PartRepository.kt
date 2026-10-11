@@ -849,8 +849,8 @@ class PartRepository(
     fun togglePartStar(partId: Long, userId: Long = 1L): Boolean {
         val targetPart = getPartById(partId)
         val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
-        val userUuid = "usr-$userId"
-        val result = partStarDao.toggleStar(partUuid, userUuid)
+        val userUuid = "usr-${userId.toString().padStart(3, '0')}"
+        val result = partStarDao.toggleStar(partUuid = partUuid, userUuid = userUuid, partId = partId)
         runCatching { partStarTable.toggleStarForPart(partId, userId) }
         return result
     }
@@ -861,17 +861,20 @@ class PartRepository(
     fun isPartStarred(partId: Long, userId: Long = 1L): Boolean {
         val targetPart = getPartById(partId)
         val partUuid = targetPart?.effectiveUuid ?: "part-$partId"
-        val userUuid = "usr-$userId"
-        return partStarDao.isStarred(partUuid, userUuid)
+        val userUuid = "usr-${userId.toString().padStart(3, '0')}"
+        return partStarDao.isStarred(partUuid = partUuid, userUuid = userUuid, partId = partId)
     }
 
     /**
      * جلب قائمة معرفات القطع المفضلة والمتابعة للمستخدم الحالي من SQLite.
      */
     fun getStarredPartIdsForUser(userId: Long = 1L): List<Long> {
-        val userUuid = "usr-$userId"
-        return partStarDao.getStarredPartUuids(userUuid)
-            .mapNotNull { uuid -> partDao.getPartByUuid(uuid)?.let { it.id.takeIf { id -> id > 0L } ?: uuid.removePrefix("part-").toLongOrNull() } }
+        val userUuid = "usr-${userId.toString().padStart(3, '0')}"
+        val uuids = partStarDao.getStarredPartUuids(userUuid)
+        return uuids.mapNotNull { uuid ->
+            partDao.getPartByUuid(uuid)?.id
+                ?: uuid.removePrefix("part-uuid-").removePrefix("part-").toLongOrNull()
+        }.distinct()
     }
 
     /**

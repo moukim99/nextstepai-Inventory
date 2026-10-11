@@ -580,6 +580,7 @@ class StockItemTable {
 
         val sourceItem = stockItems[sourceIndex]
         require(quantityToTransfer > 0.0) { "كمية النقل يجب أن تكون أكبر من الصفر" }
+        require(sourceLocationId != targetLocationId) { "لا يمكن نقل المواد إلى نفس موقع التخزين الحالي" }
         require(quantityToTransfer <= sourceItem.quantity) {
             "الكمية المطلوب نقلها ($quantityToTransfer) أكبر من الكمية المتاحة في السجل الحالي (${sourceItem.quantity})"
         }

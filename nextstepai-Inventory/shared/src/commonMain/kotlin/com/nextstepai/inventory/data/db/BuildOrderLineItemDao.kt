@@ -1,4 +1,4 @@
-﻿package com.nextstepai.inventory.data.db
+package com.nextstepai.inventory.data.db
 
 import androidx.room.Dao
 import androidx.sqlite.SQLiteStatement
@@ -85,6 +85,22 @@ class BuildOrderLineItemDao {
                 stmt.bindText(2, uuid)
                 stmt.step()
             }
+        }
+    }
+
+    fun updateConsumedQuantity(uuid: String, consumedQuantity: Double, updatedAt: Long) {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            UPDATE build_order_line_items
+            SET consumedQuantity = ?,
+                syncStatus = 'PENDING',
+                updatedAt = ?
+            WHERE uuid = ?
+        """.trimIndent()).use { stmt ->
+            stmt.bindDouble(1, consumedQuantity)
+            stmt.bindLong(2, updatedAt)
+            stmt.bindText(3, uuid)
+            stmt.step()
         }
     }
 
