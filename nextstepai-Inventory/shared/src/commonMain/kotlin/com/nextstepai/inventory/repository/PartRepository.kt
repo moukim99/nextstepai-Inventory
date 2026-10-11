@@ -83,7 +83,7 @@ class PartRepository(
     private val partStarTable: PartStarTable = PartStarTable(partTable),
     private val bomItemTable: BomItemTable = BomItemTable(),
     private val partPricingTable: PartPricingTable = PartPricingTable(partTable, bomItemTable = bomItemTable, internalPriceTable = partInternalPriceTable),
-    val categoryRepository: PartCategoryRepository = PartCategoryRepository(partTable = partTable, categoryParameterTable = categoryParameterTable),
+    val categoryRepository: PartCategoryRepository = PartCategoryRepository(),
     private val batchSyncService: BatchSyncService = BatchSyncService(),
     private val imageProcessor: ImageProcessor = ImageProcessor(maxDimension = 1024, compressionQuality = 85)
 ) {

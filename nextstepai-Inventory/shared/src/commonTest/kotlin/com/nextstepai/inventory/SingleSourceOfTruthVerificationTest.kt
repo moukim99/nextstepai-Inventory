@@ -1011,4 +1011,37 @@ class SingleSourceOfTruthVerificationTest {
             runCatching { multiConnDb.delete() }
         }
     }
+
+    @Test
+    fun testPhase6RepositoriesSingleSourceOfTruth() {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("DELETE FROM stock_items;").use { it.step() }
+        conn.prepare("DELETE FROM stock_locations;").use { it.step() }
+        conn.prepare("DELETE FROM purchase_orders;").use { it.step() }
+        conn.prepare("DELETE FROM sales_orders;").use { it.step() }
+        conn.prepare("DELETE FROM build_orders;").use { it.step() }
+        conn.prepare("DELETE FROM part_categories;").use { it.step() }
+
+        val stockRepo = com.nextstepai.inventory.repository.StockRepository()
+        val locRepo = com.nextstepai.inventory.repository.StockLocationRepository()
+        val poRepo = com.nextstepai.inventory.repository.PurchaseOrderRepository()
+        val soRepo = com.nextstepai.inventory.repository.SalesOrderRepository()
+        val boRepo = com.nextstepai.inventory.repository.BuildOrderRepository()
+        val catRepo = com.nextstepai.inventory.repository.PartCategoryRepository()
+
+        assertEquals(emptyList(), stockRepo.getStockItems(), "StockRepository يجب ألا يعيد بيانات وهمية من الذاكرة")
+        assertEquals(emptyList(), locRepo.getLocations(), "StockLocationRepository يجب ألا يعيد بيانات وهمية من الذاكرة")
+        assertEquals(emptyList(), poRepo.searchOrders(""), "PurchaseOrderRepository يجب ألا يعيد بيانات وهمية من الذاكرة")
+        assertEquals(emptyList(), soRepo.searchOrders(""), "SalesOrderRepository يجب ألا يعيد بيانات وهمية من الذاكرة")
+        assertEquals(emptyList(), boRepo.searchBuilds(""), "BuildOrderRepository يجب ألا يعيد بيانات وهمية من الذاكرة")
+        assertEquals(emptyList(), catRepo.getCategories(), "PartCategoryRepository يجب ألا يعيد بيانات وهمية من الذاكرة")
+
+        assertNull(locRepo.getLocations().find { it.id == 9999L })
+        assertNull(stockRepo.getStockItems().find { it.id == 9999L })
+        assertNull(poRepo.searchOrders("").find { it.id == 9999L })
+        assertNull(soRepo.searchOrders("").find { it.id == 9999L })
+        assertNull(boRepo.searchBuilds("").find { it.id == 9999L })
+        assertNull(catRepo.getCategories().find { it.id == 9999L })
+    }
 }
+

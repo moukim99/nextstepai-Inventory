@@ -1,34 +1,63 @@
 package com.nextstepai.inventory.repository
 
 import com.nextstepai.inventory.data.*
+import com.nextstepai.inventory.data.db.PartCategoryDao
+import com.nextstepai.inventory.data.db.SqliteNumericIdAllocator
 
 /**
  * مستودع إدارة تصنيفات القطع وقوالب المعاملات التقنية (Part Categories & Parameter Templates).
  * معزول عن تفاصيل القطع والمخزون لضمان فصل المسؤوليات (Separation of Concerns).
  */
 class PartCategoryRepository(
+    private val categoryDao: PartCategoryDao = PartCategoryDao(),
     @Suppress("DEPRECATION")
-    private val partTable: PartTable = PartTable(),
-    @Suppress("DEPRECATION")
-    private val categoryParameterTable: PartCategoryParameterTable = PartCategoryParameterTable(partTable)
+    private val categoryParameterTable: PartCategoryParameterTable = PartCategoryParameterTable()
 ) {
     /**
-     * جلب جميع التصنيفات المتاحة.
+     * جلب جميع التصنيفات المتاحة من SQLite.
      */
-    fun getCategories(): List<PartCategory> = partTable.getAllCategories()
+    fun getCategories(): List<PartCategory> {
+        val entities = categoryDao.getAllCategories()
+        return entities.mapIndexed { index, entity ->
+            val numericId = entity.uuid.removePrefix("cat-").toLongOrNull() ?: (index + 1L)
+            val parentNumericId = entity.parentUuid?.removePrefix("cat-")?.toLongOrNull()
+            PartCategory(
+                id = numericId,
+                name = entity.name,
+                parentId = parentNumericId,
+                description = entity.description
+            )
+        }
+    }
 
     /**
-     * إنشاء تصنيف جديد وإضافته لجدول التصنيفات.
+     * إنشاء تصنيف جديد وإضافته لجدول التصنيفات الدائم.
      */
-    fun addCategory(name: String, description: String = ""): PartCategory {
-        return partTable.insertCategory(name = name, description = description)
+    fun addCategory(name: String, description: String = "", parentId: Long? = null): PartCategory {
+        val numericId = SqliteNumericIdAllocator.nextId("part_categories", "cat-")
+        val uuid = "cat-$numericId"
+        val parentUuid = parentId?.let { "cat-$it" }
+        categoryDao.insertOrUpdate(
+            uuid = uuid,
+            id = numericId,
+            name = name,
+            parentId = parentId,
+            parentUuid = parentUuid,
+            description = description
+        )
+        return PartCategory(
+            id = numericId,
+            name = name,
+            parentId = parentId,
+            description = description
+        )
     }
 
     /**
      * حذف تصنيف محدد بواسطة المعرف الفريد.
      */
     fun deleteCategory(categoryId: Long): Boolean {
-        return partTable.deleteCategory(categoryId)
+        return categoryDao.deleteCategory("cat-$categoryId")
     }
 
     /**

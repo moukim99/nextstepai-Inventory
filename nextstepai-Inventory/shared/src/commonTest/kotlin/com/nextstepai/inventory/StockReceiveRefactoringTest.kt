@@ -22,7 +22,7 @@ class StockReceiveRefactoringTest {
         stockTable.clearAll()
 
         val partRepo = PartRepository(partTable)
-        val stockRepo = StockRepository(stockTable)
+        val stockRepo = StockRepository()
 
         val loc = stockRepo.addLocation(StockLocation(name = "المستودع الرئيسي > رف A"))
 
