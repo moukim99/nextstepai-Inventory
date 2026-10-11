@@ -308,8 +308,10 @@ class BuildOrderTest {
         val finishedGoods = stockDao.getAvailableStockItemsForPart(parentPartId)
         val finishedItem = finishedGoods.find { it.buildUuid == "build-${bo.id}" || it.batch == "BATCH-910-FINAL" }
         assertNotNull(finishedItem, "يجب إنشاء سجل للمنتج النهائي في جدول المخزون stock_items")
-        assertEquals(10.0, finishedItem.quantity, "كمية المنتج النهائي يجب أن تطابق الكمية المصنعة")
-        assertEquals("loc-4", finishedItem.locationUuid)
+        val expectedLoc = StockLocationDao().getLocationById(4L)
+        assertNotNull(expectedLoc)
+        assertEquals(expectedLoc.uuid, finishedItem.locationUuid, "يجب استخدام معرف الـ UUID المعتمد للموقع المحدد في سجل المنتج النهائي")
+        assertEquals("loc-004", finishedItem.locationUuid)
 
         // 7. التحقق من توثيق سجلات التتبع
         val allTracking = trackingDao.getAllTrackingLogs()

@@ -633,11 +633,10 @@ class BuildOrderRepository(
 
             // 6. إدراج سجل المنتج النهائي في stock_items
             val finishedItemUuid = AppUuid.generate()
-            val finalFinishedLocUuid = if (build.destinationLocationId != null) "loc-${build.destinationLocationId}" else destLocation.uuid
             val finishedStockEntity = StockItemEntity(
                 uuid = finishedItemUuid,
                 partUuid = "part-${build.partId}",
-                locationUuid = finalFinishedLocUuid,
+                locationUuid = destLocation.uuid,
                 quantity = completedQty,
                 batch = build.batch.ifBlank { "BATCH-${build.reference}" },
                 statusCode = 10,

@@ -84,11 +84,22 @@ class StockLocationDao {
         if (id <= 0L) return null
         return runCatching {
             val conn = SqliteDatabaseManager.getConnection()
-            // 1. الأولوية للمطابقة المباشرة على المعرف الرقمي
-            val exactIdSql = "SELECT $selectColumns FROM stock_locations WHERE (id = ? OR locationId = ?) AND isDeleted = 0 ORDER BY id DESC LIMIT 1"
+            // 1. الأولوية الصريحة للمطابقة على عمود id أولاً، ثم عمود locationId ثانياً
+            val exactIdSql = """
+                SELECT $selectColumns FROM stock_locations 
+                WHERE (id = ? OR locationId = ?) AND isDeleted = 0 
+                ORDER BY CASE 
+                    WHEN id = ? THEN 1 
+                    WHEN locationId = ? THEN 2 
+                    ELSE 3 
+                END 
+                LIMIT 1
+            """.trimIndent()
             conn.prepare(exactIdSql).use { stmt ->
                 stmt.bindLong(1, id)
                 stmt.bindLong(2, id)
+                stmt.bindLong(3, id)
+                stmt.bindLong(4, id)
                 if (stmt.step()) return@runCatching mapStockLocationEntity(stmt)
             }
 
