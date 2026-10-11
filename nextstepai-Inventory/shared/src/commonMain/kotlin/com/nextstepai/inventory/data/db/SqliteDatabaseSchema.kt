@@ -1144,7 +1144,7 @@ internal object SqliteDatabaseSchema {
             "Unsupported ID backfill target: $table / $prefix"
         }
         val pendingRowIds = mutableListOf<Long>()
-        conn.prepare("SELECT rowid FROM $table WHERE id = 0 ORDER BY rowid").use { stmt ->
+        conn.prepare("SELECT rowid FROM $table WHERE (id = 0 OR id IS NULL) ORDER BY rowid").use { stmt ->
             while (stmt.step()) pendingRowIds += stmt.getLong(0)
         }
         for (rowId in pendingRowIds) {
@@ -1153,14 +1153,14 @@ internal object SqliteDatabaseSchema {
                 if (stmt.step()) nextId = stmt.getLong(0)
             }
             if (table == "stock_locations" && hasColumn(conn, "stock_locations", "locationId")) {
-                conn.prepare("UPDATE stock_locations SET id = ?, locationId = ? WHERE rowid = ? AND id = 0").use { stmt ->
+                conn.prepare("UPDATE stock_locations SET id = ?, locationId = ? WHERE rowid = ? AND (id = 0 OR id IS NULL)").use { stmt ->
                     stmt.bindLong(1, nextId)
                     stmt.bindLong(2, nextId)
                     stmt.bindLong(3, rowId)
                     stmt.step()
                 }
             } else {
-                conn.prepare("UPDATE $table SET id = ? WHERE rowid = ? AND id = 0").use { stmt ->
+                conn.prepare("UPDATE $table SET id = ? WHERE rowid = ? AND (id = 0 OR id IS NULL)").use { stmt ->
                     stmt.bindLong(1, nextId)
                     stmt.bindLong(2, rowId)
                     stmt.step()

@@ -438,4 +438,61 @@ class RigorousPersistenceAndMigrationVerificationTest {
             runCatching { tempDbFile.delete() }
         }
     }
+
+    @Test
+    fun testMigrationBackfillsNullAndZeroNumericIds() {
+        val runToken = Clock.System.now().toEpochMilliseconds().toString().takeLast(6)
+        val tempDbFile = File(System.getProperty("java.io.tmpdir"), "test_backfill_null_ids_$runToken.db")
+        if (tempDbFile.exists()) tempDbFile.delete()
+        tempDbFile.deleteOnExit()
+
+        val driver = BundledSQLiteDriver()
+        val rawConn = driver.open(tempDbFile.absolutePath)
+        try {
+            // إنشاء جدول مواقع قديم وإدراج سجل بـ id = 0 وسجل بـ id = NULL
+            rawConn.prepare("""
+                CREATE TABLE stock_locations (
+                    uuid TEXT PRIMARY KEY NOT NULL,
+                    id INTEGER,
+                    locationId INTEGER,
+                    name TEXT NOT NULL,
+                    structural INTEGER NOT NULL DEFAULT 0,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    syncStatus TEXT NOT NULL DEFAULT 'PENDING',
+                    isDeleted INTEGER NOT NULL DEFAULT 0,
+                    updatedAt INTEGER NOT NULL DEFAULT 0
+                );
+            """.trimIndent()).use { it.step() }
+
+            rawConn.prepare("""
+                INSERT INTO stock_locations (uuid, id, locationId, name)
+                VALUES ('loc-zero-test', 0, 0, 'موقع ذو معرّف صفر');
+            """.trimIndent()).use { it.step() }
+
+            rawConn.prepare("""
+                INSERT INTO stock_locations (uuid, id, locationId, name)
+                VALUES ('loc-null-test', NULL, NULL, 'موقع ذو معرّف فارغ');
+            """.trimIndent()).use { it.step() }
+
+            rawConn.close()
+
+            // تشغيل مسار الترقية الكامل عبر SqliteDatabaseManager
+            SqliteDatabaseManager.setCustomDatabasePath(tempDbFile.absolutePath)
+            val locationDao = StockLocationDao()
+
+            val zeroLoc = locationDao.getLocationByUuid("loc-zero-test")
+            val nullLoc = locationDao.getLocationByUuid("loc-null-test")
+
+            assertNotNull(zeroLoc, "يجب العثور على الموقع الأول بعد الترقية")
+            assertNotNull(nullLoc, "يجب العثور على الموقع الثاني بعد الترقية")
+
+            assertTrue(zeroLoc.id > 0, "يجب أن يتم إسناد معرّف رقمي موجب للسجل الذي كان يحمل id = 0")
+            assertTrue(nullLoc.id > 0, "يجب أن يتم إسناد معرّف رقمي موجب للسجل الذي كان يحمل id = NULL")
+            assertTrue(zeroLoc.id != nullLoc.id, "يجب أن تكون المعرّفات الرقمية المسندة فريدة ومتباينة")
+        } finally {
+            SqliteDatabaseManager.closeDatabase()
+            SqliteDatabaseManager.setCustomDatabasePath(null)
+            runCatching { tempDbFile.delete() }
+        }
+    }
 }
