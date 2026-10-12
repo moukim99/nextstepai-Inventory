@@ -608,12 +608,14 @@ internal object SqliteDatabaseMigrations {
 
         // Explicitly backfill legacy part_pricing references from parts table without suppressing errors
         if (tableExists(conn, "part_pricing")) {
-            conn.prepare("""
-                UPDATE part_pricing 
-                SET partId = (SELECT parts.id FROM parts WHERE parts.uuid = part_pricing.partUuid)
-                WHERE (partId = 0 OR partId IS NULL)
-                  AND EXISTS (SELECT 1 FROM parts WHERE parts.uuid = part_pricing.partUuid AND parts.id > 0);
-            """.trimIndent()).use { it.step() }
+            if (hasColumn(conn, "part_pricing", "partUuid")) {
+                conn.prepare("""
+                    UPDATE part_pricing 
+                    SET partId = (SELECT parts.id FROM parts WHERE parts.uuid = part_pricing.partUuid)
+                    WHERE (partId = 0 OR partId IS NULL)
+                      AND EXISTS (SELECT 1 FROM parts WHERE parts.uuid = part_pricing.partUuid AND parts.id > 0);
+                """.trimIndent()).use { it.step() }
+            }
             conn.prepare("UPDATE part_pricing SET id = rowid WHERE id = 0;").use { it.step() }
         }
 
@@ -627,6 +629,9 @@ internal object SqliteDatabaseMigrations {
         addColumnIfMissing(conn, "ALTER TABLE app_users ADD COLUMN passwordHash TEXT NOT NULL DEFAULT '';")
         addColumnIfMissing(conn, "ALTER TABLE app_users ADD COLUMN avatarUrl TEXT NOT NULL DEFAULT '';")
         addColumnIfMissing(conn, "ALTER TABLE app_users ADD COLUMN createdAt INTEGER NOT NULL DEFAULT 0;")
+        addColumnIfMissing(conn, "ALTER TABLE app_users ADD COLUMN version INTEGER NOT NULL DEFAULT 1;")
+        addColumnIfMissing(conn, "ALTER TABLE app_users ADD COLUMN syncStatus TEXT NOT NULL DEFAULT 'SYNCHRONIZED';")
+        addColumnIfMissing(conn, "ALTER TABLE app_users ADD COLUMN lastModifiedByDeviceUuid TEXT;")
     }
 
     fun tableExists(conn: SQLiteConnection, tableName: String): Boolean {

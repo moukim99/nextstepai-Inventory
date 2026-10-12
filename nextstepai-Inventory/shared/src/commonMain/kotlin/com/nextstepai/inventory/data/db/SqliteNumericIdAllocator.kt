@@ -1,5 +1,7 @@
 package com.nextstepai.inventory.data.db
 
+import kotlin.time.Clock
+
 /**
  * Allocates the next numeric domain id for legacy entities whose canonical
  * SQLite identity is currently encoded as a `<prefix><numeric-id>` UUID string.
@@ -99,7 +101,23 @@ object SqliteNumericIdAllocator {
 
         // The write lock is acquired before reading or changing the sequence. This
         // closes the race where two processes could both read the same last_id.
-        conn.prepare("BEGIN IMMEDIATE").use { it.step() }
+        // If an outer transaction is already active on this connection, nest via SAVEPOINT.
+        var startedTx = false
+        var savepointName: String? = null
+        try {
+            conn.prepare("BEGIN IMMEDIATE").use { it.step() }
+            startedTx = true
+        } catch (e: Throwable) {
+            val msg = e.message ?: ""
+            if (msg.contains("cannot start a transaction within a transaction", ignoreCase = true)) {
+                val spName = "id_alloc_${table}_${Clock.System.now().toEpochMilliseconds()}"
+                savepointName = spName
+                conn.prepare("SAVEPOINT $spName;").use { it.step() }
+            } else {
+                throw e
+            }
+        }
+
         try {
             conn.prepare(
                 """
@@ -136,10 +154,18 @@ object SqliteNumericIdAllocator {
                 ?: throw IllegalStateException("Unable to allocate a numeric id for $table")
             check(result < Long.MAX_VALUE) { "No more numeric ids available for $table" }
 
-            conn.prepare("COMMIT").use { it.step() }
+            if (startedTx) {
+                conn.prepare("COMMIT").use { it.step() }
+            } else if (savepointName != null) {
+                conn.prepare("RELEASE SAVEPOINT $savepointName;").use { it.step() }
+            }
             result
         } catch (failure: Throwable) {
-            runCatching { conn.prepare("ROLLBACK").use { it.step() } }
+            if (startedTx) {
+                runCatching { conn.prepare("ROLLBACK").use { it.step() } }
+            } else if (savepointName != null) {
+                runCatching { conn.prepare("ROLLBACK TO SAVEPOINT $savepointName;").use { it.step() } }
+            }
             throw failure
         }
     }
