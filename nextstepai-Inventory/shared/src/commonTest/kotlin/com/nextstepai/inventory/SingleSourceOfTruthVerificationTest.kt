@@ -1011,4 +1011,260 @@ class SingleSourceOfTruthVerificationTest {
             runCatching { multiConnDb.delete() }
         }
     }
+
+    @Test
+    fun testPhase6RepositoriesSingleSourceOfTruth() {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("DELETE FROM stock_items;").use { it.step() }
+        conn.prepare("DELETE FROM stock_locations;").use { it.step() }
+        conn.prepare("DELETE FROM purchase_orders;").use { it.step() }
+        conn.prepare("DELETE FROM sales_orders;").use { it.step() }
+        conn.prepare("DELETE FROM build_orders;").use { it.step() }
+        conn.prepare("DELETE FROM part_categories;").use { it.step() }
+
+        val stockRepo = com.nextstepai.inventory.repository.StockRepository()
+        val locRepo = com.nextstepai.inventory.repository.StockLocationRepository()
+        val poRepo = com.nextstepai.inventory.repository.PurchaseOrderRepository()
+        val soRepo = com.nextstepai.inventory.repository.SalesOrderRepository()
+        val boRepo = com.nextstepai.inventory.repository.BuildOrderRepository()
+        val catRepo = com.nextstepai.inventory.repository.PartCategoryRepository()
+
+        assertEquals(emptyList(), stockRepo.getStockItems(), "StockRepository يجب ألا يعيد بيانات وهمية من الذاكرة")
+        assertEquals(emptyList(), locRepo.getLocations(), "StockLocationRepository يجب ألا يعيد بيانات وهمية من الذاكرة")
+        assertEquals(emptyList(), poRepo.searchOrders(""), "PurchaseOrderRepository يجب ألا يعيد بيانات وهمية من الذاكرة")
+        assertEquals(emptyList(), soRepo.searchOrders(""), "SalesOrderRepository يجب ألا يعيد بيانات وهمية من الذاكرة")
+        assertEquals(emptyList(), boRepo.searchBuilds(""), "BuildOrderRepository يجب ألا يعيد بيانات وهمية من الذاكرة")
+        assertEquals(emptyList(), catRepo.getCategories(), "PartCategoryRepository يجب ألا يعيد بيانات وهمية من الذاكرة")
+
+        assertNull(locRepo.getLocations().find { it.id == 9999L })
+        assertNull(stockRepo.getStockItems().find { it.id == 9999L })
+        assertNull(poRepo.searchOrders("").find { it.id == 9999L })
+        assertNull(soRepo.searchOrders("").find { it.id == 9999L })
+        assertNull(boRepo.searchBuilds("").find { it.id == 9999L })
+        assertNull(catRepo.getCategories().find { it.id == 9999L })
+    }
+
+    @Test
+    fun testPhase6FullLifecyclePersistenceAcrossColdRestart() {
+        // 1. إنشاء وتهيئة سجلات في المستودعات
+        val locRepo1 = com.nextstepai.inventory.repository.StockLocationRepository()
+        val catRepo1 = com.nextstepai.inventory.repository.PartCategoryRepository()
+        val partRepo1 = com.nextstepai.inventory.repository.PartRepository()
+        val stockRepo1 = com.nextstepai.inventory.repository.StockRepository()
+
+        val loc = locRepo1.addLocation(StockLocation(name = "مستودع الاختبار الدوري", locationType = "WAREHOUSE"))
+        assertTrue(loc.id > 0)
+
+        val cat = catRepo1.addCategory(name = "تصنيف إلكترونيات اختبارية", description = "تصنيف مرحلي")
+        assertTrue(cat.id > 0)
+
+        val part = partRepo1.addPart(
+            Part(
+                name = "شريحة مرحلة 6",
+                ipn = "PHASE6-CHIP-01",
+                categoryId = cat.id,
+                totalInStock = 100.0
+            )
+        )
+        assertTrue(part.id > 0)
+
+        val stock = stockRepo1.addStockItem(
+            StockItem(
+                partId = part.id,
+                locationId = loc.id,
+                quantity = 50.0,
+                batch = "BATCH-P6-INITIAL"
+            )
+        )
+        assertTrue(stock.id > 0)
+
+        // اختبار تجزئة المخزون الذرية
+        val childStock = stockRepo1.splitStockItem(stock.id, 20.0)
+        assertTrue(childStock.id > 0)
+        assertEquals(20.0, childStock.quantity)
+        assertEquals(30.0, stockRepo1.getStockItems().find { it.id == stock.id }?.quantity)
+
+        // 2. إغلاق قاعدة البيانات وإعادة فتحها (Cold Restart المحاكي لإعادة تشغيل التطبيق بالكامل)
+        val currentDbPath = tempDbFile.absolutePath
+        SqliteDatabaseManager.closeDatabase()
+        SqliteDatabaseManager.setCustomDatabasePath(currentDbPath)
+
+        // 3. استخدام نسخ مستودعات جديدة كلياً
+        val freshLocRepo = com.nextstepai.inventory.repository.StockLocationRepository()
+        val freshCatRepo = com.nextstepai.inventory.repository.PartCategoryRepository()
+        val freshStockRepo = com.nextstepai.inventory.repository.StockRepository()
+
+        // التحقق من استمرارية البيانات المكتوبة
+        val restoredLoc = freshLocRepo.getLocations().find { it.id == loc.id }
+        assertNotNull(restoredLoc, "الموقع يجب أن يستمر في SQLite بعد إعادة التشغيل")
+        assertEquals("مستودع الاختبار الدوري", restoredLoc.name)
+
+        val restoredCat = freshCatRepo.getCategories().find { it.id == cat.id }
+        assertNotNull(restoredCat, "التصنيف يجب أن يستمر في SQLite بعد إعادة التشغيل")
+
+        val restoredParentStock = freshStockRepo.getStockItems().find { it.id == stock.id }
+        assertNotNull(restoredParentStock, "الوحدة المخزنية الأصلية يجب أن تستمر")
+        assertEquals(30.0, restoredParentStock.quantity, "رصيد الوحدة الأصلية بعد التجزئة يجب أن يكون 30.0")
+
+        val restoredChildStock = freshStockRepo.getStockItems().find { it.id == childStock.id }
+        assertNotNull(restoredChildStock, "الوحدة المجزأة يجب أن تستمر برصيدها")
+        assertEquals(20.0, restoredChildStock.quantity)
+
+        // التحقق من استعادة القطعة نفسها (Part) وسجلات التتبع (Tracking Records)
+        val freshPartRepo = com.nextstepai.inventory.repository.PartRepository()
+        val restoredPart = freshPartRepo.getPartById(part.id)
+        assertNotNull(restoredPart, "القطعة Part يجب أن تستمر ببياناتها كاملة بعد إعادة التشغيل")
+        assertEquals("شريحة مرحلة 6", restoredPart.name)
+        assertEquals("PHASE6-CHIP-01", restoredPart.ipn)
+
+        val trackingLogs = freshStockRepo.getTrackingForStockItem(stock.id)
+        assertTrue(trackingLogs.isNotEmpty(), "سجلات التتبع لحركة التجزئة يجب أن تستمر بعد إعادة التشغيل")
+        assertTrue(trackingLogs.any { it.trackingType == StockTrackingType.SPLIT }, "يجب وجود قيد تتبع من نوع SPLIT للوحدة الأصل")
+
+        val childTrackingLogs = freshStockRepo.getTrackingForStockItem(childStock.id)
+        assertTrue(childTrackingLogs.isNotEmpty(), "سجلات التتبع للوحدة الفرعية يجب أن تستمر")
+
+        // التحقق من سياسة حذف موقع يحتوي على مخزون:
+        // StockRepository.deleteLocation يمنع الحذف برمي IllegalArgumentException لحماية المواد المخزنة
+        val locWithStockException = assertFailsWith<IllegalArgumentException> {
+            freshStockRepo.deleteLocation(loc.id)
+        }
+        assertTrue(locWithStockException.message?.contains("قطعة مادية مخزنة") == true, "يجب منع حذف موقع يحتوي على وحدات مخزنية نشطة")
+
+        // نقل المخزون إلى موقع آخر لتفريغ الموقع الأصلي تماماً
+        val targetLoc = freshLocRepo.addLocation(StockLocation(name = "مستودع الوجهة البديل", locationType = "WAREHOUSE"))
+        assertTrue(freshStockRepo.transferStockItem(stock.id, loc.id, targetLoc.id, restoredParentStock.quantity, "نقل لتفريغ الموقع"))
+        assertTrue(freshStockRepo.transferStockItem(childStock.id, loc.id, targetLoc.id, restoredChildStock.quantity, "نقل لتفريغ الموقع"))
+
+        // الآن حذف الموقع الأصلي الخالي ينجح تماماً
+        assertTrue(freshStockRepo.deleteLocation(loc.id), "حذف موقع خالٍ من المخزون والأبناء يجب أن ينجح ويعيد true")
+        assertNull(freshLocRepo.getLocations().find { it.id == loc.id }, "الموقع المحذوف يجب ألا يظهر في القوائم النشطة")
+        assertFalse(freshLocRepo.deleteLocationInternal(999999L), "حذف موقع غير موجود يجب أن يرجع false")
+    }
+
+    @Test
+    fun testPhase6AtomicRollbackOnSplitFailure() {
+        val stockRepo = com.nextstepai.inventory.repository.StockRepository()
+        val locRepo = com.nextstepai.inventory.repository.StockLocationRepository()
+        val partRepo = com.nextstepai.inventory.repository.PartRepository()
+
+        val loc = locRepo.addLocation(StockLocation(name = "مستودع اختبار التراجع الذري", locationType = "WAREHOUSE"))
+        val part = partRepo.addPart(Part(name = "صنف اختبار التراجع", ipn = "ROLLBACK-TEST-01"))
+        val initialStock = stockRepo.addStockItem(
+            StockItem(
+                partId = part.id,
+                locationId = loc.id,
+                quantity = 100.0,
+                batch = "BATCH-ROLLBACK-01"
+            )
+        )
+
+        val originalParentQty = stockRepo.getStockItems().find { it.id == initialStock.id }!!.quantity
+        val originalTrackingCount = stockRepo.getTrackingForStockItem(initialStock.id).size
+
+        // محاكاة فشل متعمد أثناء التجزئة: كمية تفوق الرصيد المتوفر
+        assertFailsWith<IllegalArgumentException> {
+            stockRepo.splitStockItem(initialStock.id, 150.0)
+        }
+
+        // التحقق الصارم من التراجع التام وعدم تغير رصيد الأصل
+        val afterFailedSplitParent = stockRepo.getStockItems().find { it.id == initialStock.id }!!
+        assertEquals(originalParentQty, afterFailedSplitParent.quantity, "رصيد الوحدة الأصلية يجب ألا يتغير عند فشل التجزئة")
+
+        // التحقق من عدم إنشاء أي وحدات فرعية أو سجلات تتبع إضافية
+        val trackingAfterFailed = stockRepo.getTrackingForStockItem(initialStock.id)
+        assertEquals(originalTrackingCount, trackingAfterFailed.size, "لا يجوز توليد أي سجلات تتبع عند فشل التجزئة")
+
+        // محاكاة فشل داخلي حقيقي في منتصف عملية splitStockItem (بعد تحديث رصيد الأصل وإدراج الوحدة الفرعية وسجلات التتبع)
+        val stockCountBefore = stockRepo.getStockItems().size
+        val allTrackingCountBefore = (StockItemTrackingDao().getAllTrackingLogs()).size
+
+        val internalFailureEx = assertFailsWith<IllegalStateException> {
+            stockRepo.splitStockItemInternal(initialStock.id, 40.0, onBeforeCommit = {
+                // إلقاء استثناء داخلي في منتصف المعاملة قبل COMMIT
+                throw IllegalStateException("خطأ داخلي متعمد لمحاكاة انقطاع أو عطل قبل تأكيد المعاملة")
+            })
+        }
+        assertTrue(internalFailureEx.message?.contains("خطأ داخلي متعمد") == true)
+
+        // 1. التحقق الصارم من بقاء رصيد الأصل 100.0 كما هو دون أي اقتطاع جزئي
+        val afterMidFailureStock = stockRepo.getStockItems().find { it.id == initialStock.id }!!
+        assertEquals(100.0, afterMidFailureStock.quantity, "فشل التجزئة الداخلي يجب أن يتراجع ويلغي تخفيض رصيد الأصل")
+
+        // 2. التحقق من عدم حفظ أي وحدة فرعية جديدة في جدول المخزون
+        val stockCountAfter = stockRepo.getStockItems().size
+        assertEquals(stockCountBefore, stockCountAfter, "لا يجوز إنشاء أي وحدة فرعية في المخزون عند فشل المعاملة")
+
+        // 3. التحقق من عدم حفظ أي سجلات تتبع جزئية (سواء للأصل أو للفرع)
+        val allTrackingCountAfter = (StockItemTrackingDao().getAllTrackingLogs()).size
+        assertEquals(allTrackingCountBefore, allTrackingCountAfter, "لا يجوز حفظ أي سجل تتبع جزئي عند فشل المعاملة")
+
+        // 4. استمرار قاعدة البيانات في العمل بصورة طبيعية وإجراء تجزئة ناجحة تالية
+        val successfulSplit = stockRepo.splitStockItem(initialStock.id, 25.0)
+        assertTrue(successfulSplit.id > 0)
+        assertEquals(25.0, successfulSplit.quantity)
+        val finalParentStock = stockRepo.getStockItems().find { it.id == initialStock.id }!!
+        assertEquals(75.0, finalParentStock.quantity, "قاعدة البيانات تستمر في العمل طبيعياً وتنفذ العمليات اللاحقة بنجاح")
+    }
+
+    @Test
+    fun testPartCategoryNonNumericUuidUsesStoredId() {
+        val dao = PartCategoryDao()
+        val repo = com.nextstepai.inventory.repository.PartCategoryRepository(categoryDao = dao)
+
+        dao.insertOrUpdate(
+            uuid = "01912345-6789-7000-8000-000000000001",
+            id = 555L,
+            name = "تصنيف بمعرف نصي غير رقمي",
+            parentId = 111L,
+            parentUuid = "01912345-6789-7000-8000-000000000002",
+            description = "فحص استرجاع المعرف الرقمي المخزن دون اللجوء لرقم الفهرس"
+        )
+
+        val categories = repo.getCategories()
+        val category = categories.find { it.name == "تصنيف بمعرف نصي غير رقمي" }
+        assertNotNull(category)
+        assertEquals(555L, category.id, "يجب استخدام المعرف الرقمي المخزن (id) بدلاً من رقم الفهرس index-based fallback")
+        assertEquals(111L, category.parentId, "يجب استرجاع معرف الأب المخزن (parentId)")
+    }
+
+    @Test
+    fun testPartCategoryPaddedUuidAndStoredLookupsAndDeletion() {
+        val dao = PartCategoryDao()
+        val repo = com.nextstepai.inventory.repository.PartCategoryRepository(categoryDao = dao)
+
+        // 1. إنشاء تصنيف جديد والتحقق من حفظه بصيغة cat-00X المبطنة
+        val parent = repo.addCategory(name = "تصنيف أب مبطن", description = "فحص التبطين")
+        val parentEntity = dao.getCategoryById(parent.id)
+        assertNotNull(parentEntity)
+        assertEquals("cat-${parent.id.toString().padStart(3, '0')}", parentEntity.uuid)
+
+        // 2. إنشاء تصنيف فرعي والتحقق من استخدام المعرف المخزن للأب
+        val child = repo.addCategory(name = "تصنيف ابن", parentId = parent.id)
+        val childEntity = dao.getCategoryById(child.id)
+        assertNotNull(childEntity)
+        assertEquals(parentEntity.uuid, childEntity.parentUuid)
+
+        // 3. التحقق من دعم البحث عن سجل قديم غير مبطن (unpadded)
+        dao.insertOrUpdate(
+            uuid = "cat-88",
+            id = 88L,
+            name = "تصنيف قديم غير مبطن",
+            description = "فحص التوافقية العكسية"
+        )
+        val unpaddedLookup = repo.getCategoryById(88L)
+        assertNotNull(unpaddedLookup)
+        assertEquals(88L, unpaddedLookup.id)
+        assertEquals("تصنيف قديم غير مبطن", unpaddedLookup.name)
+
+        // 4. حذف التصنيف المبطن والتصنيف القديم غير المبطن بنجاح عبر المعرف المخزن
+        val deletedPadded = repo.deleteCategory(parent.id)
+        assertTrue(deletedPadded, "حذف التصنيف المبطن يجب أن ينجح باستخدام UUID المخزن")
+        assertNull(repo.getCategoryById(parent.id))
+
+        val deletedUnpadded = repo.deleteCategory(88L)
+        assertTrue(deletedUnpadded, "حذف التصنيف غير المبطن يجب أن ينجح بالتوافقية العكسية")
+        assertNull(repo.getCategoryById(88L))
+    }
 }
+

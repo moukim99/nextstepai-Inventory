@@ -1,5 +1,6 @@
 package com.nextstepai.inventory
 
+import com.nextstepai.inventory.data.BuildItem
 import com.nextstepai.inventory.data.BuildOrder
 import com.nextstepai.inventory.data.BuildOrderLineItem
 import com.nextstepai.inventory.data.BuildOrderTable
@@ -524,6 +525,65 @@ class BuildOrderTest {
         val resolvedLoc = locationDao.getLocationByUuid(locUuid)
         assertNotNull(resolvedLoc)
         assertTrue(!resolvedLoc.structural, "موقع الوجهة المختار افتراضياً يجب أن يكون غير هيكلي وصالح للتخزين")
+    }
+
+    @Test
+    fun testAddBuildItemAllocationValidationAndAtomicity() {
+        val repository = BuildOrderRepository()
+
+        val build = repository.addBuildOrder(
+            BuildOrder(
+                reference = "BO-TEST-ALLOC-TX",
+                partId = 70L,
+                quantity = 15.0
+            )
+        )
+
+        val line = repository.addLineItem(
+            BuildOrderLineItem(
+                buildId = build.id,
+                bomItemId = 401L,
+                subPartId = 71L,
+                subPartName = "حساس اختبار",
+                quantity = 15.0,
+                allocatedQuantity = 0.0
+            )
+        )
+
+        // 1. التخصيص عند عدم وجود البند يجب أن يفشل ولا يترك أي سجل تخصيص
+        assertFailsWith<IllegalArgumentException> {
+            repository.addBuildItemAllocation(
+                BuildItem(
+                    buildId = build.id,
+                    buildLineId = 999999L,
+                    stockItemId = 888L,
+                    stockItemName = "دفعة تجريبية",
+                    quantity = 5.0
+                )
+            )
+        }
+        val itemsAfterFailed = repository.getBuildItemsForBuild(build.id)
+        assertTrue(itemsAfterFailed.isEmpty())
+
+        // 2. التخصيص الناجح يقوم بحفظ السجل وتحديث كمية البند المخصصة ذرياً
+        val allocatedItem = repository.addBuildItemAllocation(
+            BuildItem(
+                buildId = build.id,
+                buildLineId = line.id,
+                stockItemId = 888L,
+                stockItemName = "دفعة تجريبية",
+                quantity = 5.0
+            )
+        )
+        assertNotNull(allocatedItem)
+        assertTrue(allocatedItem.id > 0L)
+
+        val itemsAfterSuccess = repository.getBuildItemsForBuild(build.id)
+        assertEquals(1, itemsAfterSuccess.size)
+        assertEquals(5.0, itemsAfterSuccess.first().quantity)
+
+        val updatedLine = repository.getLineItemsForBuild(build.id).find { it.id == line.id }!!
+        assertEquals(5.0, updatedLine.allocatedQuantity)
     }
 }
 

@@ -9,11 +9,11 @@ import com.nextstepai.inventory.data.PurchaseOrderLineItem
 import com.nextstepai.inventory.data.SOStatus
 import com.nextstepai.inventory.data.SalesOrder
 import com.nextstepai.inventory.data.SalesOrderLineItem
-import com.nextstepai.inventory.data.SalesOrderTable
 import com.nextstepai.inventory.data.db.PartPricingDao
 import com.nextstepai.inventory.data.db.SalesOrderDao
 import com.nextstepai.inventory.data.db.SalesOrderEntity
 import com.nextstepai.inventory.data.db.SalesOrderLineEntity
+import com.nextstepai.inventory.data.db.SqliteNumericIdAllocator
 import com.nextstepai.inventory.sync.SyncStatus
 
 /**
@@ -31,7 +31,6 @@ data class SalesOrderFulfillmentResult(
  * المستودع المسؤول عن المبيعات ومحرك تلبية الطلبات (Order Fulfillment Engine).
  */
 class SalesOrderRepository(
-    private val salesOrderTable: SalesOrderTable = SalesOrderTable(),
     private val salesOrderDao: SalesOrderDao = SalesOrderDao(),
     private val partRepository: PartRepository = PartRepository(),
     private val partPricingDao: PartPricingDao = PartPricingDao(),
@@ -51,31 +50,25 @@ class SalesOrderRepository(
             offset = 0
         )
         if (entities.isNotEmpty()) {
-            val allTableOrders = salesOrderTable.getAllOrders()
             var result = entities.mapIndexed { index, entity ->
-                val dbLines = salesOrderDao.getLinesForOrderUuid(entity.uuid)
-                val lineItems = if (dbLines.isNotEmpty()) {
-                    dbLines.mapIndexed { lineIdx, lineEntity ->
-                        val lineId = lineEntity.uuid.removePrefix("so-line-").toLongOrNull() ?: (lineIdx + 1L)
-                        SalesOrderLineItem(
-                            id = lineId,
-                            orderId = entity.uuid.removePrefix("so-").toLongOrNull() ?: (index + 1L),
-                            orderUuid = entity.uuid,
-                            partId = lineEntity.partId,
-                            partUuid = lineEntity.partUuid,
-                            partName = lineEntity.partName,
-                            quantity = lineEntity.quantity,
-                            unitPrice = lineEntity.unitPrice,
-                            allocatedQuantity = lineEntity.allocatedQuantity,
-                            shippedQuantity = lineEntity.shippedQuantity,
-                            notes = lineEntity.notes
-                        )
-                    }
-                } else {
-                    val matchingTableOrder = allTableOrders.find { it.reference.equals(entity.reference, ignoreCase = true) }
-                    matchingTableOrder?.lineItems ?: emptyList()
-                }
                 val numericId = entity.uuid.removePrefix("so-").toLongOrNull() ?: (index + 1L)
+                val dbLines = salesOrderDao.getLinesForOrderUuid(entity.uuid)
+                val lineItems = dbLines.mapIndexed { lineIdx, lineEntity ->
+                    val lineId = lineEntity.uuid.removePrefix("so-line-").toLongOrNull() ?: (lineIdx + 1L)
+                    SalesOrderLineItem(
+                        id = lineId,
+                        orderId = numericId,
+                        orderUuid = entity.uuid,
+                        partId = lineEntity.partId,
+                        partUuid = lineEntity.partUuid,
+                        partName = lineEntity.partName,
+                        quantity = lineEntity.quantity,
+                        unitPrice = lineEntity.unitPrice,
+                        allocatedQuantity = lineEntity.allocatedQuantity,
+                        shippedQuantity = lineEntity.shippedQuantity,
+                        notes = lineEntity.notes
+                    )
+                }
                 SalesOrder(
                     id = numericId,
                     uuid = entity.uuid,
@@ -101,47 +94,6 @@ class SalesOrderRepository(
             return result
         }
 
-        // إدراج بذور أولية لـ SQLite إذا كان الجدول فارغاً لضمان مصدر حقيقة دائم وموحد
-        val seedOrders = salesOrderTable.getAllOrders()
-        if (seedOrders.isNotEmpty()) {
-            seedOrders.forEach { seed ->
-                val entityUuid = if (seed.uuid.isNotBlank()) seed.uuid else "so-${seed.id}"
-                salesOrderDao.insertOrUpdateOrder(
-                    SalesOrderEntity(
-                        uuid = entityUuid,
-                        reference = seed.reference,
-                        customerId = seed.customerId,
-                        customerUuid = seed.customerUuid.ifBlank { "cust-${seed.customerId}" },
-                        customerName = seed.customerName,
-                        statusCode = seed.status.code,
-                        description = seed.description,
-                        orderCurrency = seed.orderCurrency,
-                        targetDate = seed.targetDate,
-                        totalPrice = seed.totalPrice,
-                        notes = seed.notes,
-                        syncStatus = SyncStatus.SYNCED
-                    )
-                )
-                seed.lineItems.forEach { line ->
-                    salesOrderDao.insertOrUpdateLine(
-                        SalesOrderLineEntity(
-                            uuid = "so-line-${line.id}",
-                            orderUuid = entityUuid,
-                            orderId = seed.id,
-                            partId = line.partId,
-                            partName = line.partName,
-                            quantity = line.quantity,
-                            unitPrice = line.unitPrice,
-                            allocatedQuantity = line.allocatedQuantity,
-                            shippedQuantity = line.shippedQuantity,
-                            notes = line.notes,
-                            syncStatus = SyncStatus.SYNCED
-                        )
-                    )
-                }
-            }
-            return searchOrders(query = query, customerId = customerId, status = status)
-        }
         return emptyList()
     }
 
@@ -164,14 +116,13 @@ class SalesOrderRepository(
             throw IllegalArgumentException("أمر البيع ذو المرجع '${order.reference}' موجود بالفعل مسبقاً")
         }
 
-        val inserted = salesOrderTable.insertOrder(order)
-        order.lineItems.forEach { line ->
-            salesOrderTable.insertLineItem(line.copy(orderId = inserted.id))
-        }
+        val numericId = if (order.id > 0L) order.id else SqliteNumericIdAllocator.nextId("sales_orders", "so-")
+        val orderUuid = "so-$numericId"
+        val inserted = order.copy(id = numericId, uuid = orderUuid)
 
         salesOrderDao.insertOrUpdateOrder(
             SalesOrderEntity(
-                uuid = "so-${inserted.id}",
+                uuid = orderUuid,
                 reference = inserted.reference,
                 customerId = inserted.customerId,
                 customerUuid = inserted.customerUuid.ifBlank { "cust-${inserted.customerId}" },
@@ -185,12 +136,14 @@ class SalesOrderRepository(
                 syncStatus = SyncStatus.PENDING
             )
         )
-        inserted.lineItems.forEach { line ->
+        val createdLines = inserted.lineItems.map { line ->
+            val lineNumericId = if (line.id > 0L) line.id else SqliteNumericIdAllocator.nextId("sales_order_lines", "so-line-")
+            val lineUuid = "so-line-$lineNumericId"
             salesOrderDao.insertOrUpdateLine(
                 SalesOrderLineEntity(
-                    uuid = "so-line-${line.id}",
-                    orderUuid = "so-${inserted.id}",
-                    orderId = inserted.id,
+                    uuid = lineUuid,
+                    orderUuid = orderUuid,
+                    orderId = numericId,
                     partId = line.partId,
                     partName = line.partName,
                     quantity = line.quantity,
@@ -201,12 +154,14 @@ class SalesOrderRepository(
                     syncStatus = SyncStatus.PENDING
                 )
             )
+            line.copy(id = lineNumericId, orderId = numericId, orderUuid = orderUuid)
         }
+        val finalInserted = inserted.copy(lineItems = createdLines)
 
         if (!autoFulfill) {
             return SalesOrderFulfillmentResult(
-                salesOrder = inserted,
-                summaryMessage = "تم حفظ أمر البيع '${inserted.reference}' بدون تفعيل محرك التلبية الآلي."
+                salesOrder = finalInserted,
+                summaryMessage = "تم حفظ أمر البيع '${finalInserted.reference}' بدون تفعيل محرك التلبية الآلي."
             )
         }
 
@@ -315,7 +270,7 @@ class SalesOrderRepository(
         if (allocatedCount > 0) msg.append("تأمين ${allocatedCount} مواد من المخزون المتوفر.")
 
         return SalesOrderFulfillmentResult(
-            salesOrder = inserted,
+            salesOrder = finalInserted,
             buildOrdersCreated = createdBuildOrders,
             purchaseOrdersCreated = createdPurchaseOrders,
             allocatedStockItemsCount = allocatedCount,

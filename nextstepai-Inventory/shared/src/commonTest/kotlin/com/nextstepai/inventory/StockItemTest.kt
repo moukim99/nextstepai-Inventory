@@ -20,6 +20,7 @@ import com.nextstepai.inventory.data.db.PartEntity
 import com.nextstepai.inventory.data.db.StockItemDao
 import com.nextstepai.inventory.data.db.StockItemEntity
 import com.nextstepai.inventory.data.db.StockItemTrackingDao
+import com.nextstepai.inventory.data.db.SqliteDatabaseManager
 import com.nextstepai.inventory.auth.AuthTokens
 import com.nextstepai.inventory.auth.SecureTokenStorage
 import com.nextstepai.inventory.repository.StockRepository
@@ -665,6 +666,7 @@ class StockItemTest {
         val stockRepository = StockRepository()
         val stockDao = StockItemDao()
         val trackingDao = StockItemTrackingDao()
+        val conn = SqliteDatabaseManager.getConnection()
 
         val partId = 7200L
         val stockItemId = 7201L
@@ -680,80 +682,134 @@ class StockItemTest {
             StockLocation(name = "مبنى الإدارة العام", locationType = "BUILDING", structural = true)
         )
 
-        stockRepository.addStockItem(
-            StockItem(
-                id = stockItemId,
-                partId = partId,
-                locationId = loc1.id,
-                quantity = 20.0,
-                batch = "BATCH-TRANS-720"
+        try {
+            stockRepository.addStockItem(
+                StockItem(
+                    id = stockItemId,
+                    partId = partId,
+                    locationId = loc1.id,
+                    quantity = 20.0,
+                    batch = "BATCH-TRANS-720"
+                )
             )
-        )
 
-        // 1. حماية: منع النقل لنفس الموقع الحالي
-        val sameLocError = assertFailsWith<IllegalArgumentException> {
-            stockRepository.transferStockItem(
-                itemId = stockItemId,
-                sourceLocationId = loc1.id,
-                targetLocationId = loc1.id,
-                quantityToTransfer = 5.0,
-                reason = "نقل لنفس الموقع"
-            )
-        }
-        assertTrue(sameLocError.message?.contains("نفس موقع التخزين") == true)
+            // 1. حماية: منع النقل لنفس الموقع الحالي
+            val sameLocError = assertFailsWith<IllegalArgumentException> {
+                stockRepository.transferStockItem(
+                    itemId = stockItemId,
+                    sourceLocationId = loc1.id,
+                    targetLocationId = loc1.id,
+                    quantityToTransfer = 5.0,
+                    reason = "نقل لنفس الموقع"
+                )
+            }
+            assertTrue(sameLocError.message?.contains("نفس موقع التخزين") == true)
 
-        // 2. حماية: منع النقل إلى موقع هيكلي
-        val structError = assertFailsWith<IllegalArgumentException> {
-            stockRepository.transferStockItem(
-                itemId = stockItemId,
-                sourceLocationId = loc1.id,
-                targetLocationId = structuralLoc.id,
-                quantityToTransfer = 5.0,
-                reason = "نقل لموقع هيكلي"
-            )
-        }
-        assertTrue(structError.message?.contains("موقع هيكلي") == true)
+            // 2. حماية: منع النقل إلى موقع هيكلي
+            val structError = assertFailsWith<IllegalArgumentException> {
+                stockRepository.transferStockItem(
+                    itemId = stockItemId,
+                    sourceLocationId = loc1.id,
+                    targetLocationId = structuralLoc.id,
+                    quantityToTransfer = 5.0,
+                    reason = "نقل لموقع هيكلي"
+                )
+            }
+            assertTrue(structError.message?.contains("موقع هيكلي") == true)
 
-        // 3. حماية: منع نقل كمية أكبر من المتاح (25 > 20)
-        val overflowError = assertFailsWith<IllegalArgumentException> {
-            stockRepository.transferStockItem(
+            // 3. حماية: منع نقل كمية أكبر من المتاح (25 > 20)
+            val overflowError = assertFailsWith<IllegalArgumentException> {
+                stockRepository.transferStockItem(
+                    itemId = stockItemId,
+                    sourceLocationId = loc1.id,
+                    targetLocationId = loc2.id,
+                    quantityToTransfer = 25.0,
+                    reason = "كمية زائدة"
+                )
+            }
+            assertTrue(overflowError.message?.contains("أكبر من الكمية المتاحة") == true)
+
+            // 4. تنفيذ نقل جزئي ناجح (8 وحدات من أصل 20 إلى الموقع 2)
+            val partialTransferSuccess = stockRepository.transferStockItem(
                 itemId = stockItemId,
                 sourceLocationId = loc1.id,
                 targetLocationId = loc2.id,
-                quantityToTransfer = 25.0,
-                reason = "كمية زائدة"
+                quantityToTransfer = 8.0,
+                reason = "تغذية خط الإنتاج B"
             )
+            assertTrue(partialTransferSuccess)
+
+            // التحقق من الرصيد في المصدر والوجهة (12 في المصدر و 8 في الوجهة)
+            val sourceAfter = stockDao.getStockItemById(stockItemId)
+            assertNotNull(sourceAfter)
+            assertEquals(12.0, sourceAfter.quantity, 0.001)
+
+            val targetItems = stockDao.getStockItemsPaged(locationUuid = "loc-${loc2.id}")
+            val targetItem = targetItems.find { it.partUuid == "part-$partId" }
+            assertNotNull(targetItem)
+            assertEquals(8.0, targetItem.quantity, 0.001)
+
+            // 5. التحقق من ثبات مجموع الكميات (12 + 8 = 20)
+            val allStocksForPart = stockDao.getAvailableStockItemsForPart(partId)
+            val totalQuantity = allStocksForPart.sumOf { it.quantity }
+            assertEquals(20.0, totalQuantity, 0.001, "يجب بقاء مجموع الكميات ثابتاً تماماً بعد النقل (Conservation of Stock)")
+
+            // 6. التحقق من توثيق حركة النقل في سجل التتبع
+            val trackings = trackingDao.getAllTrackingLogs().filter { it.stockItemUuid == "stock-$stockItemId" }
+            val moveLog = trackings.find { it.trackingTypeCode == StockTrackingType.MOVE.code }
+            assertNotNull(moveLog, "يجب توثيق حركة النقل (MOVE) في سجل التتبع")
+        } finally {
+            runCatching {
+                conn.prepare("DELETE FROM stock_items WHERE partId = $partId OR partUuid = 'part-$partId';").use { it.step() }
+                conn.prepare("DELETE FROM stock_item_tracking WHERE stockItemUuid = 'stock-$stockItemId';").use { it.step() }
+                stockRepository.locationRepository.deleteLocationInternal(loc1.id)
+                stockRepository.locationRepository.deleteLocationInternal(loc2.id)
+                stockRepository.locationRepository.deleteLocationInternal(structuralLoc.id)
+            }
         }
-        assertTrue(overflowError.message?.contains("أكبر من الكمية المتاحة") == true)
+    }
 
-        // 4. تنفيذ نقل جزئي ناجح (8 وحدات من أصل 20 إلى الموقع 2)
-        val partialTransferSuccess = stockRepository.transferStockItem(
-            itemId = stockItemId,
-            sourceLocationId = loc1.id,
-            targetLocationId = loc2.id,
-            quantityToTransfer = 8.0,
-            reason = "تغذية خط الإنتاج B"
-        )
-        assertTrue(partialTransferSuccess)
+    @Test
+    fun testAddStockItemAtomicityOnTrackingFailure() {
+        val repository = StockRepository()
+        val stockDao = StockItemDao()
+        val conn = SqliteDatabaseManager.getConnection()
 
-        // التحقق من الرصيد في المصدر والوجهة (12 في المصدر و 8 في الوجهة)
-        val sourceAfter = stockDao.getStockItemById(stockItemId)
-        assertNotNull(sourceAfter)
-        assertEquals(12.0, sourceAfter.quantity, 0.001)
+        val partId = 9911L
+        val locationId = 1L
+        val batchTag = "BATCH-ATOMIC-FAIL"
 
-        val targetItems = stockDao.getStockItemsPaged(locationUuid = "loc-${loc2.id}")
-        val targetItem = targetItems.find { it.partUuid == "part-$partId" }
-        assertNotNull(targetItem)
-        assertEquals(8.0, targetItem.quantity, 0.001)
+        try {
+            // تفعيل زناد مؤقت لتعطيل إدراج سجل التتبع لإثارة فشل بعد إدراج الوحدة المخزنية
+            conn.prepare("""
+                CREATE TEMP TRIGGER IF NOT EXISTS trigger_abort_stock_tracking 
+                BEFORE INSERT ON stock_item_tracking 
+                WHEN NEW.notes LIKE '%$batchTag%'
+                BEGIN 
+                    SELECT RAISE(ABORT, 'Simulated tracking failure on stock add'); 
+                END;
+            """.trimIndent()).use { it.step() }
 
-        // 5. التحقق من ثبات مجموع الكميات (12 + 8 = 20)
-        val allStocksForPart = stockDao.getAvailableStockItemsForPart(partId)
-        val totalQuantity = allStocksForPart.sumOf { it.quantity }
-        assertEquals(20.0, totalQuantity, 0.001, "يجب بقاء مجموع الكميات ثابتاً تماماً بعد النقل (Conservation of Stock)")
+            // محاولة إضافة وحدة مخزنية مع شحنة خاصة: إدراج stock_items يسبق tracking لكن tracking يفشل
+            assertFailsWith<Throwable> {
+                repository.addStockItem(
+                    StockItem(
+                        partId = partId,
+                        locationId = locationId,
+                        quantity = 40.0,
+                        batch = "BATCH-REGULAR",
+                        notes = "شحنة اختبارية $batchTag"
+                    )
+                )
+            }
 
-        // 6. التحقق من توثيق حركة النقل في سجل التتبع
-        val trackings = trackingDao.getAllTrackingLogs().filter { it.stockItemUuid == "stock-$stockItemId" }
-        val moveLog = trackings.find { it.trackingTypeCode == StockTrackingType.MOVE.code }
-        assertNotNull(moveLog, "يجب توثيق حركة النقل (MOVE) في سجل التتبع")
+            // التحقق من التراجع التام: لا توجد أي وحدة مخزنية بهذه الملاحظات
+            val allItems = stockDao.getStockItemsPaged(limit = 1000)
+            assertNull(allItems.find { it.notes.contains(batchTag) }, "يجب ألا تتبقى الوحدة المخزنية في قاعدة البيانات بعد فشل التتبع والتراجع")
+        } finally {
+            runCatching {
+                conn.prepare("DROP TRIGGER IF EXISTS trigger_abort_stock_tracking;").use { it.step() }
+            }
+        }
     }
 }

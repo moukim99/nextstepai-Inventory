@@ -1,11 +1,8 @@
 package com.nextstepai.inventory.repository
 
 import com.nextstepai.inventory.data.BuildItem
-import com.nextstepai.inventory.data.BuildItemTable
 import com.nextstepai.inventory.data.BuildOrder
 import com.nextstepai.inventory.data.BuildOrderLineItem
-import com.nextstepai.inventory.data.BuildOrderLineItemTable
-import com.nextstepai.inventory.data.BuildOrderTable
 import com.nextstepai.inventory.data.BuildStatus
 import com.nextstepai.inventory.data.db.PartDao
 import com.nextstepai.inventory.data.db.StockLocationDao
@@ -19,6 +16,7 @@ import com.nextstepai.inventory.data.db.BuildOrderEntity
 import com.nextstepai.inventory.data.db.BuildOrderLineItemDao
 import com.nextstepai.inventory.data.db.BuildOrderLineItemEntity
 import com.nextstepai.inventory.data.db.SqliteDatabaseManager
+import com.nextstepai.inventory.data.db.SqliteNumericIdAllocator
 import com.nextstepai.inventory.data.db.StockItemDao
 import com.nextstepai.inventory.data.db.StockItemEntity
 import com.nextstepai.inventory.data.db.StockItemTrackingDao
@@ -26,7 +24,6 @@ import com.nextstepai.inventory.data.db.StockItemTrackingEntity
 import com.nextstepai.inventory.sync.BatchSyncService
 import com.nextstepai.inventory.sync.SyncPayload
 import com.nextstepai.inventory.sync.SyncStatus
-import com.nextstepai.inventory.data.PartPricingTable
 import com.nextstepai.inventory.util.AppUuid
 import com.nextstepai.inventory.util.DateTimeUtils
 import kotlin.time.Clock
@@ -35,9 +32,6 @@ import kotlin.time.Clock
  * المستودع (Repository) المسؤول عن إدارة أوامر التصنيع والإنتاج (Build Orders) وبنودها وتخصيصات المخزون والمزامنة الدفعية.
  */
 class BuildOrderRepository(
-    private val buildTable: BuildOrderTable = BuildOrderTable(),
-    private val lineItemTable: BuildOrderLineItemTable = BuildOrderLineItemTable(),
-    private val buildItemTable: BuildItemTable = BuildItemTable(),
     private val buildDao: BuildOrderDao = BuildOrderDao(),
     private val lineItemDao: BuildOrderLineItemDao = BuildOrderLineItemDao(),
     private val buildItemDao: BuildItemDao = BuildItemDao(),
@@ -46,7 +40,7 @@ class BuildOrderRepository(
     private val trackingDao: StockItemTrackingDao = StockItemTrackingDao(),
     private val partDao: PartDao = PartDao(),
     private val locationDao: StockLocationDao = StockLocationDao(),
-    private val partPricingTable: PartPricingTable = PartPricingTable(),
+    private val partPricingDao: com.nextstepai.inventory.data.db.PartPricingDao = com.nextstepai.inventory.data.db.PartPricingDao(),
     private val batchSyncService: BatchSyncService = BatchSyncService()
 ) {
     /**
@@ -113,38 +107,6 @@ class BuildOrderRepository(
             return result
         }
 
-        val seedBuilds = buildTable.getAllBuilds()
-        if (seedBuilds.isNotEmpty()) {
-            seedBuilds.forEach { b ->
-                buildDao.insertOrUpdate(
-                    BuildOrderEntity(
-                        uuid = "build-${b.id}",
-                        reference = b.reference,
-                        title = b.title,
-                        partId = b.partId,
-                        partName = b.partName,
-                        quantity = b.quantity,
-                        completedQuantity = b.completedQuantity,
-                        statusCode = b.status.code,
-                        batch = b.batch,
-                        targetDate = b.targetDate,
-                        startDate = b.startDate,
-                        completionDate = b.completionDate,
-                        creationDate = b.creationDate,
-                        parentId = b.parentId,
-                        salesOrderId = b.salesOrderId,
-                        takeFromLocationId = b.takeFromLocationId,
-                        destinationLocationId = b.destinationLocationId,
-                        issuedBy = b.issuedBy,
-                        responsible = b.responsible,
-                        notes = b.notes,
-                        link = b.link,
-                        syncStatus = SyncStatus.SYNCED
-                    )
-                )
-            }
-            return searchBuilds(query = query, partId = partId, status = status)
-        }
         return emptyList()
     }
 
@@ -161,8 +123,8 @@ class BuildOrderRepository(
             return stockPrice
         }
 
-        // 2. النطاق المالي المحسوب في جدول PartPricing
-        val pricing = partPricingTable.getPricingForPart(subPartId)
+        // 2. النطاق المالي المحسوب في جدول PartPricing في SQLite
+        val pricing = runCatching { partPricingDao.getForPart("part-$subPartId") }.getOrNull()
         if (pricing != null) {
             val price = pricing.purchaseCostMin ?: pricing.internalCostMin ?: pricing.overallMin
             if (price != null && price > 0.0) {
@@ -179,37 +141,36 @@ class BuildOrderRepository(
      */
     fun getLineItemsForBuild(buildId: Long): List<BuildOrderLineItem> {
         val dbItems = runCatching { lineItemDao.getLineItemsForBuild(buildId) }.getOrDefault(emptyList())
-        if (dbItems.isNotEmpty()) {
-            return dbItems.map { entity ->
-                val resolvedCost = resolveUnitCostForSubPart(entity.subPartId, entity.unitCost)
-                BuildOrderLineItem(
-                    id = entity.id,
-                    buildId = entity.buildId,
-                    buildUuid = entity.buildUuid,
-                    bomItemId = entity.bomItemId,
-                    bomItemUuid = entity.bomItemUuid,
-                    subPartId = entity.subPartId,
-                    subPartName = entity.subPartName,
-                    quantity = entity.quantity,
-                    allocatedQuantity = entity.allocatedQuantity,
-                    consumedQuantity = entity.consumedQuantity,
-                    notes = entity.notes,
-                    phaseUuid = entity.phaseUuid,
-                    unitCost = resolvedCost
-                )
-            }
+        return dbItems.map { entity ->
+            val resolvedCost = resolveUnitCostForSubPart(entity.subPartId, entity.unitCost)
+            BuildOrderLineItem(
+                id = entity.id,
+                buildId = entity.buildId,
+                buildUuid = entity.buildUuid,
+                bomItemId = entity.bomItemId,
+                bomItemUuid = entity.bomItemUuid,
+                subPartId = entity.subPartId,
+                subPartName = entity.subPartName,
+                quantity = entity.quantity,
+                allocatedQuantity = entity.allocatedQuantity,
+                consumedQuantity = entity.consumedQuantity,
+                notes = entity.notes,
+                phaseUuid = entity.phaseUuid,
+                unitCost = resolvedCost
+            )
         }
-        return lineItemTable.getLineItemsForBuild(buildId)
     }
 
     /**
      * إضافة بند جديد لأمر التصنيع.
      */
     fun addLineItem(item: BuildOrderLineItem): BuildOrderLineItem {
-        val inserted = lineItemTable.insertLineItem(item)
+        val lineNumericId = if (item.id > 0L) item.id else SqliteNumericIdAllocator.nextId("build_order_line_items", "bo-line-")
+        val lineUuid = "bo-line-$lineNumericId"
+        val inserted = item.copy(id = lineNumericId)
         lineItemDao.insertOrUpdate(
             BuildOrderLineItemEntity(
-                uuid = "lineitem-${inserted.id}",
+                uuid = lineUuid,
                 id = inserted.id,
                 buildId = inserted.buildId,
                 buildUuid = inserted.buildUuid.ifBlank { "build-${inserted.buildId}" },
@@ -233,47 +194,116 @@ class BuildOrderRepository(
      * جلب كافة تخصيصات المخزون المباشرة لأمر الإنتاج.
      */
     fun getBuildItemsForBuild(buildId: Long): List<BuildItem> {
-        return buildItemTable.getBuildItemsForBuild(buildId)
+        val entities = buildItemDao.getBuildItemsForBuild(buildId)
+        return entities.map { entity ->
+            BuildItem(
+                id = entity.id,
+                buildId = entity.buildId,
+                buildUuid = entity.buildUuid,
+                buildLineId = entity.buildLineId,
+                buildLineUuid = entity.buildLineUuid,
+                stockItemId = entity.stockItemId,
+                stockItemUuid = entity.stockItemUuid,
+                stockItemName = entity.stockItemName,
+                quantity = entity.quantity,
+                installIntoStockItemId = entity.installIntoStockItemId,
+                installIntoStockItemUuid = entity.installIntoStockItemUuid,
+                notes = entity.notes
+            )
+        }
     }
 
     fun updateBuild(build: BuildOrder) {
-        buildTable.updateBuild(build)
+        val existing = buildDao.getBuildOrderById(build.id)
+        val now = Clock.System.now().toEpochMilliseconds()
+        buildDao.insertOrUpdate(
+            BuildOrderEntity(
+                uuid = existing?.uuid ?: "build-${build.id}",
+                reference = build.reference,
+                title = build.title,
+                partId = build.partId,
+                partName = build.partName,
+                quantity = build.quantity,
+                completedQuantity = build.completedQuantity,
+                statusCode = build.status.code,
+                batch = build.batch,
+                targetDate = build.targetDate,
+                startDate = build.startDate,
+                completionDate = build.completionDate,
+                creationDate = build.creationDate,
+                parentId = build.parentId,
+                salesOrderId = build.salesOrderId,
+                takeFromLocationId = build.takeFromLocationId,
+                destinationLocationId = build.destinationLocationId,
+                issuedBy = build.issuedBy,
+                responsible = build.responsible,
+                notes = build.notes,
+                link = build.link,
+                syncStatus = SyncStatus.PENDING,
+                updatedAt = now
+            )
+        )
     }
 
     /**
      * تسجيل تخصيص جديد لمادة في المخزون لصالح أمر إنتاج.
      */
     fun addBuildItemAllocation(item: BuildItem): BuildItem {
-        val inserted = buildItemTable.insertBuildItem(item)
-        buildItemDao.insertOrUpdate(
-            BuildItemEntity(
-                uuid = "builditem-${inserted.id}",
-                id = inserted.id,
-                buildId = inserted.buildId,
-                buildUuid = inserted.buildUuid.ifBlank { "build-${inserted.buildId}" },
-                buildLineId = inserted.buildLineId,
-                buildLineUuid = inserted.buildLineUuid.ifBlank { if (inserted.buildLineId != null) "lineitem-${inserted.buildLineId}" else "" },
-                stockItemId = inserted.stockItemId,
-                stockItemUuid = inserted.stockItemUuid.ifBlank { "stock-${inserted.stockItemId}" },
-                stockItemName = inserted.stockItemName,
-                quantity = inserted.quantity,
-                installIntoStockItemId = inserted.installIntoStockItemId,
-                installIntoStockItemUuid = inserted.installIntoStockItemUuid,
-                notes = inserted.notes,
-                syncStatus = SyncStatus.PENDING
-            )
+        require(item.quantity > 0.0) { "كمية التخصيص يجب أن تكون أكبر من الصفر" }
+        val lineEntity = (item.buildLineId?.let { lineItemDao.getLineItemById(it) }
+            ?: if (item.buildLineUuid.isNotBlank()) lineItemDao.getLineItemByUuid(item.buildLineUuid) else null)
+            ?: throw IllegalArgumentException("بند أمر التصنيع المرتبط بالتخصيص غير موجود في قاعدة البيانات")
+
+        val numericId = if (item.id > 0L) item.id else SqliteNumericIdAllocator.nextId("build_items", "build-item-")
+        val itemUuid = "build-item-$numericId"
+        val targetLineId = if (item.buildLineId != null && item.buildLineId > 0L) item.buildLineId else lineEntity.id
+        val inserted = item.copy(
+            id = numericId,
+            buildUuid = item.buildUuid.ifBlank { lineEntity.buildUuid.ifBlank { "build-${item.buildId}" } },
+            buildLineId = targetLineId,
+            buildLineUuid = item.buildLineUuid.ifBlank { lineEntity.uuid }
         )
-        item.buildLineId?.let { lineId ->
-            lineItemTable.allocateStock(lineId, item.quantity)
+
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        try {
+            val now = Clock.System.now().toEpochMilliseconds()
+            buildItemDao.insertOrUpdate(
+                BuildItemEntity(
+                    uuid = itemUuid,
+                    id = inserted.id,
+                    buildId = inserted.buildId,
+                    buildUuid = inserted.buildUuid,
+                    buildLineId = inserted.buildLineId,
+                    buildLineUuid = inserted.buildLineUuid,
+                    stockItemId = inserted.stockItemId,
+                    stockItemUuid = inserted.stockItemUuid.ifBlank { "stock-${inserted.stockItemId}" },
+                    stockItemName = inserted.stockItemName,
+                    quantity = inserted.quantity,
+                    installIntoStockItemId = inserted.installIntoStockItemId,
+                    installIntoStockItemUuid = inserted.installIntoStockItemUuid,
+                    notes = inserted.notes,
+                    syncStatus = SyncStatus.PENDING,
+                    updatedAt = now
+                )
+            )
+            val allocated = allocateStock(targetLineId, item.quantity)
+            if (!allocated) {
+                throw IllegalStateException("فشل تحديث كمية التخصيص لبند أمر التصنيع '${lineEntity.uuid}'")
+            }
+            conn.prepare("COMMIT;").use { it.step() }
+            return inserted
+        } catch (e: Throwable) {
+            runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
+            throw e
         }
-        return inserted
     }
 
     /**
      * التخصيص الأوتوماتيكي للمخزون (Auto-Allocate Action) وفق سياسة السحب والـ FIFO.
      */
     fun autoAllocateBuildOrder(buildId: Long): Int {
-        val lineItems = lineItemTable.getLineItemsForBuild(buildId)
+        val lineItems = getLineItemsForBuild(buildId)
         var count = 0
         for (line in lineItems) {
             val remainingToAllocate = line.quantity - line.allocatedQuantity
@@ -298,78 +328,37 @@ class BuildOrderRepository(
      * تخصيص مخزون لبند في أمر التصنيع (Allocate Stock).
      */
     fun allocateStock(lineItemId: Long, quantity: Double): Boolean {
-        val success = lineItemTable.allocateStock(lineItemId, quantity)
-        if (success) {
-            val item = lineItemTable.getLineItemById(lineItemId)
-            if (item != null) {
-                lineItemDao.insertOrUpdate(
-                    BuildOrderLineItemEntity(
-                        uuid = "lineitem-${item.id}",
-                        id = item.id,
-                        buildId = item.buildId,
-                        buildUuid = item.buildUuid.ifBlank { "build-${item.buildId}" },
-                        bomItemId = item.bomItemId,
-                        bomItemUuid = item.bomItemUuid.ifBlank { "bom-${item.bomItemId}" },
-                        subPartId = item.subPartId,
-                        subPartName = item.subPartName,
-                        quantity = item.quantity,
-                        allocatedQuantity = item.allocatedQuantity,
-                        consumedQuantity = item.consumedQuantity,
-                        notes = item.notes,
-                        phaseUuid = item.phaseUuid,
-                        unitCost = item.unitCost,
-                        syncStatus = SyncStatus.PENDING,
-                        isDeleted = false,
-                        updatedAt = Clock.System.now().toEpochMilliseconds()
-                    )
-                )
-            }
-        }
-        return success
+        require(quantity > 0) { "كمية التخصيص يجب أن تكون أكبر من الصفر" }
+        val item = lineItemDao.getLineItemById(lineItemId) ?: return false
+        val newAllocated = (item.allocatedQuantity + quantity).coerceAtMost(item.quantity * 1.2)
+        val now = Clock.System.now().toEpochMilliseconds()
+        lineItemDao.updateAllocatedQuantity(item.uuid, newAllocated, now)
+        return true
     }
 
     /**
      * استهلاك مخزون مخصص للبند (Consume Stock).
      */
     fun consumeStock(lineItemId: Long, quantity: Double): Boolean {
-        val success = lineItemTable.consumeStock(lineItemId, quantity)
-        if (success) {
-            val item = lineItemTable.getLineItemById(lineItemId)
-            if (item != null) {
-                lineItemDao.insertOrUpdate(
-                    BuildOrderLineItemEntity(
-                        uuid = "lineitem-${item.id}",
-                        id = item.id,
-                        buildId = item.buildId,
-                        buildUuid = item.buildUuid.ifBlank { "build-${item.buildId}" },
-                        bomItemId = item.bomItemId,
-                        bomItemUuid = item.bomItemUuid.ifBlank { "bom-${item.bomItemId}" },
-                        subPartId = item.subPartId,
-                        subPartName = item.subPartName,
-                        quantity = item.quantity,
-                        allocatedQuantity = item.allocatedQuantity,
-                        consumedQuantity = item.consumedQuantity,
-                        notes = item.notes,
-                        phaseUuid = item.phaseUuid,
-                        unitCost = item.unitCost,
-                        syncStatus = SyncStatus.PENDING,
-                        isDeleted = false,
-                        updatedAt = Clock.System.now().toEpochMilliseconds()
-                    )
-                )
-            }
-        }
-        return success
+        require(quantity > 0) { "كمية الاستهلاك يجب أن تكون أكبر من الصفر" }
+        val item = lineItemDao.getLineItemById(lineItemId) ?: return false
+        val newConsumed = (item.consumedQuantity + quantity).coerceAtMost(item.quantity * 1.2)
+        val now = Clock.System.now().toEpochMilliseconds()
+        lineItemDao.updateConsumedQuantity(item.uuid, newConsumed, now)
+        return true
     }
 
     /**
      * إضافة أمر إنتاج جديد مع حفظ الكيان المحلي القابل للمزامنة.
      */
     fun addBuildOrder(build: BuildOrder): BuildOrder {
-        val inserted = buildTable.insertBuild(build)
+        val numericId = if (build.id > 0L) build.id else SqliteNumericIdAllocator.nextId("build_orders", "build-")
+        val buildUuid = "build-$numericId"
+        val inserted = build.copy(id = numericId)
+        val now = Clock.System.now().toEpochMilliseconds()
         buildDao.insertOrUpdate(
             BuildOrderEntity(
-                uuid = "build-${inserted.id}",
+                uuid = buildUuid,
                 reference = inserted.reference,
                 title = inserted.title,
                 partId = inserted.partId,
@@ -390,21 +379,19 @@ class BuildOrderRepository(
                 responsible = inserted.responsible,
                 notes = inserted.notes,
                 link = inserted.link,
-                syncStatus = SyncStatus.PENDING
+                syncStatus = SyncStatus.PENDING,
+                updatedAt = now
             )
         )
         return inserted
     }
 
     /**
-     * بدء الإنتاج الفعلي وتحديث حالته في SQLite والذاكرة.
+     * بدء الإنتاج الفعلي وتحديث حالته في SQLite.
      */
     fun startProduction(buildId: Long): Boolean {
-        val build = buildDao.getBuildOrderById(buildId) ?: run {
-            searchBuilds()
-            buildDao.getBuildOrderById(buildId)
-        }
-        if (build != null && build.statusCode == BuildStatus.PENDING.code) {
+        val build = buildDao.getBuildOrderById(buildId) ?: return false
+        if (build.statusCode == BuildStatus.PENDING.code) {
             val now = Clock.System.now().toEpochMilliseconds()
             val todayStr = DateTimeUtils.getCurrentDate()
             buildDao.updateBuildStatus(
@@ -413,46 +400,40 @@ class BuildOrderRepository(
                 startDate = todayStr,
                 updatedAt = now
             )
+            return true
         }
-        return buildTable.startProduction(buildId)
+        return false
     }
 
     /**
-     * إلغاء أمر التصنيع وتحديث حالته في SQLite والذاكرة.
+     * إلغاء أمر التصنيع وتحديث حالته في SQLite.
      */
     fun cancelBuildOrder(buildId: Long): Boolean {
-        val build = buildDao.getBuildOrderById(buildId) ?: run {
-            searchBuilds()
-            buildDao.getBuildOrderById(buildId)
-        }
-        if (build != null && build.statusCode != BuildStatus.COMPLETE.code) {
+        val build = buildDao.getBuildOrderById(buildId) ?: return false
+        if (build.statusCode != BuildStatus.COMPLETE.code) {
             val now = Clock.System.now().toEpochMilliseconds()
             buildDao.updateBuildStatus(
                 uuid = build.uuid,
                 newStatusCode = BuildStatus.CANCELLED.code,
                 updatedAt = now
             )
+            return true
         }
-        return buildTable.cancelBuildOrder(buildId)
+        return false
     }
 
     /**
-     * تحديث حالة أمر التصنيع المباشرة في SQLite والذاكرة.
+     * تحديث حالة أمر التصنيع المباشرة في SQLite.
      */
     fun updateBuildStatus(buildId: Long, newStatus: BuildStatus): Boolean {
-        val build = buildDao.getBuildOrderById(buildId) ?: run {
-            searchBuilds()
-            buildDao.getBuildOrderById(buildId)
-        }
-        if (build != null) {
-            val now = Clock.System.now().toEpochMilliseconds()
-            buildDao.updateBuildStatus(
-                uuid = build.uuid,
-                newStatusCode = newStatus.code,
-                updatedAt = now
-            )
-        }
-        return buildTable.updateStatus(buildId, newStatus)
+        val build = buildDao.getBuildOrderById(buildId) ?: return false
+        val now = Clock.System.now().toEpochMilliseconds()
+        buildDao.updateBuildStatus(
+            uuid = build.uuid,
+            newStatusCode = newStatus.code,
+            updatedAt = now
+        )
+        return true
     }
 
     /**
@@ -686,9 +667,6 @@ class BuildOrderRepository(
 
             // تثبيت المعاملة
             conn.prepare("COMMIT;").use { it.step() }
-
-            // مزامنة الذاكرة المؤقتة القديمة بأمان
-            runCatching { buildTable.completeBuildOutput(buildId, completedQty) }
 
             return true
         } catch (e: Throwable) {

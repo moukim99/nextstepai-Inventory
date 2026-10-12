@@ -104,6 +104,62 @@ class BuildOrderLineItemDao {
         }
     }
 
+    fun updateAllocatedQuantity(uuid: String, allocatedQuantity: Double, updatedAt: Long) {
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("""
+            UPDATE build_order_line_items
+            SET allocatedQuantity = ?,
+                syncStatus = 'PENDING',
+                updatedAt = ?
+            WHERE uuid = ?
+        """.trimIndent()).use { stmt ->
+            stmt.bindDouble(1, allocatedQuantity)
+            stmt.bindLong(2, updatedAt)
+            stmt.bindText(3, uuid)
+            stmt.step()
+        }
+    }
+
+    fun getLineItemById(id: Long): BuildOrderLineItemEntity? {
+        val direct = getLineItemByUuid("lineitem-$id")
+        if (direct != null) return direct
+
+        val conn = SqliteDatabaseManager.getConnection()
+        val sql = """
+            SELECT $selectColumns
+            FROM build_order_line_items
+            WHERE isDeleted = 0 AND (id = ? OR uuid = ? OR uuid LIKE ?)
+            LIMIT 1
+        """.trimIndent()
+        conn.prepare(sql).use { stmt ->
+            stmt.bindLong(1, id)
+            stmt.bindText(2, id.toString())
+            stmt.bindText(3, "%-$id")
+            if (stmt.step()) {
+                return mapLineItemEntity(stmt)
+            }
+        }
+        return null
+    }
+
+    fun getLineItemByUuid(uuid: String): BuildOrderLineItemEntity? {
+        if (uuid.isBlank()) return null
+        val conn = SqliteDatabaseManager.getConnection()
+        val sql = """
+            SELECT $selectColumns
+            FROM build_order_line_items
+            WHERE isDeleted = 0 AND uuid = ?
+            LIMIT 1
+        """.trimIndent()
+        conn.prepare(sql).use { stmt ->
+            stmt.bindText(1, uuid)
+            if (stmt.step()) {
+                return mapLineItemEntity(stmt)
+            }
+        }
+        return null
+    }
+
     fun insertOrUpdate(entity: BuildOrderLineItemEntity) {
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("""

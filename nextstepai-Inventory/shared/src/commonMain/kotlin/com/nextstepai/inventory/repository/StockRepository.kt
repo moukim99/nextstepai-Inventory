@@ -3,7 +3,6 @@ package com.nextstepai.inventory.repository
 import com.nextstepai.inventory.data.StockItem
 import com.nextstepai.inventory.data.StockStatus
 import com.nextstepai.inventory.data.StockItemAttachment
-import com.nextstepai.inventory.data.StockItemTable
 import com.nextstepai.inventory.data.StockItemTestResult
 import com.nextstepai.inventory.data.StockItemTracking
 import com.nextstepai.inventory.data.StockLocation
@@ -28,6 +27,7 @@ import com.nextstepai.inventory.data.db.StockItemTrackingEntity
 import com.nextstepai.inventory.data.db.StockLocationDao
 import com.nextstepai.inventory.data.db.StockLocationEntity
 import com.nextstepai.inventory.data.db.SqliteDatabaseManager
+import com.nextstepai.inventory.data.db.SqliteNumericIdAllocator
 import com.nextstepai.inventory.data.db.StockLocationTypeDao
 import com.nextstepai.inventory.media.ImageProcessor
 import com.nextstepai.inventory.media.ProcessedImage
@@ -91,7 +91,6 @@ data class StocktakeSessionResult(
  * ونتائج فحوصات الجودة ومرفقات المخزون (StockItemAttachment) وتجزئة الكميات والجرد والمزامنة مع السحابة.
  */
 class StockRepository(
-    private val stockTable: StockItemTable = StockItemTable(),
     private val stockDao: StockItemDao = StockItemDao(),
     private val locationDao: StockLocationDao = StockLocationDao(),
     private val trackingDao: StockItemTrackingDao = StockItemTrackingDao(),
@@ -99,7 +98,7 @@ class StockRepository(
     private val attachmentDao: StockItemAttachmentDao = StockItemAttachmentDao(),
     private val notificationDao: NotificationHistoryDao = NotificationHistoryDao(),
     private val partDao: PartDao = PartDao(),
-    val locationRepository: StockLocationRepository = StockLocationRepository(locationDao = locationDao, stockTable = stockTable),
+    val locationRepository: StockLocationRepository = StockLocationRepository(locationDao = locationDao),
     private val batchSyncService: BatchSyncService = BatchSyncService(),
     private val imageProcessor: ImageProcessor = ImageProcessor(maxDimension = 1024, compressionQuality = 85)
 ) {
@@ -129,39 +128,36 @@ class StockRepository(
      */
     fun getStockItems(): List<StockItem> {
         val entities = runCatching { stockDao.getStockItemsPaged(limit = 1000, offset = 0) }.getOrDefault(emptyList())
-        if (entities.isNotEmpty()) {
-            return entities.mapIndexed { index, entity ->
-                val parsedId = entity.uuid.removePrefix("stock-").toLongOrNull() ?: (index + 1L)
-                StockItem(
-                    id = parsedId,
-                    partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
-                    locationId = entity.locationUuid?.takeIf { it.isNotBlank() }?.removePrefix("location-")?.removePrefix("loc-")?.toLongOrNull(),
-                    quantity = entity.quantity,
-                    serial = entity.serial,
-                    batch = entity.batch,
-                    status = StockStatus.fromCode(entity.statusCode),
-                    packaging = entity.packaging,
-                    purchasePrice = entity.purchasePrice,
-                    purchasePriceCurrency = entity.purchasePriceCurrency,
-                    purchaseOrderId = entity.purchaseOrderUuid?.removePrefix("po-")?.toLongOrNull(),
-                    supplierPartId = entity.supplierPartUuid.takeIf { it.isNotBlank() }?.removePrefix("sup-p-")?.toLongOrNull(),
-                    salesOrderId = entity.salesOrderUuid?.removePrefix("so-")?.toLongOrNull(),
-                    customerId = entity.customerUuid.takeIf { it.isNotBlank() }?.removePrefix("comp-")?.toLongOrNull(),
-                    buildId = entity.buildUuid?.removePrefix("bo-")?.toLongOrNull(),
-                    isBuilding = entity.isBuilding,
-                    parentId = entity.parentStockItemUuid?.removePrefix("stock-")?.toLongOrNull(),
-                    expiryDate = entity.expiryDate,
-                    stocktakeDate = entity.stocktakeDate,
-                    stocktakeUserId = entity.stocktakeUserUuid?.removePrefix("usr-")?.toLongOrNull(),
-                    reviewNeeded = entity.reviewNeeded,
-                    deleteOnDeplete = entity.deleteOnDeplete,
-                    link = entity.link,
-                    notes = entity.notes,
-                    metadata = entity.metadata
-                )
-            }
+        return entities.mapIndexed { index, entity ->
+            val parsedId = entity.uuid.removePrefix("stock-").toLongOrNull() ?: (index + 1L)
+            StockItem(
+                id = parsedId,
+                partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
+                locationId = entity.locationUuid?.takeIf { it.isNotBlank() }?.removePrefix("location-")?.removePrefix("loc-")?.toLongOrNull(),
+                quantity = entity.quantity,
+                serial = entity.serial,
+                batch = entity.batch,
+                status = StockStatus.fromCode(entity.statusCode),
+                packaging = entity.packaging,
+                purchasePrice = entity.purchasePrice,
+                purchasePriceCurrency = entity.purchasePriceCurrency,
+                purchaseOrderId = entity.purchaseOrderUuid?.removePrefix("po-")?.toLongOrNull(),
+                supplierPartId = entity.supplierPartUuid.takeIf { it.isNotBlank() }?.removePrefix("sup-p-")?.toLongOrNull(),
+                salesOrderId = entity.salesOrderUuid?.removePrefix("so-")?.toLongOrNull(),
+                customerId = entity.customerUuid.takeIf { it.isNotBlank() }?.removePrefix("comp-")?.toLongOrNull(),
+                buildId = entity.buildUuid?.removePrefix("bo-")?.removePrefix("build-")?.toLongOrNull(),
+                isBuilding = entity.isBuilding,
+                parentId = entity.parentStockItemUuid?.removePrefix("stock-")?.toLongOrNull(),
+                expiryDate = entity.expiryDate,
+                stocktakeDate = entity.stocktakeDate,
+                stocktakeUserId = entity.stocktakeUserUuid?.removePrefix("usr-")?.toLongOrNull(),
+                reviewNeeded = entity.reviewNeeded,
+                deleteOnDeplete = entity.deleteOnDeplete,
+                link = entity.link,
+                notes = entity.notes,
+                metadata = entity.metadata
+            )
         }
-        return stockTable.getAllStockItems()
     }
 
     /**
@@ -186,50 +182,101 @@ class StockRepository(
      * جلب سجلات الحركات والتتبع لوحدة مخزنية محددة.
      */
     fun getTrackingForStockItem(stockItemId: Long): List<StockItemTracking> {
-        return stockTable.getTrackingForStockItem(stockItemId)
+        val entities = trackingDao.getTrackingForStockItem("stock-$stockItemId")
+        return entities.mapIndexed { index, entity ->
+            val parsedId = entity.uuid.removePrefix("track-").toLongOrNull() ?: (index + 1L)
+            val parsedUserId = entity.userUuid?.removePrefix("usr-")?.toLongOrNull()
+            StockItemTracking(
+                id = parsedId,
+                stockItemId = stockItemId,
+                trackingType = StockTrackingType.fromCode(entity.trackingTypeCode),
+                date = DateTimeUtils.formatEpochMillisToDate(entity.createdAt),
+                userId = parsedUserId,
+                label = entity.label,
+                notes = entity.notes,
+                deltas = entity.deltas
+            )
+        }
     }
 
     /**
      * جلب نتائج فحوص الجودة والقياسات الفنية لوحدة مخزنية محددة.
      */
     fun getTestResultsForStockItem(stockItemId: Long): List<StockItemTestResult> {
-        return stockTable.getTestResultsForStockItem(stockItemId)
+        val entities = testResultDao.getTestResultsForStockItem(stockItemId)
+        return entities.map { entity ->
+            StockItemTestResult(
+                id = entity.resultId,
+                stockItemId = entity.stockItemId,
+                templateId = entity.templateId,
+                test = entity.test,
+                result = entity.result,
+                value = entity.value,
+                attachment = entity.attachment,
+                notes = entity.notes,
+                date = entity.date,
+                userId = entity.userId,
+                metadata = entity.metadata
+            )
+        }
     }
 
     /**
      * جلب كافة المستندات والمرفقات المرتبطة بعنصر مخزني محدد.
      */
     fun getAttachmentsForStockItem(stockItemId: Long): List<StockItemAttachment> {
-        return stockTable.getAttachmentsForStockItem(stockItemId)
+        val entities = attachmentDao.getAttachmentsForStockItem(stockItemId)
+        return entities.map { entity ->
+            StockItemAttachment(
+                id = entity.attachmentId,
+                stockItemId = entity.stockItemId,
+                attachment = entity.attachment,
+                link = entity.link,
+                comment = entity.comment,
+                uploadDate = entity.uploadDate,
+                userId = entity.userId,
+                metadata = entity.metadata
+            )
+        }
     }
 
     /**
      * إضافة مرفق أو شهادة جديدة لعنصر مخزني (StockItemAttachment).
      */
     fun addStockItemAttachment(attachmentItem: StockItemAttachment): StockItemAttachment {
-        val inserted = stockTable.addStockItemAttachment(attachmentItem)
-        attachmentDao.insertOrUpdate(inserted.toEntity())
-        return inserted
+        val allocatedId = if (attachmentItem.id <= 0L) {
+            runCatching {
+                SqliteNumericIdAllocator.nextId("stock_item_attachments", "attachment-")
+            }.getOrElse { Clock.System.now().toEpochMilliseconds() }
+        } else {
+            attachmentItem.id
+        }
+        val saved = attachmentItem.copy(id = allocatedId)
+        attachmentDao.insertOrUpdate(saved.toEntity())
+        return saved
     }
 
     /**
      * حذف مرفق مخزني محدد.
      */
     fun deleteStockItemAttachment(id: Long): Boolean {
-        val deleted = stockTable.deleteStockItemAttachment(id)
-        if (deleted) {
-            attachmentDao.deleteAttachment("attachment-$id")
-        }
-        return deleted
+        return attachmentDao.deleteAttachment("attachment-$id")
     }
 
     /**
      * تسجيل نتيجة فحص جودة واختبار فني جديد (StockItemTestResult).
      */
     fun addTestResult(testResult: StockItemTestResult): StockItemTestResult {
-        val inserted = stockTable.addTestResult(testResult)
-        testResultDao.insertOrUpdate(inserted.toEntity())
-        return inserted
+        val allocatedId = if (testResult.id <= 0L) {
+            runCatching {
+                SqliteNumericIdAllocator.nextId("stock_item_test_results", "test-result-")
+            }.getOrElse { Clock.System.now().toEpochMilliseconds() }
+        } else {
+            testResult.id
+        }
+        val saved = testResult.copy(id = allocatedId)
+        testResultDao.insertOrUpdate(saved.toEntity())
+        return saved
     }
 
     /**
@@ -320,17 +367,55 @@ class StockRepository(
      * إضافة وحدة مخزنية جديدة وتسجيل حركة الإنشاء آلياً.
      */
     fun addStockItem(item: StockItem): StockItem {
-        val inserted = stockTable.insertStockItem(item)
-        stockDao.insertOrUpdate(inserted.toEntity())
-        val trackings = stockTable.getTrackingForStockItem(inserted.id)
-        trackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
+        val allocatedId = if (item.id <= 0L) {
+            SqliteNumericIdAllocator.nextId("stock_items", "stock-")
+        } else {
+            item.id
+        }
+        val inserted = item.copy(id = allocatedId)
+        val trackingLabel = if (item.batch.startsWith("BATCH-") || item.link.isNotBlank()) {
+            "استلام شحنة مخزنية (Stock In)"
+        } else {
+            "إنشاء وحدة مخزنية جديدة"
+        }
+        val trackingNotes = if (item.notes.isNotBlank() && item.link.isNotBlank()) {
+            "شحنة [${item.link}]: ${item.notes}"
+        } else if (item.notes.isNotBlank()) {
+            item.notes
+        } else {
+            "الكمية الأولية: ${item.quantity} ${item.packaging}"
+        }
+        val userUuid = item.stocktakeUserId?.let { "usr-$it" }
+
+        val tracking = StockItemTrackingEntity(
+            uuid = AppUuid.generate(),
+            stockItemUuid = "stock-$allocatedId",
+            userUuid = userUuid,
+            trackingTypeCode = StockTrackingType.CREATED.code,
+            label = trackingLabel,
+            notes = trackingNotes,
+            deltas = "{\"quantity\": ${item.quantity}}",
+            createdAt = Clock.System.now().toEpochMilliseconds()
+        )
+
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        try {
+            stockDao.insertOrUpdate(inserted.toEntity())
+            trackingDao.insertOrUpdate(tracking)
+            conn.prepare("COMMIT;").use { it.step() }
+        } catch (e: Throwable) {
+            runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
+            throw e
+        }
+
         checkAndInsertLowStockNotification(inserted.partId)
         return inserted
     }
 
     private fun checkAndInsertLowStockNotification(partId: Long) {
         runCatching {
-            val allStock = stockTable.getAllStockItems().filter { it.partId == partId }
+            val allStock = getStockItems().filter { it.partId == partId }
             val currentTotalStock = allStock.sumOf { it.quantity }
             val parts = partDao.getPartsPaged(limit = 1000, offset = 0)
             val part = parts.find { it.uuid == "part-$partId" || it.uuid.removePrefix("part-").toLongOrNull() == partId }
@@ -351,15 +436,88 @@ class StockRepository(
     }
 
     /**
-     * تجزئة كمية مخزنية إلى تشغيلة أصل وفرع وتسجيل حركات التجزئة.
+     * تجزئة كمية مخزنية إلى تشغيلة أصل وفرع وتسجيل حركات التجزئة في واجهة الإنتاج العامة.
      */
     fun splitStockItem(parentId: Long, splitQuantity: Double): StockItem {
-        val child = stockTable.splitStockItem(parentId, splitQuantity)
-        stockDao.insertOrUpdate(child.toEntity())
-        val parentTrackings = stockTable.getTrackingForStockItem(parentId)
-        val childTrackings = stockTable.getTrackingForStockItem(child.id)
-        (parentTrackings + childTrackings).forEach { trackingDao.insertOrUpdate(it.toEntity()) }
-        return child
+        return splitStockItemInternal(parentId, splitQuantity, null)
+    }
+
+    /**
+     * دالة التجزئة الداخلية المحمية، تُتيح حقن [onBeforeCommit] حصراً لأغراض الاختبار والتحقق الذري.
+     */
+    internal fun splitStockItemInternal(
+        parentId: Long,
+        splitQuantity: Double,
+        onBeforeCommit: (() -> Unit)? = null
+    ): StockItem {
+        require(splitQuantity > 0.0) { "كمية التجزئة يجب أن تكون أكبر من الصفر" }
+
+        val childId = SqliteNumericIdAllocator.nextId("stock_items", "stock-")
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        try {
+            val parentEntity = stockDao.getStockItemById(parentId)
+                ?: throw IllegalArgumentException("الوحدة المخزنية الأصلية غير موجودة (#$parentId)")
+            require(parentEntity.quantity >= splitQuantity) { "الكمية المطلوبة للتجزئة أكبر من الرصيد المتوفر" }
+
+            val now = Clock.System.now().toEpochMilliseconds()
+
+            val newParentQty = parentEntity.quantity - splitQuantity
+            stockDao.updateStockItemQuantity(parentEntity.uuid, newParentQty, now)
+
+            val childEntity = parentEntity.copy(
+                uuid = "stock-$childId",
+                quantity = splitQuantity,
+                parentStockItemUuid = parentEntity.uuid,
+                updatedAt = now,
+                syncStatus = SyncStatus.PENDING
+            )
+            stockDao.insertOrUpdate(childEntity)
+
+            val parentTracking = StockItemTrackingEntity(
+                uuid = AppUuid.generate(),
+                stockItemUuid = parentEntity.uuid,
+                trackingTypeCode = StockTrackingType.SPLIT.code,
+                label = "تجزئة مخزنية (اقتطاع كمية)",
+                notes = "تم اقتطاع $splitQuantity لإنشاء الوحدة #$childId",
+                deltas = "{\"splitQuantity\": $splitQuantity, \"remainingQuantity\": $newParentQty}",
+                createdAt = now
+            )
+            val childTracking = StockItemTrackingEntity(
+                uuid = AppUuid.generate(),
+                stockItemUuid = childEntity.uuid,
+                trackingTypeCode = StockTrackingType.SPLIT.code,
+                label = "وحدة مجزأة جديدة من الأصل",
+                notes = "مجزأة من الوحدة #${parentEntity.uuid}",
+                deltas = "{\"initialQuantity\": $splitQuantity, \"parentUuid\": \"${parentEntity.uuid}\"}",
+                createdAt = now
+            )
+            trackingDao.insertOrUpdate(parentTracking)
+            trackingDao.insertOrUpdate(childTracking)
+
+            onBeforeCommit?.invoke()
+
+            conn.prepare("COMMIT;").use { it.step() }
+
+            return StockItem(
+                id = childId,
+                partId = childEntity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
+                locationId = childEntity.locationUuid?.removePrefix("loc-")?.toLongOrNull(),
+                quantity = childEntity.quantity,
+                serial = childEntity.serial,
+                batch = childEntity.batch,
+                status = StockStatus.fromCode(childEntity.statusCode),
+                packaging = childEntity.packaging,
+                purchasePrice = childEntity.purchasePrice,
+                purchasePriceCurrency = childEntity.purchasePriceCurrency,
+                notes = childEntity.notes,
+                link = childEntity.link,
+                parentId = parentId
+            )
+        } catch (e: Throwable) {
+            runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
+            throw e
+        }
     }
 
     /**
@@ -408,36 +566,15 @@ class StockRepository(
             }
         }
 
+        // تخصيص المعرف الرقمي مسبقاً قبل فتح المعاملة لمنع تداخل المعاملات في SqliteNumericIdAllocator
+        val preallocatedTargetId = SqliteNumericIdAllocator.nextId("stock_items", "stock-")
+
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
         try {
-            // التأكد من تحميل/مزامنة السجل في جدول الذاكرة إذا أُمُر بالنقل مباشرة
-            if (stockTable.getAllStockItems().none { it.id == itemId }) {
-                val entities = stockDao.getStockItemsPaged(limit = 1000, offset = 0)
-                val entity = entities.find { it.uuid == "stock-$itemId" || it.uuid.removePrefix("stock-").toLongOrNull() == itemId }
-                if (entity != null) {
-                    val stockItem = StockItem(
-                        id = itemId,
-                        partId = entity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
-                        locationId = entity.locationUuid?.removePrefix("loc-")?.toLongOrNull() ?: 1L,
-                        quantity = entity.quantity,
-                        serial = entity.serial,
-                        batch = entity.batch,
-                        status = StockStatus.fromCode(entity.statusCode),
-                        packaging = entity.packaging,
-                        purchasePrice = entity.purchasePrice,
-                        expiryDate = entity.expiryDate,
-                        stocktakeDate = entity.stocktakeDate,
-                        notes = entity.notes
-                    )
-                    stockTable.insertStockItem(stockItem)
-                }
-            }
-
             val sourceEntity = stockDao.getStockItemById(itemId)
-            val tableItem = stockTable.getAllStockItems().find { it.id == itemId }
-            val currentQty = sourceEntity?.quantity ?: tableItem?.quantity
                 ?: throw IllegalArgumentException("العنصر المخزني المرتبط بطلب النقل غير موجود (#$itemId)")
+            val currentQty = sourceEntity.quantity
 
             if (quantityToTransfer > currentQty) {
                 throw IllegalArgumentException("الكمية المطلوب نقلها ($quantityToTransfer) أكبر من الكمية المتاحة في السجل الحالي ($currentQty)")
@@ -445,19 +582,10 @@ class StockRepository(
 
             val now = Clock.System.now().toEpochMilliseconds()
             val targetLocationUuid = "loc-$targetLocationId"
-            val sourceUuid = sourceEntity?.uuid ?: "stock-$itemId"
-            val partUuid = sourceEntity?.partUuid ?: "part-${tableItem?.partId ?: 1L}"
-            val batch = sourceEntity?.batch ?: tableItem?.batch ?: ""
-            val statusCode = sourceEntity?.statusCode ?: tableItem?.status?.code ?: 10
-
-            val (sourceItem, targetItem) = stockTable.transferStockItem(
-                itemId = itemId,
-                sourceLocationId = sourceLocationId,
-                targetLocationId = targetLocationId,
-                quantityToTransfer = quantityToTransfer,
-                reason = reason,
-                notes = notes
-            )
+            val sourceUuid = sourceEntity.uuid
+            val partUuid = sourceEntity.partUuid
+            val batch = sourceEntity.batch
+            val statusCode = sourceEntity.statusCode
 
             if (quantityToTransfer == currentQty) {
                 // نقل كامل: تعديل موقع السجل الحالي
@@ -470,8 +598,15 @@ class StockRepository(
                 val existingTarget = stockDao.findStockItemByPartAndLocation(partUuid, targetLocationUuid, batch, statusCode)
                 if (existingTarget != null) {
                     stockDao.updateStockItemQuantity(existingTarget.uuid, existingTarget.quantity + quantityToTransfer, now)
-                } else if (targetItem != null) {
-                    stockDao.insertOrUpdate(targetItem.toEntity())
+                } else {
+                    val newTarget = sourceEntity.copy(
+                        uuid = "stock-$preallocatedTargetId",
+                        locationUuid = targetLocationUuid,
+                        quantity = quantityToTransfer,
+                        updatedAt = now,
+                        syncStatus = SyncStatus.PENDING
+                    )
+                    stockDao.insertOrUpdate(newTarget)
                 }
             }
 
@@ -539,24 +674,7 @@ class StockRepository(
             }
         }
 
-        // السقوط على جدول الذاكرة إذا كانت قاعدة البيانات خالية
-        return stockTable.getAllStockItems()
-            .filter { (locationId == null || it.locationId == locationId) && (partId == null || it.partId == partId) }
-            .map { item ->
-                StocktakeItem(
-                    stockItemId = item.id,
-                    stockItemUuid = "stock-${item.id}",
-                    partId = item.partId,
-                    partName = "قطعة #${item.partId}",
-                    locationId = item.locationId,
-                    locationUuid = "loc-${item.locationId}",
-                    locationName = locNameMap[item.locationId] ?: "موقع #${item.locationId}",
-                    batch = item.batch,
-                    bookQuantity = item.quantity,
-                    countedQuantity = item.quantity,
-                    notes = item.notes
-                )
-            }
+        return emptyList()
     }
 
     /**
@@ -598,15 +716,14 @@ class StockRepository(
             } else {
                 stockDao.getStockItemById(request.stockItemId)
             }
-            val tableItem = stockTable.getAllStockItems().find { it.id == request.stockItemId }
 
-            if (entity == null && tableItem == null) {
+            if (entity == null) {
                 throw IllegalArgumentException("سجل المخزون غير موجود (#${request.stockItemId})")
             }
 
-            val itemUuid = entity?.uuid ?: tableItem?.let { "stock-${it.id}" }!!
-            val partUuid = entity?.partUuid ?: tableItem?.let { "part-${it.partId}" }!!
-            val currentBookQty = entity?.quantity ?: tableItem?.quantity ?: 0.0
+            val itemUuid = entity.uuid
+            val partUuid = entity.partUuid
+            val currentBookQty = entity.quantity
             val difference = request.countedQuantity - currentBookQty
 
             val now = Clock.System.now().toEpochMilliseconds()
@@ -619,7 +736,7 @@ class StockRepository(
                 stocktakeDate = request.stocktakeDate,
                 stocktakeUserUuid = userUuid,
                 updatedAt = now,
-                deleteOnDeplete = entity?.deleteOnDeplete ?: tableItem?.deleteOnDeplete ?: false
+                deleteOnDeplete = entity.deleteOnDeplete
             )
 
             // 2. تعديل الرصيد الإجمالي للصنف في جدول parts إذا وجد فارق
@@ -644,11 +761,6 @@ class StockRepository(
                     createdAt = now
                 )
             )
-
-            // 4. تحديث جدول الذاكرة المتزامن (إن وجد)
-            if (stockTable.getAllStockItems().any { it.id == request.stockItemId }) {
-                stockTable.performStocktake(request.stockItemId, request.userId, request.stocktakeDate)
-            }
 
             conn.prepare("COMMIT;").use { it.step() }
             return true
@@ -675,11 +787,73 @@ class StockRepository(
      * تنفيذ عملية الجرد الفعلي (Stocktake) وتسجيل حركة الجرد.
      */
     fun performStocktake(stockId: Long, userId: Long, stocktakeDate: String = DateTimeUtils.getCurrentDate()): StockItem {
-        val updated = stockTable.performStocktake(stockId, userId, stocktakeDate)
-        stockDao.insertOrUpdate(updated.toEntity())
-        val trackings = stockTable.getTrackingForStockItem(stockId)
-        trackings.forEach { trackingDao.insertOrUpdate(it.toEntity()) }
-        return updated
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        try {
+            val entity = stockDao.getStockItemById(stockId)
+                ?: throw IllegalArgumentException("الوحدة المخزنية غير موجودة (#$stockId)")
+
+            val now = Clock.System.now().toEpochMilliseconds()
+            val userUuid = "usr-$userId"
+
+            stockDao.updateStocktakeReconciliation(
+                uuid = entity.uuid,
+                newQuantity = entity.quantity,
+                stocktakeDate = stocktakeDate,
+                stocktakeUserUuid = userUuid,
+                updatedAt = now,
+                deleteOnDeplete = entity.deleteOnDeplete
+            )
+
+            val trackingUuid = AppUuid.generate()
+            trackingDao.insertOrUpdate(
+                StockItemTrackingEntity(
+                    uuid = trackingUuid,
+                    stockItemUuid = entity.uuid,
+                    trackingTypeCode = StockTrackingType.COUNT.code,
+                    label = "جرد فعلي ميداني",
+                    notes = "",
+                    deltas = "{\"quantity\":[${entity.quantity},${entity.quantity}],\"stocktake_date\":\"$stocktakeDate\"}",
+                    userUuid = userUuid,
+                    createdAt = now
+                )
+            )
+
+            conn.prepare("COMMIT;").use { it.step() }
+
+            val updatedEntity = stockDao.getStockItemById(stockId) ?: entity
+            val parsedId = updatedEntity.uuid.removePrefix("stock-").toLongOrNull() ?: stockId
+            return StockItem(
+                id = parsedId,
+                partId = updatedEntity.partUuid.removePrefix("part-").toLongOrNull() ?: 1L,
+                locationId = updatedEntity.locationUuid?.takeIf { it.isNotBlank() }?.removePrefix("location-")?.removePrefix("loc-")?.toLongOrNull(),
+                quantity = updatedEntity.quantity,
+                serial = updatedEntity.serial,
+                batch = updatedEntity.batch,
+                status = StockStatus.fromCode(updatedEntity.statusCode),
+                packaging = updatedEntity.packaging,
+                purchasePrice = updatedEntity.purchasePrice,
+                purchasePriceCurrency = updatedEntity.purchasePriceCurrency,
+                purchaseOrderId = updatedEntity.purchaseOrderUuid?.removePrefix("po-")?.toLongOrNull(),
+                supplierPartId = updatedEntity.supplierPartUuid.takeIf { it.isNotBlank() }?.removePrefix("sup-p-")?.toLongOrNull(),
+                salesOrderId = updatedEntity.salesOrderUuid?.removePrefix("so-")?.toLongOrNull(),
+                customerId = updatedEntity.customerUuid.takeIf { it.isNotBlank() }?.removePrefix("comp-")?.toLongOrNull(),
+                buildId = updatedEntity.buildUuid?.removePrefix("bo-")?.removePrefix("build-")?.toLongOrNull(),
+                isBuilding = updatedEntity.isBuilding,
+                parentId = updatedEntity.parentStockItemUuid?.removePrefix("stock-")?.toLongOrNull(),
+                expiryDate = updatedEntity.expiryDate,
+                stocktakeDate = stocktakeDate,
+                stocktakeUserId = userId,
+                reviewNeeded = false,
+                deleteOnDeplete = updatedEntity.deleteOnDeplete,
+                link = updatedEntity.link,
+                notes = updatedEntity.notes,
+                metadata = updatedEntity.metadata
+            )
+        } catch (e: Throwable) {
+            runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
+            throw e
+        }
     }
 
     /**
@@ -693,9 +867,31 @@ class StockRepository(
         notes: String = "",
         deltas: String = "{}"
     ): StockItemTracking {
-        val tracking = stockTable.recordTracking(stockItemId, trackingType, userId, label, notes, deltas)
-        trackingDao.insertOrUpdate(tracking.toEntity())
-        return tracking
+        val now = Clock.System.now().toEpochMilliseconds()
+        val trackingUuid = AppUuid.generate()
+        val userUuid = userId?.let { "usr-$it" }
+        trackingDao.insertOrUpdate(
+            StockItemTrackingEntity(
+                uuid = trackingUuid,
+                stockItemUuid = "stock-$stockItemId",
+                trackingTypeCode = trackingType.code,
+                label = label,
+                notes = notes,
+                deltas = deltas,
+                userUuid = userUuid,
+                createdAt = now
+            )
+        )
+        return StockItemTracking(
+            id = trackingUuid.hashCode().toLong(),
+            stockItemId = stockItemId,
+            date = DateTimeUtils.getCurrentDateTime(),
+            trackingType = trackingType,
+            userId = userId,
+            label = label,
+            notes = notes,
+            deltas = deltas
+        )
     }
 
     /**

@@ -11,6 +11,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 
@@ -122,5 +123,8 @@ class StockItemAttachmentTest {
         val deleted = repository.deleteStockItemAttachment(att.id)
         assertTrue(deleted)
         assertEquals(0, repository.getAttachmentsForStockItem(item.id).size)
+
+        val deletedAgain = repository.deleteStockItemAttachment(att.id)
+        assertFalse(deletedAgain)
     }
 }

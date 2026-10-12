@@ -1,6 +1,7 @@
 package com.nextstepai.inventory.repository
 
 import com.nextstepai.inventory.data.*
+import com.nextstepai.inventory.data.db.SqliteDatabaseManager
 import com.nextstepai.inventory.data.db.SqliteNumericIdAllocator
 import com.nextstepai.inventory.data.db.StockLocationDao
 import com.nextstepai.inventory.data.db.StockLocationTypeDao
@@ -13,45 +14,43 @@ import kotlin.time.Clock
  */
 class StockLocationRepository(
     private val locationDao: StockLocationDao = StockLocationDao(),
-    private val locationTypeDao: StockLocationTypeDao = StockLocationTypeDao(),
-    @Suppress("DEPRECATION")
-    private val stockTable: StockItemTable = StockItemTable()
+    private val locationTypeDao: StockLocationTypeDao = StockLocationTypeDao()
 ) {
     /**
-     * جلب كافة مواقع التخزين المتاحة من SQLite مع السقوط الآمن على الجدول المحلي.
+     * جلب كافة مواقع التخزين المتاحة من SQLite.
      */
     fun getLocations(): List<StockLocation> {
         val entities = runCatching { locationDao.getAllLocations() }.getOrDefault(emptyList())
-        if (entities.isNotEmpty()) {
-            return entities.map { entity ->
-                val resolvedId = if (entity.id > 0L) entity.id else {
-                    entity.uuid.removePrefix("location-").removePrefix("loc-").toLongOrNull() ?: 1L
-                }
-                val resolvedParentId = entity.parentId ?: entity.parentUuid?.removePrefix("location-")?.removePrefix("loc-")?.toLongOrNull()
-                StockLocation(
-                    id = resolvedId,
-                    uuid = entity.uuid,
-                    name = entity.name,
-                    description = entity.description,
-                    parentId = resolvedParentId,
-                    structural = entity.structural,
-                    external = entity.external,
-                    locationType = entity.locationType,
-                    ownerId = entity.ownerId,
-                    icon = entity.icon,
-                    customIcon = entity.customIcon,
-                    address = entity.address,
-                    customCapacity = entity.customCapacity,
-                    isBulkGenerated = entity.isBulkGenerated,
-                    level = entity.level,
-                    lft = entity.lft,
-                    rght = entity.rght,
-                    treeId = entity.treeId,
-                    metadata = entity.metadata
-                )
+        return entities.mapNotNull { entity ->
+            val resolvedId = if (entity.id > 0L) {
+                entity.id
+            } else {
+                entity.uuid.removePrefix("location-").removePrefix("loc-").toLongOrNull()?.takeIf { it > 0L }
+                    ?: return@mapNotNull null
             }
+            val resolvedParentId = entity.parentId ?: entity.parentUuid?.removePrefix("location-")?.removePrefix("loc-")?.toLongOrNull()?.takeIf { it > 0L }
+            StockLocation(
+                id = resolvedId,
+                uuid = entity.uuid,
+                name = entity.name,
+                description = entity.description,
+                parentId = resolvedParentId,
+                structural = entity.structural,
+                external = entity.external,
+                locationType = entity.locationType,
+                ownerId = entity.ownerId,
+                icon = entity.icon,
+                customIcon = entity.customIcon,
+                address = entity.address,
+                customCapacity = entity.customCapacity,
+                isBulkGenerated = entity.isBulkGenerated,
+                level = entity.level,
+                lft = entity.lft,
+                rght = entity.rght,
+                treeId = entity.treeId,
+                metadata = entity.metadata
+            )
         }
-        return stockTable.getAllLocations()
     }
 
     /**
@@ -80,7 +79,20 @@ class StockLocationRepository(
      * حساب توليد المسار الهرمي الكامل التراكمي للموقع من الجذر حتى النهاية.
      */
     fun getFullPathForLocation(locationId: Long?, separator: String = " / "): String {
-        return stockTable.getFullPathForLocation(locationId, separator)
+        if (locationId == null) return "الموقع الجذر (Root)"
+        val visited = mutableSetOf<Long>()
+        val pathNames = mutableListOf<String>()
+        var currId: Long? = locationId
+        val allLocations = getLocations()
+
+        while (currId != null && !visited.contains(currId)) {
+            visited.add(currId)
+            val loc = allLocations.find { it.id == currId } ?: break
+            pathNames.add(0, loc.name)
+            currId = loc.parentId
+        }
+
+        return if (pathNames.isNotEmpty()) pathNames.joinToString(separator) else "موقع #$locationId"
     }
 
     /**
@@ -129,27 +141,17 @@ class StockLocationRepository(
         return candidate
     }
 
-    /**
-     * إضافة أو تحديث موقع تخزيني جديد في الشجرة الهرمية لمواقع التخزين (StockLocation) مع حسم التعارضات المزامنة وحماية الموقع الأساسي.
-     */
-    fun addLocation(location: StockLocation): StockLocation {
+    private fun saveLocationRecord(location: StockLocation): StockLocation {
         val existingLocs = getLocations()
-        val maxExistingId = maxOf(stockTable.getAllLocations().maxOfOrNull { it.id } ?: 0L, existingLocs.maxOfOrNull { it.id } ?: 0L)
-        val allocatedId = if (location.id == 0L) {
-            runCatching {
-                SqliteNumericIdAllocator.nextId("stock_locations", "loc-")
-            }.getOrElse { maxExistingId + 1L }
-        } else {
-            location.id
-        }
-        val finalUuid = if (location.uuid.isNotBlank() && !location.uuid.startsWith("location-")) {
-            location.uuid
-        } else {
-            "loc-$allocatedId"
-        }
+        val parentLoc = if (location.parentId != null && location.parentId > 0L) {
+            existingLocs.find { it.id == location.parentId }
+        } else null
+        val calculatedLevel = if (location.level > 0) location.level else parentLoc?.let { it.level + 1 } ?: 0
+        val calculatedTreeId = if (location.treeId > 0) location.treeId else parentLoc?.treeId ?: ((existingLocs.maxOfOrNull { it.treeId } ?: 0) + 1)
+
         val locationWithId = location.copy(
-            id = allocatedId,
-            uuid = finalUuid
+            level = calculatedLevel,
+            treeId = calculatedTreeId
         )
         var finalLocation = locationWithId
 
@@ -171,7 +173,6 @@ class StockLocationRepository(
 
                 if (locUpdatedAt >= existingUpdatedAt) {
                     val demoted = existingPrimary.withPrimary(false)
-                    stockTable.insertLocation(demoted)
                     locationDao.insertOrUpdate(demoted.toEntity())
                 } else {
                     finalLocation = location.withPrimary(false)
@@ -179,9 +180,38 @@ class StockLocationRepository(
             }
         }
 
-        val inserted = stockTable.insertLocation(finalLocation)
-        locationDao.insertOrUpdate(inserted.toEntity())
-        return inserted
+        locationDao.insertOrUpdate(finalLocation.toEntity())
+        return finalLocation
+    }
+
+    /**
+     * إضافة أو تحديث موقع تخزيني جديد في الشجرة الهرمية لمواقع التخزين (StockLocation) مع حسم التعارضات المزامنة وحماية الموقع الأساسي في معاملة ذرية.
+     */
+    fun addLocation(location: StockLocation): StockLocation {
+        val allocatedId = if (location.id == 0L) {
+            runCatching {
+                SqliteNumericIdAllocator.nextId("stock_locations", "loc-")
+            }.getOrElse { (getLocations().maxOfOrNull { it.id } ?: 0L) + 1L }
+        } else {
+            location.id
+        }
+        val finalUuid = if (location.uuid.isNotBlank() && !location.uuid.startsWith("location-")) {
+            location.uuid
+        } else {
+            "loc-$allocatedId"
+        }
+        val preparedLocation = location.copy(id = allocatedId, uuid = finalUuid)
+
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        try {
+            val saved = saveLocationRecord(preparedLocation)
+            conn.prepare("COMMIT;").use { it.step() }
+            return saved
+        } catch (e: Throwable) {
+            runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
+            throw e
+        }
     }
 
     /**
@@ -191,26 +221,65 @@ class StockLocationRepository(
         targetLocation: StockLocation,
         intermediates: List<IntermediateNodeSpec>
     ): StockLocation {
-        var currentParentId = targetLocation.parentId
-
-        for (spec in intermediates) {
-            if (spec.existingId != null && spec.existingId > 0L) {
-                currentParentId = spec.existingId
-            } else if (spec.name.isNotBlank()) {
-                val newIntermediate = StockLocation(
-                    name = spec.name.trim(),
-                    description = "طبقة وسيطة مضافة آلياً لحشو فجوة الهرمية",
-                    parentId = currentParentId,
-                    structural = true,
-                    locationType = spec.locationType
-                )
-                val inserted = addLocation(newIntermediate)
-                currentParentId = inserted.id
+        var fallbackMaxId = (getLocations().maxOfOrNull { it.id } ?: 0L)
+        val preAllocatedIntermediates = intermediates.map { spec ->
+            if (spec.existingId == null && spec.name.isNotBlank()) {
+                runCatching {
+                    SqliteNumericIdAllocator.nextId("stock_locations", "loc-")
+                }.getOrElse { ++fallbackMaxId }
+            } else {
+                null
             }
         }
+        val targetAllocatedId = if (targetLocation.id == 0L) {
+            runCatching {
+                SqliteNumericIdAllocator.nextId("stock_locations", "loc-")
+            }.getOrElse { ++fallbackMaxId }
+        } else {
+            targetLocation.id
+        }
+        val targetFinalUuid = if (targetLocation.uuid.isNotBlank() && !targetLocation.uuid.startsWith("location-")) {
+            targetLocation.uuid
+        } else {
+            "loc-$targetAllocatedId"
+        }
 
-        val finalTarget = targetLocation.copy(parentId = currentParentId)
-        return addLocation(finalTarget)
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        try {
+            var currentParentId = targetLocation.parentId
+
+            for ((index, spec) in intermediates.withIndex()) {
+                if (spec.existingId != null && spec.existingId > 0L) {
+                    currentParentId = spec.existingId
+                } else if (spec.name.isNotBlank()) {
+                    val allocatedId = preAllocatedIntermediates[index] ?: run { ++fallbackMaxId }
+                    val newIntermediate = StockLocation(
+                        id = allocatedId,
+                        uuid = "loc-$allocatedId",
+                        name = spec.name.trim(),
+                        description = "طبقة وسيطة مضافة آلياً لحشو فجوة الهرمية",
+                        parentId = currentParentId,
+                        structural = true,
+                        locationType = spec.locationType
+                    )
+                    val inserted = saveLocationRecord(newIntermediate)
+                    currentParentId = inserted.id
+                }
+            }
+
+            val finalTarget = targetLocation.copy(
+                id = targetAllocatedId,
+                uuid = targetFinalUuid,
+                parentId = currentParentId
+            )
+            val result = saveLocationRecord(finalTarget)
+            conn.prepare("COMMIT;").use { it.step() }
+            return result
+        } catch (e: Throwable) {
+            runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
+            throw e
+        }
     }
 
     /**
@@ -245,29 +314,30 @@ class StockLocationRepository(
                 loc
             }
         }
-        val insertedList = stockTable.insertBatchLocations(allocatedLocations)
-        locationDao.insertBatchLocations(insertedList.map { it.toEntity() })
-        return insertedList
+        locationDao.insertBatchLocations(allocatedLocations.map { it.toEntity() })
+        return allocatedLocations
     }
 
     /**
      * حذف موقع تخزيني حذفاً مرناً (Soft Delete).
      */
     fun deleteLocationInternal(locationId: Long): Boolean {
-        val targetLoc = getLocations().find { it.id == locationId }
-        val wasPrimary = targetLoc?.isPrimary == true
-        val targetType = targetLoc?.locationType ?: ""
+        if (locationId <= 0L) return false
+        val targetLoc = getLocations().find { it.id == locationId } ?: return false
+        val wasPrimary = targetLoc.isPrimary
+        val targetType = targetLoc.locationType
 
-        val removedFromTable = stockTable.deleteLocation(locationId)
-        locationDao.softDeleteLocation(targetLoc?.uuid ?: "loc-$locationId")
-        targetLoc?.labelImagePath?.let { path ->
+        val deleted = locationDao.softDeleteLocation(targetLoc.uuid)
+        if (!deleted) return false
+
+        targetLoc.labelImagePath?.let { path ->
             runCatching {
                 val file = File(path)
                 if (file.exists()) file.delete()
             }
         }
 
-        if (wasPrimary && targetLoc != null) {
+        if (wasPrimary) {
             val remainingOfSameType = getLocations().filter { loc ->
                 loc.id != locationId &&
                         when {
@@ -284,6 +354,6 @@ class StockLocationRepository(
             }
         }
 
-        return removedFromTable
+        return true
     }
 }

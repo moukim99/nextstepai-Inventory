@@ -288,12 +288,12 @@ class PurchaseOrderDao {
         return changed > 0
     }
 
-    fun updateOrderStatus(orderUuid: String, newStatusCode: Int, updatedAt: Long) {
+    fun updateOrderStatus(orderUuid: String, newStatusCode: Int, updatedAt: Long): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         val sql = """
             UPDATE purchase_orders
             SET statusCode = ?, updatedAt = ?, syncStatus = 'PENDING'
-            WHERE uuid = ?
+            WHERE uuid = ? AND isDeleted = 0
         """.trimIndent()
         conn.prepare(sql).use { stmt ->
             stmt.bindLong(1, newStatusCode.toLong())
@@ -301,6 +301,13 @@ class PurchaseOrderDao {
             stmt.bindText(3, orderUuid)
             stmt.step()
         }
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 
     private fun mapOrderEntity(stmt: SQLiteStatement): PurchaseOrderEntity {

@@ -43,7 +43,7 @@ class PartCardRefactoringTest {
         stockTable.clearAll()
 
         val partRepo = PartRepository(partTable)
-        val stockRepo = StockRepository(stockTable)
+        val stockRepo = StockRepository()
 
         val loc1 = stockRepo.addLocation(StockLocation(name = "المستودع الرئيسي > الممر 1 > الرف A"))
         val loc2 = stockRepo.addLocation(StockLocation(name = "المستودع الفرعي > الرف B"))

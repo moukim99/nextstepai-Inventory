@@ -41,8 +41,19 @@ object SqliteNumericIdAllocator {
         Key("part_stars", "part-star-"),
         Key("part_parameters", "part-param-"),
         Key("part_related", "part-rel-"),
-        Key("part_parameter_templates", "param-tpl-"),
-        Key("part_category_parameter_templates", "cat-param-tpl-")
+        Key("part_category_parameter_templates", "cat-param-tpl-"),
+        Key("part_categories", "cat-"),
+        Key("purchase_orders", "po-"),
+        Key("purchase_order_lines", "po-line-"),
+        Key("sales_orders", "so-"),
+        Key("sales_order_lines", "so-line-"),
+        Key("build_orders", "build-"),
+        Key("build_orders", "bo-"),
+        Key("build_order_line_items", "bo-line-"),
+        Key("build_items", "build-item-"),
+        Key("stock_items", "stock-"),
+        Key("stock_item_attachments", "attachment-"),
+        Key("stock_item_test_results", "test-result-")
     )
 
     /**
