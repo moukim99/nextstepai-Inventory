@@ -44,7 +44,51 @@ internal object SqliteDatabaseSchema {
                 syncStatus TEXT NOT NULL DEFAULT 'SYNCHRONIZED',
                 isDeleted INTEGER NOT NULL DEFAULT 0,
                 updatedAt INTEGER NOT NULL DEFAULT 0,
+                ownerId TEXT NOT NULL DEFAULT 'OWNER-DEFAULT',
+                phoneNumber TEXT NOT NULL DEFAULT '',
+                passwordHash TEXT NOT NULL DEFAULT '',
+                avatarUrl TEXT NOT NULL DEFAULT '',
+                createdAt INTEGER NOT NULL DEFAULT 0,
                 lastModifiedByDeviceUuid TEXT
+            );
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS activation_codes (
+                code TEXT PRIMARY KEY NOT NULL,
+                ownerId TEXT NOT NULL DEFAULT 'OWNER-DEFAULT',
+                assignedRole TEXT NOT NULL DEFAULT 'STAFF',
+                permissionsJson TEXT NOT NULL DEFAULT '{}',
+                label TEXT NOT NULL DEFAULT '',
+                isUsed INTEGER NOT NULL DEFAULT 0,
+                usedByUuid TEXT NOT NULL DEFAULT '',
+                expiresAt INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                syncStatus TEXT NOT NULL DEFAULT 'SYNCHRONIZED',
+                lastModifiedByDeviceUuid TEXT,
+                createdAt INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0,
+                isDeleted INTEGER NOT NULL DEFAULT 0
+            );
+        """.trimIndent()).use { it.step() }
+
+        conn.prepare("""
+            CREATE TABLE IF NOT EXISTS user_permissions (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                ownerId TEXT NOT NULL DEFAULT 'OWNER-DEFAULT',
+                userUuid TEXT NOT NULL,
+                module TEXT NOT NULL,
+                canCreate INTEGER NOT NULL DEFAULT 0,
+                canRead INTEGER NOT NULL DEFAULT 1,
+                canUpdate INTEGER NOT NULL DEFAULT 0,
+                canDelete INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                syncStatus TEXT NOT NULL DEFAULT 'SYNCHRONIZED',
+                lastModifiedByDeviceUuid TEXT,
+                createdAt INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL DEFAULT 0,
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                deletedAt INTEGER
             );
         """.trimIndent()).use { it.step() }
 
@@ -1009,6 +1053,19 @@ internal object SqliteDatabaseSchema {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_companyUuid ON notifications_history(companyUuid);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_triggered_schedule ON notifications_history(isTriggered, scheduledDate);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications_history(isRead);").use { it.step() } }
+        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_app_users_sync ON app_users(syncStatus, isDeleted, updatedAt);").use { it.step() } }
+        runCatching {
+            conn.prepare("""
+                DELETE FROM user_permissions
+                WHERE rowid NOT IN (
+                    SELECT MIN(rowid)
+                    FROM user_permissions
+                    GROUP BY userUuid, module
+                )
+            """.trimIndent()).use { it.step() }
+        }
+        runCatching { conn.prepare("DROP INDEX IF EXISTS idx_user_permissions_user;").use { it.step() } }
+        runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_permissions_user ON user_permissions(userUuid, module);").use { it.step() } }
 
         // 9. Centralized schema migrations and column additions
         SqliteDatabaseMigrations.applyMigrations(conn)

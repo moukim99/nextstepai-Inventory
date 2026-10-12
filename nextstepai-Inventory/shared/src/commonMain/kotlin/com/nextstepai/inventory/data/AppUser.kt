@@ -11,6 +11,9 @@ import kotlin.time.Clock
  * @property active حالة نشاط الحساب (مفعل/معطل)
  * @property isDeleted معلمة الحذف المنطقي
  * @property updatedAt تاريخ وتوقيت التحديث
+ * @property ownerId معرف مالك الحساب أو المؤسسة
+ * @property phoneNumber رقم هاتف الموظف
+ * @property avatarUrl رابط الصورة الرمزية للموظف
  */
 data class AppUser(
     val uuid: String,
@@ -18,5 +21,8 @@ data class AppUser(
     val role: String = "",
     val active: Boolean = true,
     val isDeleted: Boolean = false,
-    val updatedAt: Long = Clock.System.now().toEpochMilliseconds()
+    val updatedAt: Long = Clock.System.now().toEpochMilliseconds(),
+    val ownerId: String = "OWNER-DEFAULT",
+    val phoneNumber: String = "",
+    val avatarUrl: String = ""
 )

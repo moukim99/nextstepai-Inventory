@@ -18,7 +18,8 @@ internal object SqliteDatabaseMigrations {
         "sales_orders", "sales_order_lines", "manufacturing_phases", "part_allocations",
         "manufacturer_parts", "supplier_parts", "notifications_history", "app_settings",
         "build_order_line_items", "build_items", "manufacturer_part_attachments",
-        "part_parameter_templates", "part_category_parameter_templates", "stock_item_tracking"
+        "part_parameter_templates", "part_category_parameter_templates", "stock_item_tracking",
+        "app_users", "activation_codes", "user_permissions"
     ).map { it.lowercase() }.toSet()
 
     private val dynamicOptionalTables = mutableSetOf<String>()
@@ -619,6 +620,13 @@ internal object SqliteDatabaseMigrations {
         addColumnIfMissing(conn, "ALTER TABLE bom_item_substitutes ADD COLUMN id INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE bom_item_substitutes ADD COLUMN bomItemId INTEGER NOT NULL DEFAULT 0;")
         addColumnIfMissing(conn, "ALTER TABLE bom_item_substitutes ADD COLUMN partId INTEGER NOT NULL DEFAULT 0;")
+
+        // App users & Staff Management migrations
+        addColumnIfMissing(conn, "ALTER TABLE app_users ADD COLUMN ownerId TEXT NOT NULL DEFAULT 'OWNER-DEFAULT';")
+        addColumnIfMissing(conn, "ALTER TABLE app_users ADD COLUMN phoneNumber TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE app_users ADD COLUMN passwordHash TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE app_users ADD COLUMN avatarUrl TEXT NOT NULL DEFAULT '';")
+        addColumnIfMissing(conn, "ALTER TABLE app_users ADD COLUMN createdAt INTEGER NOT NULL DEFAULT 0;")
     }
 
     fun tableExists(conn: SQLiteConnection, tableName: String): Boolean {

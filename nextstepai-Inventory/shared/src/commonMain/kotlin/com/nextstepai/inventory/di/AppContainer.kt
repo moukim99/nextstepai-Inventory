@@ -1,6 +1,7 @@
 package com.nextstepai.inventory.di
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import com.nextstepai.inventory.data.db.StaffManagementDao
 import com.nextstepai.inventory.repository.*
 import com.nextstepai.inventory.ui.*
 
@@ -21,8 +22,13 @@ class AppContainer(
     val loginRepository: LoginRepository = LoginRepository(),
     val salesRepository: SalesOrderRepository = SalesOrderRepository(),
     val partCategoryRepository: PartCategoryRepository = partRepository.categoryRepository,
-    val stockLocationRepository: StockLocationRepository = stockRepository.locationRepository
+    val stockLocationRepository: StockLocationRepository = stockRepository.locationRepository,
+    val staffManagementDao: StaffManagementDao = StaffManagementDao()
 ) {
+    fun createStaffManagementViewModel(ownerId: String = "OWNER-MAIN") = StaffManagementViewModel(
+        staffDao = staffManagementDao,
+        ownerId = ownerId
+    )
     fun createSettingsViewModel() = SettingsViewModel(
         repository = settingsRepository
     )
