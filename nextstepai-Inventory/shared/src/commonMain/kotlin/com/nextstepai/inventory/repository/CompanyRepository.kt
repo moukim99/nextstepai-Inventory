@@ -68,23 +68,157 @@ class CompanyRepository(
     private fun resolveCompanyUuid(id: Long): String =
         companyDao.getCompanyById(id)?.uuid ?: "company-$id"
 
-    private fun updateJsonMetadata(existingJson: String, updates: Map<String, String>): String {
-        if (updates.isEmpty()) return existingJson
-        val map = mutableMapOf<String, String>()
-        val clean = existingJson.trim().removePrefix("{").removeSuffix("}").trim()
-        if (clean.isNotBlank()) {
-            val regex = """"(.*?)"\s*:\s*("(.*?)"|[\d\.]+|true|false|null)""".toRegex()
-            regex.findAll(clean).forEach { match ->
-                val key = match.groupValues[1]
-                val value = match.groupValues[2]
-                map[key] = value
+    private fun escapeJsonString(value: String): String {
+        val sb = StringBuilder()
+        for (c in value) {
+            when (c) {
+                '\\' -> sb.append("\\\\")
+                '"' -> sb.append("\\\"")
+                '\b' -> sb.append("\\b")
+                '\u000C' -> sb.append("\\f")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                else -> {
+                    if (c.code in 0..0x1F) {
+                        sb.append("\\u").append(c.code.toString(16).padStart(4, '0'))
+                    } else {
+                        sb.append(c)
+                    }
+                }
             }
         }
-        updates.forEach { (k, v) -> map[k] = v }
+        return sb.toString()
+    }
+
+    private fun parseJsonObject(json: String): MutableMap<String, String> {
+        val result = mutableMapOf<String, String>()
+        val trimmed = json.trim()
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return result
+        var i = 1
+        val len = trimmed.length - 1 // ignore closing '}'
+
+        fun skipWhitespace() {
+            while (i < len && trimmed[i].isWhitespace()) i++
+        }
+
+        fun parseString(): String? {
+            if (i >= len || trimmed[i] != '"') return null
+            i++ // skip opening quote
+            val sb = StringBuilder()
+            while (i < len) {
+                val c = trimmed[i]
+                if (c == '\\') {
+                    i++
+                    if (i >= len) break
+                    when (val esc = trimmed[i]) {
+                        '"' -> sb.append('"')
+                        '\\' -> sb.append('\\')
+                        '/' -> sb.append('/')
+                        'b' -> sb.append('\b')
+                        'f' -> sb.append('\u000C')
+                        'n' -> sb.append('\n')
+                        'r' -> sb.append('\r')
+                        't' -> sb.append('\t')
+                        'u' -> {
+                            if (i + 4 < len) {
+                                val hex = trimmed.substring(i + 1, i + 5)
+                                hex.toIntOrNull(16)?.let { sb.append(it.toChar()) }
+                                i += 4
+                            }
+                        }
+                        else -> sb.append(esc)
+                    }
+                } else if (c == '"') {
+                    i++ // skip closing quote
+                    return sb.toString()
+                } else {
+                    sb.append(c)
+                }
+                i++
+            }
+            return sb.toString()
+        }
+
+        fun parseRawValue(): String? {
+            skipWhitespace()
+            if (i >= len) return null
+            val start = i
+            when (trimmed[i]) {
+                '"' -> {
+                    val s = parseString() ?: return null
+                    return "\"${escapeJsonString(s)}\""
+                }
+                '{', '[' -> {
+                    var depth = 0
+                    var inStr = false
+                    var escape = false
+                    while (i < len) {
+                        val c = trimmed[i]
+                        if (escape) {
+                            escape = false
+                        } else if (c == '\\') {
+                            escape = true
+                        } else if (c == '"') {
+                            inStr = !inStr
+                        } else if (!inStr) {
+                            if (c == '{' || c == '[') depth++
+                            else if (c == '}' || c == ']') {
+                                depth--
+                                if (depth == 0) {
+                                    i++
+                                    return trimmed.substring(start, i)
+                                }
+                            }
+                        }
+                        i++
+                    }
+                    return trimmed.substring(start, i)
+                }
+                else -> {
+                    while (i < len && trimmed[i] != ',' && trimmed[i] != '}' && !trimmed[i].isWhitespace()) {
+                        i++
+                    }
+                    return trimmed.substring(start, i)
+                }
+            }
+        }
+
+        while (i < len) {
+            skipWhitespace()
+            if (i >= len || trimmed[i] == '}') break
+            if (trimmed[i] == ',') {
+                i++
+                continue
+            }
+            val key = parseString() ?: break
+            skipWhitespace()
+            if (i < len && trimmed[i] == ':') {
+                i++
+            } else {
+                break
+            }
+            val rawValue = parseRawValue() ?: break
+            result[key] = rawValue
+            skipWhitespace()
+            if (i < len && trimmed[i] == ',') {
+                i++
+            }
+        }
+        return result
+    }
+
+    private fun updateJsonMetadata(existingJson: String, updates: Map<String, String>): String {
+        if (updates.isEmpty() && existingJson.isNotBlank()) return existingJson
+        val map = parseJsonObject(existingJson)
+        updates.forEach { (k, v) ->
+            // v is formatted as a valid raw JSON value (e.g. "\"escaped\"")
+            map[k] = v
+        }
         val sb = StringBuilder("{")
         val entries = map.entries.toList()
         for (i in entries.indices) {
-            sb.append("\"").append(entries[i].key).append("\":").append(entries[i].value)
+            sb.append("\"").append(escapeJsonString(entries[i].key)).append("\":").append(entries[i].value)
             if (i < entries.size - 1) sb.append(",")
         }
         sb.append("}")
@@ -92,15 +226,41 @@ class CompanyRepository(
     }
 
     private fun extractMetadataString(metadataJson: String, key: String): String? {
-        val idx = metadataJson.indexOf("\"$key\":")
-        if (idx == -1) return null
-        val sub = metadataJson.substring(idx + key.length + 3).trimStart()
-        if (sub.startsWith("null")) return null
-        val quoteStart = sub.indexOf('"')
-        if (quoteStart == -1) return null
-        val quoteEnd = sub.indexOf('"', quoteStart + 1)
-        if (quoteEnd == -1) return null
-        return sub.substring(quoteStart + 1, quoteEnd).replace("\\\"", "\"")
+        val map = parseJsonObject(metadataJson)
+        val raw = map[key] ?: return null
+        if (raw == "null" || !raw.startsWith("\"") || !raw.endsWith("\"") || raw.length < 2) return null
+        // Unescape JSON string content
+        val content = raw.substring(1, raw.length - 1)
+        val sb = StringBuilder()
+        var i = 0
+        while (i < content.length) {
+            val c = content[i]
+            if (c == '\\' && i + 1 < content.length) {
+                i++
+                when (val esc = content[i]) {
+                    '"' -> sb.append('"')
+                    '\\' -> sb.append('\\')
+                    '/' -> sb.append('/')
+                    'b' -> sb.append('\b')
+                    'f' -> sb.append('\u000C')
+                    'n' -> sb.append('\n')
+                    'r' -> sb.append('\r')
+                    't' -> sb.append('\t')
+                    'u' -> {
+                        if (i + 4 < content.length) {
+                            val hex = content.substring(i + 1, i + 5)
+                            hex.toIntOrNull(16)?.let { sb.append(it.toChar()) }
+                            i += 4
+                        }
+                    }
+                    else -> sb.append(esc)
+                }
+            } else {
+                sb.append(c)
+            }
+            i++
+        }
+        return sb.toString()
     }
 
     private fun CompanyEntity.toCompany(): Company {
@@ -197,8 +357,8 @@ class CompanyRepository(
         val allocatedId = if (company.id > 0L) company.id else SqliteNumericIdAllocator.nextId("companies", "company-")
         val effectiveCompanyUuid = if (company.uuid.isNotBlank()) company.uuid else "company-$allocatedId"
         val metadataUpdates = buildMap {
-            if (company.address.isNotBlank()) put("address", "\"${company.address.replace("\"", "\\\"")}\"")
-            if (company.contact.isNotBlank()) put("contact", "\"${company.contact.replace("\"", "\\\"")}\"")
+            if (company.address.isNotBlank()) put("address", "\"${escapeJsonString(company.address)}\"")
+            if (company.contact.isNotBlank()) put("contact", "\"${escapeJsonString(company.contact)}\"")
         }
         val finalMetadata = updateJsonMetadata(company.metadata, metadataUpdates)
         val companyWithId = company.copy(
@@ -207,67 +367,77 @@ class CompanyRepository(
             metadata = finalMetadata
         )
         val now = Clock.System.now().toEpochMilliseconds()
-        val inserted = companyDao.insert(
-            CompanyEntity(
-                uuid = companyWithId.effectiveUuid,
-                name = companyWithId.name,
-                description = companyWithId.description,
-                website = companyWithId.website,
-                phone = companyWithId.phone,
-                email = companyWithId.email,
-                isSupplier = companyWithId.isSupplier,
-                isManufacturer = companyWithId.isManufacturer,
-                isCustomer = companyWithId.isCustomer,
-                active = companyWithId.active,
-                currency = companyWithId.currency,
-                logoPath = companyWithId.imageUrl,
-                notes = companyWithId.notes,
-                metadata = companyWithId.metadata,
-                parentUuid = companyWithId.parentId?.let(::resolveCompanyUuid),
-                syncStatus = SyncStatus.PENDING,
-                isDeleted = false,
-                updatedAt = now,
-                id = companyWithId.id
+        val conn = SqliteDatabaseManager.getConnection()
+        try {
+            conn.prepare("BEGIN IMMEDIATE").use { it.step() }
+            val inserted = companyDao.insert(
+                CompanyEntity(
+                    uuid = companyWithId.effectiveUuid,
+                    name = companyWithId.name,
+                    description = companyWithId.description,
+                    website = companyWithId.website,
+                    phone = companyWithId.phone,
+                    email = companyWithId.email,
+                    isSupplier = companyWithId.isSupplier,
+                    isManufacturer = companyWithId.isManufacturer,
+                    isCustomer = companyWithId.isCustomer,
+                    active = companyWithId.active,
+                    currency = companyWithId.currency,
+                    logoPath = companyWithId.imageUrl,
+                    notes = companyWithId.notes,
+                    metadata = companyWithId.metadata,
+                    parentUuid = companyWithId.parentId?.let(::resolveCompanyUuid),
+                    syncStatus = SyncStatus.PENDING,
+                    isDeleted = false,
+                    updatedAt = now,
+                    id = companyWithId.id
+                )
             )
-        )
-        if (!inserted) {
-            throw IllegalStateException("فشل حفظ بيانات الشركة في قاعدة البيانات")
-        }
-        if (companyWithId.address.isNotBlank()) {
-            val existingAddresses = addressDao.getAddressesForCompany(companyWithId.effectiveUuid)
-            if (existingAddresses.none { it.line1.trim().equals(companyWithId.address.trim(), ignoreCase = true) }) {
-                addressDao.insertOrUpdate(
-                    AddressEntity(
-                        uuid = AppUuid.generate(),
-                        companyUuid = companyWithId.effectiveUuid,
-                        title = "الفرع الرئيسي",
-                        isPrimary = true,
-                        line1 = companyWithId.address,
-                        syncStatus = SyncStatus.PENDING,
-                        isDeleted = false,
-                        updatedAt = now
-                    )
-                )
+            if (!inserted) {
+                throw IllegalStateException("فشل حفظ بيانات الشركة في قاعدة البيانات")
             }
-        }
-        if (companyWithId.contact.isNotBlank()) {
-            val existingContacts = contactDao.getContactsForCompany(companyWithId.effectiveUuid)
-            if (existingContacts.none { it.name.trim().equals(companyWithId.contact.trim(), ignoreCase = true) }) {
-                contactDao.insertOrUpdate(
-                    ContactEntity(
-                        uuid = AppUuid.generate(),
-                        companyUuid = companyWithId.effectiveUuid,
-                        name = companyWithId.contact,
-                        phone = companyWithId.phone,
-                        email = companyWithId.email,
-                        role = "مسؤول الاتصال الرئيسي",
-                        isPrimary = true,
-                        syncStatus = SyncStatus.PENDING,
-                        isDeleted = false,
-                        updatedAt = now
+            if (companyWithId.address.isNotBlank()) {
+                val existingAddresses = addressDao.getAddressesForCompany(companyWithId.effectiveUuid)
+                if (existingAddresses.none { it.line1.trim().equals(companyWithId.address.trim(), ignoreCase = true) }) {
+                    val addrAllocId = SqliteNumericIdAllocator.nextId("addresses", "address-")
+                    addressDao.insertOrUpdate(
+                        AddressEntity(
+                            uuid = "address-$addrAllocId",
+                            companyUuid = companyWithId.effectiveUuid,
+                            title = "الفرع الرئيسي",
+                            isPrimary = true,
+                            line1 = companyWithId.address,
+                            syncStatus = SyncStatus.PENDING,
+                            isDeleted = false,
+                            updatedAt = now
+                        )
                     )
-                )
+                }
             }
+            if (companyWithId.contact.isNotBlank()) {
+                val existingContacts = contactDao.getContactsForCompany(companyWithId.effectiveUuid)
+                if (existingContacts.none { it.name.trim().equals(companyWithId.contact.trim(), ignoreCase = true) }) {
+                    val contactAllocId = SqliteNumericIdAllocator.nextId("contacts", "contact-")
+                    contactDao.insertOrUpdate(
+                        ContactEntity(
+                            uuid = "contact-$contactAllocId",
+                            companyUuid = companyWithId.effectiveUuid,
+                            name = companyWithId.contact,
+                            phone = companyWithId.phone,
+                            email = companyWithId.email,
+                            role = "مسؤول الاتصال الرئيسي",
+                            isPrimary = true,
+                            syncStatus = SyncStatus.PENDING,
+                            isDeleted = false,
+                            updatedAt = now
+                        )
+                    )
+                }
+            }
+            conn.prepare("COMMIT").use { it.step() }
+        } catch (t: Throwable) {
+            runCatching { conn.prepare("ROLLBACK").use { it.step() } }
+            throw t
         }
         runCatching { companyTable.insertCompany(companyWithId) }
         return companyWithId
@@ -287,80 +457,97 @@ class CompanyRepository(
         }
 
         val metadataUpdates = buildMap {
-            if (company.address.isNotBlank()) put("address", "\"${company.address.replace("\"", "\\\"")}\"")
-            if (company.contact.isNotBlank()) put("contact", "\"${company.contact.replace("\"", "\\\"")}\"")
+            put("address", if (company.address.isNotBlank()) "\"${escapeJsonString(company.address)}\"" else "\"\"")
+            put("contact", if (company.contact.isNotBlank()) "\"${escapeJsonString(company.contact)}\"" else "\"\"")
         }
         val finalMetadata = updateJsonMetadata(company.metadata, metadataUpdates)
         val companyToUpdate = company.copy(metadata = finalMetadata)
 
         val now = Clock.System.now().toEpochMilliseconds()
-        val updated = companyDao.update(
-            CompanyEntity(
-                uuid = targetUuid,
-                name = companyToUpdate.name,
-                description = companyToUpdate.description,
-                website = companyToUpdate.website,
-                phone = companyToUpdate.phone,
-                email = companyToUpdate.email,
-                isSupplier = companyToUpdate.isSupplier,
-                isManufacturer = companyToUpdate.isManufacturer,
-                isCustomer = companyToUpdate.isCustomer,
-                active = companyToUpdate.active,
-                currency = companyToUpdate.currency,
-                logoPath = companyToUpdate.imageUrl,
-                notes = companyToUpdate.notes,
-                metadata = companyToUpdate.metadata,
-                parentUuid = companyToUpdate.parentId?.let(::resolveCompanyUuid),
-                version = existing.version + 1,
-                syncStatus = SyncStatus.PENDING,
-                isDeleted = false,
-                updatedAt = now
+        val conn = SqliteDatabaseManager.getConnection()
+        try {
+            conn.prepare("BEGIN IMMEDIATE").use { it.step() }
+            val updated = companyDao.update(
+                CompanyEntity(
+                    uuid = targetUuid,
+                    name = companyToUpdate.name,
+                    description = companyToUpdate.description,
+                    website = companyToUpdate.website,
+                    phone = companyToUpdate.phone,
+                    email = companyToUpdate.email,
+                    isSupplier = companyToUpdate.isSupplier,
+                    isManufacturer = companyToUpdate.isManufacturer,
+                    isCustomer = companyToUpdate.isCustomer,
+                    active = companyToUpdate.active,
+                    currency = companyToUpdate.currency,
+                    logoPath = companyToUpdate.imageUrl,
+                    notes = companyToUpdate.notes,
+                    metadata = companyToUpdate.metadata,
+                    parentUuid = companyToUpdate.parentId?.let(::resolveCompanyUuid),
+                    version = existing.version + 1,
+                    syncStatus = SyncStatus.PENDING,
+                    isDeleted = false,
+                    updatedAt = now
+                )
             )
-        )
-        if (!updated) {
-            throw IllegalStateException("فشل تحديث بيانات الشركة في قاعدة البيانات")
-        }
-        if (companyToUpdate.address.isNotBlank()) {
+            if (!updated) {
+                throw IllegalStateException("فشل تحديث بيانات الشركة في قاعدة البيانات")
+            }
+
             val existingAddresses = addressDao.getAddressesForCompany(targetUuid)
             val primaryAddress = existingAddresses.firstOrNull { it.isPrimary } ?: existingAddresses.firstOrNull()
-            if (primaryAddress != null) {
-                addressDao.insertOrUpdate(primaryAddress.copy(line1 = companyToUpdate.address, updatedAt = now, syncStatus = SyncStatus.PENDING))
-            } else {
-                addressDao.insertOrUpdate(
-                    AddressEntity(
-                        uuid = AppUuid.generate(),
-                        companyUuid = targetUuid,
-                        title = "الفرع الرئيسي",
-                        isPrimary = true,
-                        line1 = companyToUpdate.address,
-                        syncStatus = SyncStatus.PENDING,
-                        isDeleted = false,
-                        updatedAt = now
+            if (companyToUpdate.address.isNotBlank()) {
+                if (primaryAddress != null) {
+                    addressDao.insertOrUpdate(primaryAddress.copy(line1 = companyToUpdate.address, updatedAt = now, syncStatus = SyncStatus.PENDING))
+                } else {
+                    val addrAllocId = SqliteNumericIdAllocator.nextId("addresses", "address-")
+                    addressDao.insertOrUpdate(
+                        AddressEntity(
+                            uuid = "address-$addrAllocId",
+                            companyUuid = targetUuid,
+                            title = "الفرع الرئيسي",
+                            isPrimary = true,
+                            line1 = companyToUpdate.address,
+                            syncStatus = SyncStatus.PENDING,
+                            isDeleted = false,
+                            updatedAt = now
+                        )
                     )
-                )
+                }
+            } else if (primaryAddress != null) {
+                addressDao.delete(primaryAddress.uuid)
             }
-        }
-        if (companyToUpdate.contact.isNotBlank()) {
+
             val existingContacts = contactDao.getContactsForCompany(targetUuid)
             val primaryContact = existingContacts.firstOrNull { it.isPrimary } ?: existingContacts.firstOrNull()
-            if (primaryContact != null) {
-                contactDao.insertOrUpdate(primaryContact.copy(name = companyToUpdate.contact, phone = companyToUpdate.phone, email = companyToUpdate.email, updatedAt = now, syncStatus = SyncStatus.PENDING))
-            } else {
-                contactDao.insertOrUpdate(
-                    ContactEntity(
-                        uuid = AppUuid.generate(),
-                        companyUuid = targetUuid,
-                        name = companyToUpdate.contact,
-                        phone = companyToUpdate.phone,
-                        email = companyToUpdate.email,
-                        role = "مسؤول الاتصال الرئيسي",
-                        isPrimary = true,
-                        syncStatus = SyncStatus.PENDING,
-                        isDeleted = false,
-                        updatedAt = now
+            if (companyToUpdate.contact.isNotBlank()) {
+                if (primaryContact != null) {
+                    contactDao.insertOrUpdate(primaryContact.copy(name = companyToUpdate.contact, phone = companyToUpdate.phone, email = companyToUpdate.email, updatedAt = now, syncStatus = SyncStatus.PENDING))
+                } else {
+                    val contactAllocId = SqliteNumericIdAllocator.nextId("contacts", "contact-")
+                    contactDao.insertOrUpdate(
+                        ContactEntity(
+                            uuid = "contact-$contactAllocId",
+                            companyUuid = targetUuid,
+                            name = companyToUpdate.contact,
+                            phone = companyToUpdate.phone,
+                            email = companyToUpdate.email,
+                            role = "مسؤول الاتصال الرئيسي",
+                            isPrimary = true,
+                            syncStatus = SyncStatus.PENDING,
+                            isDeleted = false,
+                            updatedAt = now
+                        )
                     )
-                )
+                }
+            } else if (primaryContact != null) {
+                contactDao.delete(primaryContact.uuid)
             }
+
+            conn.prepare("COMMIT").use { it.step() }
+        } catch (t: Throwable) {
+            runCatching { conn.prepare("ROLLBACK").use { it.step() } }
+            throw t
         }
         runCatching { companyTable.updateCompany(companyToUpdate) }
         return companyToUpdate

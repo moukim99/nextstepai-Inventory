@@ -13,8 +13,8 @@
 
 ### القسم 1: المواد والأجزاء (Parts)
 - **الملفات والكيانات المراجعة:**
-  - واجهات المستخدم: [`PartManagementForms.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/PartManagementForms.kt#L1033) (`AddPartBottomSheet`), [`PartViewModel.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/PartViewModel.kt#L704) (`addNewPart`)
-  - المستودع وقاعدة البيانات: [`PartRepository.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/PartRepository.kt#L300), [`PartEntity.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/PartEntity.kt), [`PartDao.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/PartDao.kt), جدول `parts` في [`SqliteDatabaseSchema.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/SqliteDatabaseSchema.kt).
+  - واجهات المستخدم: [`PartManagementForms.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/PartManagementForms.kt#L1033) (`AddPartBottomSheet`), [`PartViewModel.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/PartViewModel.kt#L704) (`addNewPart`)
+  - المستودع وقاعدة البيانات: [`PartRepository.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/PartRepository.kt#L300), [`PartEntity.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/PartEntity.kt), [`PartDao.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/PartDao.kt), جدول `parts` في [`SqliteDatabaseSchema.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/SqliteDatabaseSchema.kt).
 
 #### مطابقة الحقول:
 | حقل قاعدة البيانات (`PartEntity`) | النوع والقيود | حقل واجهة الإضافة (`AddPartBottomSheet`) | حالة الحقل والملاحظات |
@@ -34,7 +34,7 @@
 | `assembly` | `INTEGER NOT NULL` | اختيار طبيعة الصنف (تجميع) | متطابق. |
 | `component` | `INTEGER NOT NULL` | اختيار طبيعة الصنف (مكوّن) | متطابق. |
 | `salable` | `INTEGER NOT NULL` | اختيار طبيعة الصنف (قابل للبيع) | متطابق. |
-| `purchaseable` | `INTEGER NOT NULL` | **غير مباشر** | يتم احتسابه في الواجهة برمجياً: `val isPurch = isComp || isSale`. |
+| `purchaseable` | `INTEGER NOT NULL` | **غير مباشر** | يتم احتسابه في الواجهة برمجياً: `val isPurch = isComp \|\| isSale`. |
 | `trackable` | `INTEGER NOT NULL` | **مفقود بالواجهة** | يُمرر كقيمة ثابتة `false` في دالة `onConfirm` بالسطر 2314، ولا يوجد زر اختيار له بالواجهة. |
 | `isTemplate` | `INTEGER NOT NULL` | زر تبديل في القسم المتقدم | متطابق. |
 | `variantOfUuid` | `TEXT NULL (FK)` | اختيار القالب الأب | متطابق (يربط مع `part-$it`). |
@@ -64,8 +64,8 @@
 
 ### القسم 2: المخزون (Stock Items)
 - **الملفات والكيانات المراجعة:**
-  - واجهات المستخدم: [`StockScreenForms.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/StockScreenForms.kt#L2583) (`AddStockItemBottomSheet`), [`StockViewModel.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/StockViewModel.kt#L820) (`addStockItem`)
-  - المستودع وقاعدة البيانات: [`StockRepository.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/StockRepository.kt#L394), [`StockItemEntity.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/StockItemEntity.kt), [`StockItemDao.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/StockItemDao.kt).
+  - واجهات المستخدم: [`StockScreenForms.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/StockScreenForms.kt#L2583) (`AddStockItemBottomSheet`), [`StockViewModel.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/StockViewModel.kt#L820) (`addStockItem`)
+  - المستودع وقاعدة البيانات: [`StockRepository.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/StockRepository.kt#L394), [`StockItemEntity.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/StockItemEntity.kt), [`StockItemDao.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/StockItemDao.kt).
 
 #### مطابقة الحقول:
 | حقل قاعدة البيانات (`StockItemEntity`) | النوع والقيود | حقل واجهة الإضافة (`AddStockItemBottomSheet`) | حالة الحقل والملاحظات |
@@ -105,8 +105,8 @@
 
 ### القسم 3: مواقع التخزين (Stock Locations)
 - **الملفات والكيانات المراجعة:**
-  - واجهات المستخدم: [`StockScreenForms.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/StockScreenForms.kt#L99) (`AddStockLocationBottomSheet`)
-  - المستودع وقاعدة البيانات: [`StockLocationRepository.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/StockLocationRepository.kt#L154), [`StockLocationEntity.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/StockLocationEntity.kt), [`StockLocationDao.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/StockLocationDao.kt).
+  - واجهات المستخدم: [`StockScreenForms.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/StockScreenForms.kt#L99) (`AddStockLocationBottomSheet`)
+  - المستودع وقاعدة البيانات: [`StockLocationRepository.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/StockLocationRepository.kt#L154), [`StockLocationEntity.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/StockLocationEntity.kt), [`StockLocationDao.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/StockLocationDao.kt).
 
 #### مطابقة الحقول:
 | حقل قاعدة البيانات (`StockLocationEntity`) | النوع والقيود | حقل واجهة الإضافة (`AddStockLocationBottomSheet`) | حالة الحقل والملاحظات |
@@ -138,8 +138,8 @@
 
 ### القسم 4: الشركات والموردون (Companies & Suppliers)
 - **الملفات والكيانات المراجعة:**
-  - واجهات المستخدم: [`CompanyScreenForms.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/CompanyScreenForms.kt#L59) (`AddCompanyBottomSheet`), [`CompanyViewModel.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/CompanyViewModel.kt#L380) (`addCompany`)
-  - المستودع وقاعدة البيانات: [`CompanyRepository.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/CompanyRepository.kt#L146), [`CompanyEntity.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/CompanyEntity.kt), [`CompanyDao.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/CompanyDao.kt).
+  - واجهات المستخدم: [`CompanyScreenForms.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/CompanyScreenForms.kt#L59) (`AddCompanyBottomSheet`), [`CompanyViewModel.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/CompanyViewModel.kt#L380) (`addCompany`)
+  - المستودع وقاعدة البيانات: [`CompanyRepository.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/CompanyRepository.kt#L146), [`CompanyEntity.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/CompanyEntity.kt), [`CompanyDao.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/CompanyDao.kt).
 
 #### مطابقة الحقول:
 | حقل قاعدة البيانات (`CompanyEntity`) | النوع والقيود | حقل واجهة الإضافة (`AddCompanyBottomSheet`) | حالة الحقل والملاحظات |
@@ -167,9 +167,9 @@
 
 #### المشكلات المؤكدة بالأدلة:
 - **فقدان بيانات العنوان (`address`) وجهة الاتصال (`contact`):**
-  - في [`CompanyScreenForms.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/CompanyScreenForms.kt#L89-L90)، يُدخل المستخدم `address` و`contact`.
+  - في [`CompanyScreenForms.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/CompanyScreenForms.kt#L89-L90)، يُدخل المستخدم `address` و`contact`.
   - يتم تمريرهما إلى `CompanyViewModel.addCompany` -> `Company(address = address, contact = contact)`.
-  - في [`CompanyRepository.kt` السطور 156-178](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/CompanyRepository.kt#L156-L178)، يتم الحفظ في `CompanyEntity` التي **لا تملك عموداً للعنوان أو جهة الاتصال**، ولا يتم استدعاء `insert` في جدول `company_addresses` أو `company_contacts` أو التخزين في `metadata`.
+  - في [`CompanyRepository.kt` السطور 156-178](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/CompanyRepository.kt#L156-L178)، يتم الحفظ في `CompanyEntity` التي **لا تملك عموداً للعنوان أو جهة الاتصال**، ولا يتم استدعاء `insert` في جدول `company_addresses` أو `company_contacts` أو التخزين في `metadata`.
   - **النتيجة:** بمجرد إعادة تشغيل التطبيق أو القراءة من SQLite، يختفي العنوان واسم جهة الاتصال المدخل في نموذج الإضافة!
 
 #### القرار المقترح:
@@ -179,8 +179,8 @@
 
 ### القسم 5: أوامر الشراء (Purchase Orders)
 - **الملفات والكيانات المراجعة:**
-  - واجهات المستخدم: [`PurchaseOrderScreen.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/PurchaseOrderScreen.kt#L847) (`AddPurchaseOrderBottomSheet`), [`PurchaseOrderViewModel.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/PurchaseOrderViewModel.kt#L150)
-  - المستودع وقاعدة البيانات: [`PurchaseOrderRepository.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/PurchaseOrderRepository.kt), [`PurchaseOrderEntity.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/PurchaseOrderEntity.kt), [`PurchaseOrderDao.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/PurchaseOrderDao.kt).
+  - واجهات المستخدم: [`PurchaseOrderScreen.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/PurchaseOrderScreen.kt#L847) (`AddPurchaseOrderBottomSheet`), [`PurchaseOrderViewModel.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/PurchaseOrderViewModel.kt#L150)
+  - المستودع وقاعدة البيانات: [`PurchaseOrderRepository.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/PurchaseOrderRepository.kt), [`PurchaseOrderEntity.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/PurchaseOrderEntity.kt), [`PurchaseOrderDao.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/PurchaseOrderDao.kt).
 
 #### مطابقة الحقول:
 | حقل قاعدة البيانات (`PurchaseOrderEntity`) | النوع والقيود | حقل واجهة الإضافة (`AddPurchaseOrderBottomSheet`) | حالة الحقل والملاحظات |
@@ -208,8 +208,8 @@
 
 ### القسم 6: أوامر البيع (Sales Orders)
 - **الملفات والكيانات المراجعة:**
-  - واجهات المستخدم: [`SalesOrderScreen.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/SalesOrderScreen.kt#L401) (`AddSalesOrderBottomSheet`), [`SalesOrderViewModel.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/SalesOrderViewModel.kt#L95)
-  - المستودع وقاعدة البيانات: [`SalesOrderRepository.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/SalesOrderRepository.kt), [`SalesOrderEntity.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/SalesOrderEntity.kt), [`SalesOrderDao.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/SalesOrderDao.kt).
+  - واجهات المستخدم: [`SalesOrderScreen.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/SalesOrderScreen.kt#L401) (`AddSalesOrderBottomSheet`), [`SalesOrderViewModel.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/SalesOrderViewModel.kt#L95)
+  - المستودع وقاعدة البيانات: [`SalesOrderRepository.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/SalesOrderRepository.kt), [`SalesOrderEntity.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/SalesOrderEntity.kt), [`SalesOrderDao.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/SalesOrderDao.kt).
 
 #### مطابقة الحقول:
 | حقل قاعدة البيانات (`SalesOrderEntity`) | النوع والقيود | حقل واجهة الإضافة (`AddSalesOrderBottomSheet`) | حالة الحقل والملاحظات |
@@ -233,8 +233,8 @@
 
 ### القسم 7: أوامر التصنيع (Build / Manufacturing Orders)
 - **الملفات والكيانات المراجعة:**
-  - واجهات المستخدم: [`BuildOrderScreen.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/BuildOrderScreen.kt#L1824) (`AddBuildOrderBottomSheet`), [`BuildOrderViewModel.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/BuildOrderViewModel.kt)
-  - المستودع وقاعدة البيانات: [`BuildOrderRepository.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/BuildOrderRepository.kt), [`BuildOrderEntity.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/BuildOrderEntity.kt), [`BuildOrderDao.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/BuildOrderDao.kt).
+  - واجهات المستخدم: [`BuildOrderScreen.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/BuildOrderScreen.kt#L1824) (`AddBuildOrderBottomSheet`), [`BuildOrderViewModel.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/BuildOrderViewModel.kt)
+  - المستودع وقاعدة البيانات: [`BuildOrderRepository.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/BuildOrderRepository.kt), [`BuildOrderEntity.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/BuildOrderEntity.kt), [`BuildOrderDao.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/BuildOrderDao.kt).
 
 #### مطابقة الحقول:
 | حقل قاعدة البيانات (`BuildOrderEntity`) | النوع والقيود | حقل واجهة الإضافة (`AddBuildOrderBottomSheet`) | حالة الحقل والملاحظات |
@@ -265,8 +265,8 @@
 
 ### القسم 8: قائمة المواد (BOM - Bill of Materials)
 - **الملفات والكيانات المراجعة:**
-  - واجهات المستخدم: [`BomScreen.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/BomScreen.kt#L868) (`AddBomItemBottomSheet`), [`BomViewModel.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/BomViewModel.kt)
-  - المستودع وقاعدة البيانات: [`BomRepository.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/BomRepository.kt), [`BomItemEntity.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/BomItemEntity.kt), [`BomItemDao.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/BomItemDao.kt).
+  - واجهات المستخدم: [`BomScreen.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/BomScreen.kt#L868) (`AddBomItemBottomSheet`), [`BomViewModel.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/BomViewModel.kt)
+  - المستودع وقاعدة البيانات: [`BomRepository.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/BomRepository.kt), [`BomItemEntity.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/BomItemEntity.kt), [`BomItemDao.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/BomItemDao.kt).
 
 #### مطابقة الحقول:
 | حقل قاعدة البيانات (`BomItemEntity`) | النوع والقيود | حقل واجهة الإضافة (`AddBomItemBottomSheet`) | حالة الحقل والملاحظات |
@@ -292,8 +292,8 @@
 
 ### القسم 9: إدارة الموظفين (Staff Management)
 - **الملفات والكيانات المراجعة:**
-  - واجهات المستخدم: [`StaffManagementScreen.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/StaffManagementScreen.kt#L55), [`StaffManagementViewModel.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/StaffManagementViewModel.kt#L189) (`generateActivationCode`)
-  - المستودع وقاعدة البيانات: [`StaffManagementDao.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/StaffManagementDao.kt), [`AppUserEntity.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/AppUserEntity.kt), [`UserPermissionEntity.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/UserPermissionEntity.kt), [`ActivationCodeEntity.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/ActivationCodeEntity.kt).
+  - واجهات المستخدم: [`StaffManagementScreen.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/StaffManagementScreen.kt#L55), [`StaffManagementViewModel.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/StaffManagementViewModel.kt#L189) (`generateActivationCode`)
+  - المستودع وقاعدة البيانات: [`StaffManagementDao.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/StaffManagementDao.kt), [`AppUserEntity.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/AppUserEntity.kt), [`UserPermissionEntity.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/UserPermissionEntity.kt), [`ActivationCodeEntity.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/data/db/ActivationCodeEntity.kt).
 
 #### مطابقة الحقول ومسار العمل:
 في هيكلية التطبيق الآمنة، لا يقوم المالك بإدخال كلمة مرور الموظف أو هاتفه يدوياً مباشرة، بل يتم العمل عبر **نظام دعوات وأكواد تفعيل مشفرة**:
@@ -317,15 +317,15 @@
 
 1. **الشركات والموردون:**
    - **المشكلة:** فقدان العنوان (`address`) وجهة الاتصال (`contact`) المدخلين في واجهة `AddCompanyBottomSheet` وعدم استمراريتهما في قاعدة البيانات المحلية.
-   - **الحالة:** **تم الحل بنجاح (Resolved)** عبر تحديث [`CompanyRepository.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/CompanyRepository.kt) لحفظ العنوان وجهة الاتصال في `metadata` JSON وإدراج وتحديث سجلات `AddressEntity` و `ContactEntity` المقترنة وقراءتها تلقائياً.
+   - **الحالة:** **تم الحل بنجاح (Resolved)** عبر تحديث [`CompanyRepository.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/CompanyRepository.kt) لحفظ العنوان وجهة الاتصال في `metadata` JSON وإدراج وتحديث سجلات `AddressEntity` و `ContactEntity` المقترنة وقراءتها تلقائياً.
 
 2. **المواد والأجزاء:**
    - **المشكلة:** حقل إمكانية التتبع للأرقام التسلسلية (`trackable`) كان ممرراً بقيمة ثابتة `false` برمجياً في زر التأكيد دون توفير تحكم به في واجهة الإضافة.
-   - **الحالة:** **تم الحل بنجاح (Resolved)** عبر إضافة مفتاح تبديل (Switch) في قسم الخيارات الهندسية بـ [`PartManagementForms.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/PartManagementForms.kt) وتمرير قيمته الفعلية في دالتي `onConfirm` و `onUpdate`.
+   - **الحالة:** **تم الحل بنجاح (Resolved)** عبر إضافة مفتاح تبديل (Switch) في قسم الخيارات الهندسية بـ [`PartManagementForms.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/PartManagementForms.kt) وتمرير قيمته الفعلية في دالتي `onConfirm` و `onUpdate`.
 
 3. **أوامر الشراء:**
    - **المشكلة:** حقل الموقع التخزيني الافتراضي لاستلام المشتريات (`destinationLocationUuid`) كان غائباً عن واجهة `AddPurchaseOrderBottomSheet`.
-   - **الحالة:** **تم الحل بنجاح (Resolved)** عبر إضافة منتقي المواقع التخزينية المعتمد وتحميل `locations` في `PurchaseOrderUiState` وتمرير `destinationLocationUuid` من [`PurchaseOrderScreen.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/PurchaseOrderScreen.kt) إلى `PurchaseOrderViewModel.addPurchaseOrder`.
+   - **الحالة:** **تم الحل بنجاح (Resolved)** عبر إضافة منتقي المواقع التخزينية المعتمد وتحميل `locations` في `PurchaseOrderUiState` وتمرير `destinationLocationUuid` من [`PurchaseOrderScreen.kt`](../nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/PurchaseOrderScreen.kt) إلى `PurchaseOrderViewModel.addPurchaseOrder`.
 
 4. **أوامر البيع:**
    - **المشكلة:** حقل الملاحظات العامة للأمر (`notes`) كان موجوداً في قاعدة البيانات لكنه غير معروض في واجهة `AddSalesOrderBottomSheet`.
@@ -335,16 +335,17 @@
 
 ## 4. التمييز بين المراجعة الكودية والتحقق العملي
 
-- **ما تمت مراجعته بالكود وقراءته تفصيلياً (Static Inspection):**
+- **ما تمت مراجعته بالكود وقراءته تفصيلياً (Static Code Inspection):**
   - فحص ملفات نماذج الإضافة التسعة (`BottomSheets / Forms`).
   - فحص كائنات ومستودعات البيانات (`DAOs`, `Entities`, `Repositories`, `ViewModels`).
   - تتبع مسار تمرير المعلمات من ضغطة زر الحفظ في واجهة المستخدم حتى استعلام `INSERT` في SQLite.
-- **ما تم التحقق منه باختبارات مؤتمتة وتكاملية بعد الإصلاحات (Automated Tests & Build Verified):**
-  - اجتياز اختبارات الـ JVM بالكامل بنجاح عبر `./gradlew jvmTest` (`BUILD SUCCESSFUL`).
-  - التحقق من خلو الشيفرة من أي أخطاء تجميع عبر `./gradlew compileKotlinJvm` (`BUILD SUCCESSFUL`).
-  - استقرار الـ Schema، وتوليد المعرفات الرقمية وUUIDs المتسلسلة دون تعارض.
-  - تكامل حفظ بيانات العنوان وجهة الاتصال والمواقع والملاحظات وإمكانية تتبع الأرقام التسلسلية.
+  - التحقق عبر فحص الكود البرمجي (Code Inspection) من مسارات حفظ بيانات عنوان الشركة وجهات الاتصال، والموقع التخزيني لأمر الشراء (`destinationLocationUuid`)، وملاحظات أمر البيع (`notes`)، وإمكانية تتبع الأرقام التسلسلية للأصناف (`Part.trackable`).
+- **ما تم التحقق منه باختبارات مؤتمتة وتجميع الـ JVM (Automated Build & Unit Tests):**
+  - اجتياز اختبارات الـ JVM الموجودة بنجاح عبر `./gradlew jvmTest` (`BUILD SUCCESSFUL`).
+  - التحقق من خلو الشيفرة من أي أخطاء تجميع أو كسر للأنماط عبر `./gradlew compileKotlinJvm` (`BUILD SUCCESSFUL`).
+  - استقرار الـ Schema وتوافق المعرفات الرقمية وUUIDs في طبقة البيانات.
 
 ---
 > [!NOTE]
 > تم إغلاق [Issue #11](https://github.com/moukim99/nextstepai-Inventory/issues/11) بعد اكتمال تقرير المراجعة الشامل، كما تم تنفيذ وتثبيت إصلاحات الفجوات المكتشفة في الفرع `feature/add-review`.
+

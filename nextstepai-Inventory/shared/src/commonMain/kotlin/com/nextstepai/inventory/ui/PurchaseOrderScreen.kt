@@ -1723,7 +1723,7 @@ private fun AddPurchaseOrderBottomSheet(
                             if (reference.isNotBlank() && supId != null) {
                                 val srcRef = if (sourceType == "BUILD_ORDER") selectedBuildOrderId?.let { "build-$it" } else if (sourceType == "SALES_ORDER") selectedSalesOrderId?.let { "so-$it" } else null
                                 val destLocUuid = selectedLocationId?.let { locId ->
-                                    locations.find { it.id == locId }?.effectiveUuid ?: "loc-$locId"
+                                    locations.find { it.id == locId }?.effectiveUuid
                                 }
                                 onConfirm(reference, supId, description, targetDate, currency, sourceType, srcRef, destLocUuid, initialLines.toList())
                             }
