@@ -98,6 +98,7 @@ class SalesOrderViewModel(
         description: String,
         targetDate: String,
         currency: String,
+        notes: String = "",
         lines: List<SalesOrderLineItem>
     ) {
         try {
@@ -109,6 +110,7 @@ class SalesOrderViewModel(
                 description = description,
                 targetDate = targetDate,
                 orderCurrency = currency.ifBlank { customer?.currency ?: "USD" },
+                notes = notes,
                 status = SOStatus.APPROVED,
                 lineItems = lines
             )

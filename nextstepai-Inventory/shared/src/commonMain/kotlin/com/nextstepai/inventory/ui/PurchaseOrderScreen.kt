@@ -50,6 +50,7 @@ import com.nextstepai.inventory.data.Company
 import com.nextstepai.inventory.data.POStatus
 import com.nextstepai.inventory.data.Part
 import com.nextstepai.inventory.data.PurchaseOrder
+import com.nextstepai.inventory.data.StockLocation
 import com.nextstepai.inventory.ui.components.CurrencySelectionBottomSheet
 import com.nextstepai.inventory.ui.components.CurrencySelectorField
 import nextstepai_inventory.shared.generated.resources.Res
@@ -298,12 +299,13 @@ fun PurchaseOrderScreen(
             parts = uiState.parts,
             buildOrders = uiState.buildOrders,
             salesOrders = uiState.salesOrders,
+            locations = uiState.locations,
             onGenerateShortage = { viewModel.generateShortageLinesForBuild(it) },
             onGenerateSalesOrderShortage = { viewModel.generateSalesOrderShortageLines(it) },
             onGenerateLowStock = { viewModel.generateLowStockLinesForSupplier(it) },
             onDismiss = { viewModel.setAddOrderDialogOpen(false) },
-            onConfirm = { ref, supId, desc, targetDate, curr, sourceType, sourceRef, lines ->
-                viewModel.addPurchaseOrder(ref, supId, desc, targetDate, curr, sourceType, sourceRef, null, lines)
+            onConfirm = { ref, supId, desc, targetDate, curr, sourceType, sourceRef, destLocUuid, lines ->
+                viewModel.addPurchaseOrder(ref, supId, desc, targetDate, curr, sourceType, sourceRef, destLocUuid, lines)
             }
         )
     }
@@ -849,16 +851,18 @@ private fun AddPurchaseOrderBottomSheet(
     parts: List<Part>,
     buildOrders: List<BuildOrder> = emptyList(),
     salesOrders: List<SalesOrder> = emptyList(),
+    locations: List<StockLocation> = emptyList(),
     onGenerateShortage: (buildId: Long) -> List<PurchaseOrderLineItem> = { emptyList() },
     onGenerateSalesOrderShortage: (salesOrderId: Long) -> List<PurchaseOrderLineItem> = { emptyList() },
     onGenerateLowStock: (supplierId: Long?) -> List<PurchaseOrderLineItem> = { emptyList() },
     onDismiss: () -> Unit,
-    onConfirm: (reference: String, supplierId: Long, description: String, targetDate: String, currency: String, sourceType: String, sourceReferenceUuid: String?, lines: List<PurchaseOrderLineItem>) -> Unit
+    onConfirm: (reference: String, supplierId: Long, description: String, targetDate: String, currency: String, sourceType: String, sourceReferenceUuid: String?, destinationLocationUuid: String?, lines: List<PurchaseOrderLineItem>) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var reference by remember { mutableStateOf("PO-2025-001") }
     var selectedSupplierId by remember { mutableStateOf<Long?>(suppliers.firstOrNull()?.id) }
+    var selectedLocationId by remember { mutableStateOf<Long?>(null) }
     var description by remember { mutableStateOf("") }
     var targetDate by remember { mutableStateOf("2025-03-30") }
     var currency by remember { mutableStateOf("USD") }
@@ -868,6 +872,7 @@ private fun AddPurchaseOrderBottomSheet(
     var selectedSalesOrderId by remember { mutableStateOf<Long?>(null) }
 
     var isSelectSupplierSheetOpen by remember { mutableStateOf(false) }
+    var isSelectLocationSheetOpen by remember { mutableStateOf(false) }
     var isSelectPartSheetOpen by remember { mutableStateOf(false) }
 
     // تصفية القطع المتاحة للشراء وفق المورد المختار
@@ -1340,6 +1345,75 @@ private fun AddPurchaseOrderBottomSheet(
                     }
                 }
 
+                val selectedLocation = locations.find { it.id == selectedLocationId }
+
+                Text("موقع استلام وتخزين البضائع الموردة (Destination Location):", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Color(0xFF0F172A))
+
+                Surface(
+                    onClick = { isSelectLocationSheetOpen = true },
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFFF8FAFC),
+                    border = BorderStroke(1.5.dp, if (selectedLocation != null) Color(0xFF4F46E5) else Color(0xFFCBD5E1)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFFEEF2FF))
+                                    .border(1.dp, Color(0xFFC7D2FE), RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    tint = Color(0xFF4F46E5),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            Column {
+                                Text(
+                                    text = selectedLocation?.name ?: "الموقع الافتراضي (اختياري)",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    ),
+                                    color = Color(0xFF0F172A)
+                                )
+                                Text(
+                                    text = if (selectedLocation != null) "مسار التخزين: ${selectedLocation.description.ifBlank { selectedLocation.name }}" else "اضغط لاختيار المستودع أو الرف المخصص لاستلام هذا الطلب",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = Color(0xFF64748B)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            color = Color(0xFFEEF2FF),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFFC7D2FE))
+                        ) {
+                            Text(
+                                text = if (selectedLocation != null) "تغيير" else "اختر ▾",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFF4F46E5),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                }
+
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
@@ -1648,7 +1722,10 @@ private fun AddPurchaseOrderBottomSheet(
                             val supId = selectedSupplierId
                             if (reference.isNotBlank() && supId != null) {
                                 val srcRef = if (sourceType == "BUILD_ORDER") selectedBuildOrderId?.let { "build-$it" } else if (sourceType == "SALES_ORDER") selectedSalesOrderId?.let { "so-$it" } else null
-                                onConfirm(reference, supId, description, targetDate, currency, sourceType, srcRef, initialLines.toList())
+                                val destLocUuid = selectedLocationId?.let { locId ->
+                                    locations.find { it.id == locId }?.effectiveUuid ?: "loc-$locId"
+                                }
+                                onConfirm(reference, supId, description, targetDate, currency, sourceType, srcRef, destLocUuid, initialLines.toList())
                             }
                         },
                         enabled = reference.isNotBlank() && selectedSupplierId != null,
@@ -1677,6 +1754,18 @@ private fun AddPurchaseOrderBottomSheet(
                     currency = sup.currency
                 }
                 isSelectSupplierSheetOpen = false
+            }
+        )
+    }
+
+    if (isSelectLocationSheetOpen) {
+        SelectLocationBottomSheet(
+            locations = locations,
+            selectedLocationId = selectedLocationId,
+            onDismiss = { isSelectLocationSheetOpen = false },
+            onSelect = { loc ->
+                selectedLocationId = loc?.id
+                isSelectLocationSheetOpen = false
             }
         )
     }

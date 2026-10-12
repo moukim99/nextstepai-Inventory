@@ -1088,6 +1088,7 @@ internal fun AddPartBottomSheet(
     var units by remember(partToEdit) { mutableStateOf(partToEdit?.units ?: "pcs") }
     var minimumStockText by remember(partToEdit) { mutableStateOf(partToEdit?.minimumStock?.let { if (it == 0.0) "0" else it.toString() } ?: "0") }
     var lowStockAlertsEnabled by remember(partToEdit) { mutableStateOf(true) }
+    var trackable by remember(partToEdit) { mutableStateOf(partToEdit?.trackable ?: false) }
 
     // طبيعة التعامل والتصنيع: دعم اختيار أكثر من خيار مع الوضع الافتراضي لعدم الاختيار عند إضافة قطعة جديدة
     var isComponentSelected by remember(partToEdit) { mutableStateOf(partToEdit?.component ?: false) }
@@ -1210,7 +1211,7 @@ internal fun AddPartBottomSheet(
         partToEdit, name, ipn, description, selectedCatId, units,
         isComponentSelected, isAssemblySelected, isSalableSelected,
         minimumStockText, maximumStockText, revision, keywords, selectedDefaultLocId,
-        defaultExpiryDaysText, pendingAttachments.size, isTemplate, virtual, selectedVariantOfId
+        defaultExpiryDaysText, pendingAttachments.size, isTemplate, virtual, selectedVariantOfId, trackable
     ) {
         if (partToEdit == null) true
         else {
@@ -1234,7 +1235,8 @@ internal fun AddPartBottomSheet(
                     expiryDays != partToEdit.defaultExpiryDays ||
                     isTemplate != partToEdit.isTemplate ||
                     virtual != partToEdit.virtual ||
-                    selectedVariantOfId != partToEdit.variantOfId
+                    selectedVariantOfId != partToEdit.variantOfId ||
+                    trackable != partToEdit.trackable
         }
     }
 
@@ -2243,6 +2245,33 @@ internal fun AddPartBottomSheet(
                                         colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF10B981))
                                     )
                                 }
+
+                                // 2. trackable (تتبع الأرقام التسلسلية / القطع التتبعية)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { trackable = !trackable },
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Icon(
+                                            imageVector = Icons.Default.QrCodeScanner,
+                                            contentDescription = null,
+                                            tint = Color(0xFF4F46E5),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Column {
+                                            Text("تتبع الأرقام التسلسلية (Trackable)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                                            Text("تفعيل تتبع العناصر التابعة بأرقام تسلسلية فريدة لكل قطعة في المخزون", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp), color = Color(0xFF64748B))
+                                        }
+                                    }
+                                    Switch(
+                                        checked = trackable,
+                                        onCheckedChange = { trackable = it },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF4F46E5))
+                                    )
+                                }
                             }
                         }
                     }
@@ -2311,7 +2340,7 @@ internal fun AddPartBottomSheet(
                                         maximumStockText.toDoubleOrNull(),
                                         revision,
                                         keywords,
-                                        false,
+                                        trackable,
                                         isPurch,
                                         isSale,
                                         virtual,
@@ -2402,7 +2431,7 @@ internal fun AddPartBottomSheet(
                             maximumStock = maximumStockText.toDoubleOrNull(),
                             revision = revision,
                             keywords = keywords,
-                            trackable = false,
+                            trackable = trackable,
                             purchaseable = isPurch,
                             salable = isSale,
                             virtual = virtual,

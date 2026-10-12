@@ -17,6 +17,8 @@ import com.nextstepai.inventory.repository.PartRepository
 import com.nextstepai.inventory.repository.PurchaseOrderRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import com.nextstepai.inventory.data.StockLocation
+import com.nextstepai.inventory.repository.StockRepository
 import kotlinx.coroutines.flow.asStateFlow
 import com.nextstepai.inventory.data.SalesOrder
 import com.nextstepai.inventory.repository.SalesOrderRepository
@@ -31,6 +33,7 @@ data class PurchaseOrderUiState(
     val parts: List<Part> = emptyList(),
     val buildOrders: List<BuildOrder> = emptyList(),
     val salesOrders: List<SalesOrder> = emptyList(),
+    val locations: List<StockLocation> = emptyList(),
     val searchQuery: String = "",
     val selectedSupplierId: Long? = null,
     val statusFilter: POStatus? = null,
@@ -50,7 +53,8 @@ class PurchaseOrderViewModel(
     private val companyRepository: CompanyRepository = CompanyRepository(),
     private val partRepository: PartRepository = PartRepository(),
     private val buildRepository: BuildOrderRepository = BuildOrderRepository(),
-    private val salesRepository: SalesOrderRepository = SalesOrderRepository()
+    private val salesRepository: SalesOrderRepository = SalesOrderRepository(),
+    private val stockRepository: StockRepository = StockRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PurchaseOrderUiState())
@@ -67,6 +71,7 @@ class PurchaseOrderViewModel(
                 val parts = partRepository.getParts()
                 val builds = buildRepository.searchBuilds()
                 val sales = salesRepository.searchOrders()
+                val locations = runCatching { stockRepository.getLocations() }.getOrDefault(emptyList())
                 var orders = poRepository.searchOrders(
                     query = _uiState.value.searchQuery,
                     status = _uiState.value.statusFilter
@@ -86,6 +91,7 @@ class PurchaseOrderViewModel(
                         parts = parts,
                         buildOrders = builds,
                         salesOrders = sales,
+                        locations = locations,
                         selectedOrder = updatedSelected
                     )
                 }
