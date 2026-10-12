@@ -27,6 +27,7 @@ class StaffManagementVerificationTest {
     @AfterTest
     fun tearDown() {
         SqliteDatabaseManager.closeDatabase()
+        SqliteDatabaseManager.setCustomDatabasePath(null)
         if (::tempDbFile.isInitialized && tempDbFile.exists()) {
             tempDbFile.delete()
         }
