@@ -163,6 +163,7 @@ fun SalesOrderScreen(
                     order.description,
                     order.targetDate,
                     order.orderCurrency,
+                    order.notes,
                     order.lineItems
                 )
             }
@@ -175,8 +176,8 @@ fun SalesOrderScreen(
             parts = uiState.parts,
             initialCustomerId = uiState.preselectedCustomerId,
             onDismiss = { viewModel.setAddOrderDialogOpen(false) },
-            onConfirm = { ref, custId, desc, targetDate, curr, lines ->
-                viewModel.addSalesOrderWithFulfillment(ref, custId, desc, targetDate, curr, lines)
+            onConfirm = { ref, custId, desc, targetDate, curr, notes, lines ->
+                viewModel.addSalesOrderWithFulfillment(ref, custId, desc, targetDate, curr, notes, lines)
             }
         )
     }
@@ -403,13 +404,14 @@ private fun AddSalesOrderBottomSheet(
     parts: List<Part>,
     initialCustomerId: Long? = null,
     onDismiss: () -> Unit,
-    onConfirm: (reference: String, customerId: Long, description: String, targetDate: String, currency: String, lines: List<SalesOrderLineItem>) -> Unit
+    onConfirm: (reference: String, customerId: Long, description: String, targetDate: String, currency: String, notes: String, lines: List<SalesOrderLineItem>) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var reference by remember { mutableStateOf("SO-2025-101") }
     var selectedCustomerId by remember(initialCustomerId) { mutableStateOf<Long?>(initialCustomerId ?: customers.firstOrNull()?.id) }
     var description by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
     var targetDate by remember { mutableStateOf("2025-04-15") }
     var currency by remember { mutableStateOf("USD") }
 
@@ -546,6 +548,14 @@ private fun AddSalesOrderBottomSheet(
                     value = description,
                     onValueChange = { description = it },
                     label = { Text("وصف الطلب وهدف الشحن") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("ملاحظات إضافية وتوجيهات التسليم (Notes)") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
@@ -773,7 +783,7 @@ private fun AddSalesOrderBottomSheet(
                         onClick = {
                             val cId = selectedCustomerId
                             if (reference.isNotBlank() && cId != null && initialLines.isNotEmpty()) {
-                                onConfirm(reference, cId, description, targetDate, currency, initialLines.toList())
+                                onConfirm(reference, cId, description, targetDate, currency, notes, initialLines.toList())
                             }
                         },
                         enabled = reference.isNotBlank() && selectedCustomerId != null && initialLines.isNotEmpty(),
