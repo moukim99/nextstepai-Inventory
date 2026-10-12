@@ -249,33 +249,54 @@ class BuildOrderRepository(
      * تسجيل تخصيص جديد لمادة في المخزون لصالح أمر إنتاج.
      */
     fun addBuildItemAllocation(item: BuildItem): BuildItem {
+        require(item.quantity > 0.0) { "كمية التخصيص يجب أن تكون أكبر من الصفر" }
+        val lineEntity = (item.buildLineId?.let { lineItemDao.getLineItemById(it) }
+            ?: if (item.buildLineUuid.isNotBlank()) lineItemDao.getLineItemByUuid(item.buildLineUuid) else null)
+            ?: throw IllegalArgumentException("بند أمر التصنيع المرتبط بالتخصيص غير موجود في قاعدة البيانات")
+
         val numericId = if (item.id > 0L) item.id else SqliteNumericIdAllocator.nextId("build_items", "build-item-")
         val itemUuid = "build-item-$numericId"
-        val inserted = item.copy(id = numericId, buildUuid = item.buildUuid.ifBlank { "build-${item.buildId}" })
-        val now = Clock.System.now().toEpochMilliseconds()
-        buildItemDao.insertOrUpdate(
-            BuildItemEntity(
-                uuid = itemUuid,
-                id = inserted.id,
-                buildId = inserted.buildId,
-                buildUuid = inserted.buildUuid,
-                buildLineId = inserted.buildLineId,
-                buildLineUuid = inserted.buildLineUuid.ifBlank { if (inserted.buildLineId != null) "lineitem-${inserted.buildLineId}" else "" },
-                stockItemId = inserted.stockItemId,
-                stockItemUuid = inserted.stockItemUuid.ifBlank { "stock-${inserted.stockItemId}" },
-                stockItemName = inserted.stockItemName,
-                quantity = inserted.quantity,
-                installIntoStockItemId = inserted.installIntoStockItemId,
-                installIntoStockItemUuid = inserted.installIntoStockItemUuid,
-                notes = inserted.notes,
-                syncStatus = SyncStatus.PENDING,
-                updatedAt = now
-            )
+        val targetLineId = if (item.buildLineId != null && item.buildLineId > 0L) item.buildLineId else lineEntity.id
+        val inserted = item.copy(
+            id = numericId,
+            buildUuid = item.buildUuid.ifBlank { lineEntity.buildUuid.ifBlank { "build-${item.buildId}" } },
+            buildLineId = targetLineId,
+            buildLineUuid = item.buildLineUuid.ifBlank { lineEntity.uuid }
         )
-        item.buildLineId?.let { lineId ->
-            allocateStock(lineId, item.quantity)
+
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        try {
+            val now = Clock.System.now().toEpochMilliseconds()
+            buildItemDao.insertOrUpdate(
+                BuildItemEntity(
+                    uuid = itemUuid,
+                    id = inserted.id,
+                    buildId = inserted.buildId,
+                    buildUuid = inserted.buildUuid,
+                    buildLineId = inserted.buildLineId,
+                    buildLineUuid = inserted.buildLineUuid,
+                    stockItemId = inserted.stockItemId,
+                    stockItemUuid = inserted.stockItemUuid.ifBlank { "stock-${inserted.stockItemId}" },
+                    stockItemName = inserted.stockItemName,
+                    quantity = inserted.quantity,
+                    installIntoStockItemId = inserted.installIntoStockItemId,
+                    installIntoStockItemUuid = inserted.installIntoStockItemUuid,
+                    notes = inserted.notes,
+                    syncStatus = SyncStatus.PENDING,
+                    updatedAt = now
+                )
+            )
+            val allocated = allocateStock(targetLineId, item.quantity)
+            if (!allocated) {
+                throw IllegalStateException("فشل تحديث كمية التخصيص لبند أمر التصنيع '${lineEntity.uuid}'")
+            }
+            conn.prepare("COMMIT;").use { it.step() }
+            return inserted
+        } catch (e: Throwable) {
+            runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
+            throw e
         }
-        return inserted
     }
 
     /**

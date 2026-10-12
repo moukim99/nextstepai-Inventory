@@ -1,6 +1,7 @@
 package com.nextstepai.inventory.repository
 
 import com.nextstepai.inventory.data.*
+import com.nextstepai.inventory.data.db.SqliteDatabaseManager
 import com.nextstepai.inventory.data.db.SqliteNumericIdAllocator
 import com.nextstepai.inventory.data.db.StockLocationDao
 import com.nextstepai.inventory.data.db.StockLocationTypeDao
@@ -20,11 +21,14 @@ class StockLocationRepository(
      */
     fun getLocations(): List<StockLocation> {
         val entities = runCatching { locationDao.getAllLocations() }.getOrDefault(emptyList())
-        return entities.map { entity ->
-            val resolvedId = if (entity.id > 0L) entity.id else {
-                entity.uuid.removePrefix("location-").removePrefix("loc-").toLongOrNull() ?: 1L
+        return entities.mapNotNull { entity ->
+            val resolvedId = if (entity.id > 0L) {
+                entity.id
+            } else {
+                entity.uuid.removePrefix("location-").removePrefix("loc-").toLongOrNull()?.takeIf { it > 0L }
+                    ?: return@mapNotNull null
             }
-            val resolvedParentId = entity.parentId ?: entity.parentUuid?.removePrefix("location-")?.removePrefix("loc-")?.toLongOrNull()
+            val resolvedParentId = entity.parentId ?: entity.parentUuid?.removePrefix("location-")?.removePrefix("loc-")?.toLongOrNull()?.takeIf { it > 0L }
             StockLocation(
                 id = resolvedId,
                 uuid = entity.uuid,
@@ -137,24 +141,8 @@ class StockLocationRepository(
         return candidate
     }
 
-    /**
-     * إضافة أو تحديث موقع تخزيني جديد في الشجرة الهرمية لمواقع التخزين (StockLocation) مع حسم التعارضات المزامنة وحماية الموقع الأساسي.
-     */
-    fun addLocation(location: StockLocation): StockLocation {
+    private fun saveLocationRecord(location: StockLocation): StockLocation {
         val existingLocs = getLocations()
-        val maxExistingId = existingLocs.maxOfOrNull { it.id } ?: 0L
-        val allocatedId = if (location.id == 0L) {
-            runCatching {
-                SqliteNumericIdAllocator.nextId("stock_locations", "loc-")
-            }.getOrElse { maxExistingId + 1L }
-        } else {
-            location.id
-        }
-        val finalUuid = if (location.uuid.isNotBlank() && !location.uuid.startsWith("location-")) {
-            location.uuid
-        } else {
-            "loc-$allocatedId"
-        }
         val parentLoc = if (location.parentId != null && location.parentId > 0L) {
             existingLocs.find { it.id == location.parentId }
         } else null
@@ -162,8 +150,6 @@ class StockLocationRepository(
         val calculatedTreeId = if (location.treeId > 0) location.treeId else parentLoc?.treeId ?: ((existingLocs.maxOfOrNull { it.treeId } ?: 0) + 1)
 
         val locationWithId = location.copy(
-            id = allocatedId,
-            uuid = finalUuid,
             level = calculatedLevel,
             treeId = calculatedTreeId
         )
@@ -199,32 +185,101 @@ class StockLocationRepository(
     }
 
     /**
+     * إضافة أو تحديث موقع تخزيني جديد في الشجرة الهرمية لمواقع التخزين (StockLocation) مع حسم التعارضات المزامنة وحماية الموقع الأساسي في معاملة ذرية.
+     */
+    fun addLocation(location: StockLocation): StockLocation {
+        val allocatedId = if (location.id == 0L) {
+            runCatching {
+                SqliteNumericIdAllocator.nextId("stock_locations", "loc-")
+            }.getOrElse { (getLocations().maxOfOrNull { it.id } ?: 0L) + 1L }
+        } else {
+            location.id
+        }
+        val finalUuid = if (location.uuid.isNotBlank() && !location.uuid.startsWith("location-")) {
+            location.uuid
+        } else {
+            "loc-$allocatedId"
+        }
+        val preparedLocation = location.copy(id = allocatedId, uuid = finalUuid)
+
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        try {
+            val saved = saveLocationRecord(preparedLocation)
+            conn.prepare("COMMIT;").use { it.step() }
+            return saved
+        } catch (e: Throwable) {
+            runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
+            throw e
+        }
+    }
+
+    /**
      * إنشاء سلسلة هرمية ذرية للموقع المستهدف مع كافة طبقاته الوسيطة المفقودة (Atomic Transaction).
      */
     fun addLocationWithIntermediates(
         targetLocation: StockLocation,
         intermediates: List<IntermediateNodeSpec>
     ): StockLocation {
-        var currentParentId = targetLocation.parentId
-
-        for (spec in intermediates) {
-            if (spec.existingId != null && spec.existingId > 0L) {
-                currentParentId = spec.existingId
-            } else if (spec.name.isNotBlank()) {
-                val newIntermediate = StockLocation(
-                    name = spec.name.trim(),
-                    description = "طبقة وسيطة مضافة آلياً لحشو فجوة الهرمية",
-                    parentId = currentParentId,
-                    structural = true,
-                    locationType = spec.locationType
-                )
-                val inserted = addLocation(newIntermediate)
-                currentParentId = inserted.id
+        var fallbackMaxId = (getLocations().maxOfOrNull { it.id } ?: 0L)
+        val preAllocatedIntermediates = intermediates.map { spec ->
+            if (spec.existingId == null && spec.name.isNotBlank()) {
+                runCatching {
+                    SqliteNumericIdAllocator.nextId("stock_locations", "loc-")
+                }.getOrElse { ++fallbackMaxId }
+            } else {
+                null
             }
         }
+        val targetAllocatedId = if (targetLocation.id == 0L) {
+            runCatching {
+                SqliteNumericIdAllocator.nextId("stock_locations", "loc-")
+            }.getOrElse { ++fallbackMaxId }
+        } else {
+            targetLocation.id
+        }
+        val targetFinalUuid = if (targetLocation.uuid.isNotBlank() && !targetLocation.uuid.startsWith("location-")) {
+            targetLocation.uuid
+        } else {
+            "loc-$targetAllocatedId"
+        }
 
-        val finalTarget = targetLocation.copy(parentId = currentParentId)
-        return addLocation(finalTarget)
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        try {
+            var currentParentId = targetLocation.parentId
+
+            for ((index, spec) in intermediates.withIndex()) {
+                if (spec.existingId != null && spec.existingId > 0L) {
+                    currentParentId = spec.existingId
+                } else if (spec.name.isNotBlank()) {
+                    val allocatedId = preAllocatedIntermediates[index] ?: run { ++fallbackMaxId }
+                    val newIntermediate = StockLocation(
+                        id = allocatedId,
+                        uuid = "loc-$allocatedId",
+                        name = spec.name.trim(),
+                        description = "طبقة وسيطة مضافة آلياً لحشو فجوة الهرمية",
+                        parentId = currentParentId,
+                        structural = true,
+                        locationType = spec.locationType
+                    )
+                    val inserted = saveLocationRecord(newIntermediate)
+                    currentParentId = inserted.id
+                }
+            }
+
+            val finalTarget = targetLocation.copy(
+                id = targetAllocatedId,
+                uuid = targetFinalUuid,
+                parentId = currentParentId
+            )
+            val result = saveLocationRecord(finalTarget)
+            conn.prepare("COMMIT;").use { it.step() }
+            return result
+        } catch (e: Throwable) {
+            runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
+            throw e
+        }
     }
 
     /**
@@ -267,6 +322,7 @@ class StockLocationRepository(
      * حذف موقع تخزيني حذفاً مرناً (Soft Delete).
      */
     fun deleteLocationInternal(locationId: Long): Boolean {
+        if (locationId <= 0L) return false
         val targetLoc = getLocations().find { it.id == locationId } ?: return false
         val wasPrimary = targetLoc.isPrimary
         val targetType = targetLoc.locationType

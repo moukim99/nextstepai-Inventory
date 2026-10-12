@@ -368,14 +368,11 @@ class StockRepository(
      */
     fun addStockItem(item: StockItem): StockItem {
         val allocatedId = if (item.id <= 0L) {
-            runCatching {
-                SqliteNumericIdAllocator.nextId("stock_items", "stock-")
-            }.getOrElse { (getStockItems().maxOfOrNull { it.id } ?: 0L) + 1L }
+            SqliteNumericIdAllocator.nextId("stock_items", "stock-")
         } else {
             item.id
         }
         val inserted = item.copy(id = allocatedId)
-        stockDao.insertOrUpdate(inserted.toEntity())
         val trackingLabel = if (item.batch.startsWith("BATCH-") || item.link.isNotBlank()) {
             "استلام شحنة مخزنية (Stock In)"
         } else {
@@ -400,7 +397,18 @@ class StockRepository(
             deltas = "{\"quantity\": ${item.quantity}}",
             createdAt = Clock.System.now().toEpochMilliseconds()
         )
-        trackingDao.insertOrUpdate(tracking)
+
+        val conn = SqliteDatabaseManager.getConnection()
+        conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
+        try {
+            stockDao.insertOrUpdate(inserted.toEntity())
+            trackingDao.insertOrUpdate(tracking)
+            conn.prepare("COMMIT;").use { it.step() }
+        } catch (e: Throwable) {
+            runCatching { conn.prepare("ROLLBACK;").use { it.step() } }
+            throw e
+        }
+
         checkAndInsertLowStockNotification(inserted.partId)
         return inserted
     }
@@ -558,6 +566,9 @@ class StockRepository(
             }
         }
 
+        // تخصيص المعرف الرقمي مسبقاً قبل فتح المعاملة لمنع تداخل المعاملات في SqliteNumericIdAllocator
+        val preallocatedTargetId = SqliteNumericIdAllocator.nextId("stock_items", "stock-")
+
         val conn = SqliteDatabaseManager.getConnection()
         conn.prepare("BEGIN IMMEDIATE;").use { it.step() }
         try {
@@ -588,11 +599,8 @@ class StockRepository(
                 if (existingTarget != null) {
                     stockDao.updateStockItemQuantity(existingTarget.uuid, existingTarget.quantity + quantityToTransfer, now)
                 } else {
-                    val nextTargetId = runCatching {
-                        SqliteNumericIdAllocator.nextId("stock_items", "stock-")
-                    }.getOrElse { (getStockItems().maxOfOrNull { it.id } ?: 0L) + 1L }
                     val newTarget = sourceEntity.copy(
-                        uuid = "stock-$nextTargetId",
+                        uuid = "stock-$preallocatedTargetId",
                         locationUuid = targetLocationUuid,
                         quantity = quantityToTransfer,
                         updatedAt = now,

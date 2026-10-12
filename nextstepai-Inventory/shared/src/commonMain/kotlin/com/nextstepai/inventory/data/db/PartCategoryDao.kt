@@ -55,21 +55,25 @@ class PartCategoryDao {
     }
 
     fun getCategoryById(id: Long): PartCategoryEntity? {
-        val direct = getCategoryByUuid("cat-$id")
+        val paddedUuid = "cat-${id.toString().padStart(3, '0')}"
+        val unpaddedUuid = "cat-$id"
+        val direct = getCategoryByUuid(paddedUuid) ?: getCategoryByUuid(unpaddedUuid)
         if (direct != null) return direct
 
         val conn = SqliteDatabaseManager.getConnection()
         val sql = """
             SELECT $selectColumns
             FROM part_categories
-            WHERE isDeleted = 0 AND (id = ? OR uuid = ? OR uuid LIKE ?)
+            WHERE isDeleted = 0 AND (id = ? OR uuid = ? OR uuid = ? OR uuid LIKE ? OR uuid LIKE ?)
             LIMIT 1
         """.trimIndent()
 
         conn.prepare(sql).use { stmt ->
             stmt.bindLong(1, id)
-            stmt.bindText(2, id.toString())
-            stmt.bindText(3, "%-$id")
+            stmt.bindText(2, paddedUuid)
+            stmt.bindText(3, unpaddedUuid)
+            stmt.bindText(4, "%-$id")
+            stmt.bindText(5, "%-${id.toString().padStart(3, '0')}")
             if (stmt.step()) {
                 return mapCategoryEntity(stmt)
             }
@@ -145,10 +149,13 @@ class PartCategoryDao {
     private fun mapCategoryEntity(stmt: SQLiteStatement): PartCategoryEntity {
         return PartCategoryEntity(
             uuid = stmt.getText(0),
+            id = runCatching { stmt.getLong(1) }.getOrDefault(0L),
             name = stmt.getText(2),
+            parentId = runCatching { if (stmt.isNull(3)) null else stmt.getLong(3) }.getOrNull(),
             parentUuid = if (stmt.isNull(4)) null else stmt.getText(4),
             description = stmt.getText(5),
             structural = stmt.getLong(6) != 0L,
+            defaultLocationId = runCatching { if (stmt.isNull(7)) null else stmt.getLong(7) }.getOrNull(),
             defaultLocationUuid = if (stmt.isNull(8)) null else stmt.getText(8),
             version = stmt.getLong(9).toInt(),
             syncStatus = SyncStatus.fromString(stmt.getText(10)),

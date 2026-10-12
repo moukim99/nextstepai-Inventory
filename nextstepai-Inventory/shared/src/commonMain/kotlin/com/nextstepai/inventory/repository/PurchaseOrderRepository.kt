@@ -326,9 +326,9 @@ class PurchaseOrderRepository(
      * تغيير حالة أمر الشراء (Placed / Complete / Cancelled).
      */
     fun updateOrderStatus(orderId: Long, status: POStatus): Boolean {
+        val order = orderDao.getOrderById(orderId) ?: return false
         val now = Clock.System.now().toEpochMilliseconds()
-        orderDao.updateOrderStatus("po-$orderId", status.code, now)
-        return true
+        return orderDao.updateOrderStatus(order.uuid, status.code, now)
     }
 
     /**

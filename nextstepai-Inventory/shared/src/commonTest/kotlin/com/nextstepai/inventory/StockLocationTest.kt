@@ -17,12 +17,16 @@ import com.nextstepai.inventory.ui.StockViewModel
 import com.nextstepai.inventory.data.db.StockLocationDao
 import com.nextstepai.inventory.data.db.StockLocationEntity
 import com.nextstepai.inventory.data.db.SqliteDatabaseManager
+import com.nextstepai.inventory.repository.StockLocationRepository
 import com.nextstepai.inventory.repository.StockRepository
 import com.nextstepai.inventory.sync.SyncStatus
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 
@@ -579,6 +583,216 @@ class StockLocationTest {
         } finally {
             // تنظيف بعد الاختبار حتمي حتى لو فشل أحد التأكيدات
             cleanup()
+        }
+    }
+
+    @Test
+    fun testUnparseableUuidWithoutStoredNumericIdDoesNotReceiveIdOneOrCollide() {
+        val repo = StockLocationRepository()
+        val conn = SqliteDatabaseManager.getConnection()
+
+        val unparseableUuid = "unparseable-uuid-no-numeric-id"
+        val storedIdUuid = "custom-uuid-with-stored-id"
+        val paddedUuid = "loc-078"
+        val customStoredId = 8899L
+        val paddedNumericId = 78L
+
+        fun cleanup() {
+            conn.prepare("DELETE FROM stock_locations WHERE uuid IN (?, ?, ?) OR id IN (?, ?)").use { stmt ->
+                stmt.bindText(1, unparseableUuid)
+                stmt.bindText(2, storedIdUuid)
+                stmt.bindText(3, paddedUuid)
+                stmt.bindLong(4, customStoredId)
+                stmt.bindLong(5, paddedNumericId)
+                stmt.step()
+            }
+        }
+
+        cleanup()
+
+        try {
+            // 1. سجل غير قابل للتحليل ولا يحمل معرفاً رقمياً مخزناً (id = 0)
+            conn.prepare("""
+                INSERT INTO stock_locations (uuid, id, locationId, name, structural, isDeleted)
+                VALUES (?, 0, 0, ?, ?, 0)
+            """.trimIndent()).use { stmt ->
+                stmt.bindText(1, unparseableUuid)
+                stmt.bindText(2, "سجل غير محلول بدون معرف")
+                stmt.bindLong(3, 0L)
+                stmt.step()
+            }
+
+            // 2. سجل يحمل UUID نصي عشوائي لكن يحمل معرفاً رقمياً مخزناً صريحاً
+            conn.prepare("""
+                INSERT INTO stock_locations (uuid, id, locationId, name, structural, isDeleted)
+                VALUES (?, ?, ?, ?, ?, 0)
+            """.trimIndent()).use { stmt ->
+                stmt.bindText(1, storedIdUuid)
+                stmt.bindLong(2, customStoredId)
+                stmt.bindLong(3, customStoredId)
+                stmt.bindText(4, "سجل بمعرف رقمي مخزن صريح")
+                stmt.bindLong(5, 0L)
+                stmt.step()
+            }
+
+            // 3. سجل يحمل UUID رقمي مبطن دون عمود id
+            conn.prepare("""
+                INSERT INTO stock_locations (uuid, id, locationId, name, structural, isDeleted)
+                VALUES (?, 0, 0, ?, ?, 0)
+            """.trimIndent()).use { stmt ->
+                stmt.bindText(1, paddedUuid)
+                stmt.bindText(2, "سجل مبطن")
+                stmt.bindLong(3, 0L)
+                stmt.step()
+            }
+
+            val locations = repo.getLocations()
+
+            // التأكد من أن السجل غير المحلول لم يحصل على ID = 1 ولم يدرج نهائياً في قائمة المواقع الصالحة
+            val unresolvedInList = locations.find { it.uuid == unparseableUuid }
+            assertNull(unresolvedInList, "السجلات غير المحلولة بدون معرف رقمي مخزن يجب استبعادها من getLocations")
+
+            // التأكد من أن أياً من المواقع التي تحمل المعرف 1 (إن وجدت) لا ترتبط بالـ UUID غير المحلول
+            val loc1 = locations.find { it.id == 1L }
+            if (loc1 != null) {
+                assertTrue(loc1.uuid != unparseableUuid, "المعرف 1 يجب ألا يعود للسجل غير المحلول")
+            }
+
+            // السجل ذو المعرف الرقمي المخزن الصريح يجب أن يحتفظ بهويته
+            val storedLoc = locations.find { it.uuid == storedIdUuid }
+            assertNotNull(storedLoc)
+            assertEquals(customStoredId, storedLoc.id, "يجب الحفاظ على الهوية الرقمية المخزنة للسجل")
+
+            // السجل المبطن يجب أن يفك تشفيره إلى 78
+            val paddedLoc = locations.find { it.uuid == paddedUuid }
+            assertNotNull(paddedLoc)
+            assertEquals(paddedNumericId, paddedLoc.id)
+
+            // التأكد من أن deleteLocationInternal يرفض المعرفات غير الموجبة
+            assertFalse(repo.deleteLocationInternal(0L), "حذف معرف 0 يجب أن يرجع false")
+            assertFalse(repo.deleteLocationInternal(-1L), "حذف معرف سالب يجب أن يرجع false")
+
+            // محاولة حذف الموقع 1 لا يجب أن تؤثر على السجل غير المحلول
+            repo.deleteLocationInternal(1L)
+
+            // التأكد من أن السجل غير المحلول لم يتأثر ولم يحذف عبر حذف المعرف 1
+            var unparseableDeleted = 0L
+            conn.prepare("SELECT isDeleted FROM stock_locations WHERE uuid = ?").use { stmt ->
+                stmt.bindText(1, unparseableUuid)
+                if (stmt.step()) unparseableDeleted = stmt.getLong(0)
+            }
+            assertEquals(0L, unparseableDeleted, "السجل غير المحلول يجب ألا يتم حذفه عند حذف الموقع 1")
+
+            // حذف السجل ذي الهوية المخزنة الصريحة عبر معرفه الرقمي ينجح
+            assertTrue(repo.deleteLocationInternal(customStoredId), "حذف الموقع الصريح بالمعرف المخزن يجب أن ينجح")
+            assertNull(repo.getLocations().find { it.id == customStoredId })
+        } finally {
+            cleanup()
+        }
+    }
+
+    @Test
+    fun testAddLocationPrimaryDemotionAtomicityOnFailure() {
+        val repo = StockLocationRepository()
+        val conn = SqliteDatabaseManager.getConnection()
+
+        val primaryName = "موقع رئيسي أصلي ذرية"
+        val abortName = "ABORT_PRIMARY_TARGET"
+
+        // 1. إضافة موقع رئيسي أولي
+        val originalPrimary = repo.addLocation(
+            StockLocation(
+                name = primaryName,
+                locationType = "SITE",
+                metadata = "{\"isPrimary\":true}"
+            )
+        )
+        assertTrue(originalPrimary.isPrimary, "يجب أن يكون الموقع الأصلي رئيساً")
+
+        try {
+            // تفعيل زناد مؤقت لتعطيل إدراج الموقع الجديد وإثارة خطأ
+            conn.prepare("""
+                CREATE TEMP TRIGGER IF NOT EXISTS trigger_abort_add_primary 
+                BEFORE INSERT ON stock_locations 
+                WHEN NEW.name = '$abortName'
+                BEGIN 
+                    SELECT RAISE(ABORT, 'Simulated failure during location insert'); 
+                END;
+            """.trimIndent()).use { it.step() }
+
+            // محاولة إضافة موقع رئيسي جديد مما يتطلب تنزيل رتبة الموقع الأصلي، لكن الإدراج الثاني سيفشل
+            assertFailsWith<Throwable> {
+                repo.addLocation(
+                    StockLocation(
+                        name = abortName,
+                        locationType = "SITE",
+                        metadata = "{\"isPrimary\":true}"
+                    )
+                )
+            }
+
+            // التحقق من التراجع الذري: لم يتم تنزيل رتبة الموقع الأصلي وظل رئيساً
+            val currentPrimary = repo.getLocations().find { it.id == originalPrimary.id }
+            assertNotNull(currentPrimary)
+            assertTrue(currentPrimary.isPrimary, "الموقع الأصلي يجب أن يظل رئيساً بعد تراجع المعاملة الذرية")
+
+            // الموقع المستهدف لم يتم إنشاؤه
+            assertNull(repo.getLocations().find { it.name == abortName })
+        } finally {
+            runCatching {
+                conn.prepare("DROP TRIGGER IF EXISTS trigger_abort_add_primary;").use { it.step() }
+            }
+            repo.deleteLocationInternal(originalPrimary.id)
+        }
+    }
+
+    @Test
+    fun testAddLocationWithIntermediatesAtomicityOnFailure() {
+        val repo = StockLocationRepository()
+        val conn = SqliteDatabaseManager.getConnection()
+
+        val rootWh = repo.addLocation(StockLocation(name = "مستودع اختبار التراجع الهرمي", locationType = "WAREHOUSE"))
+        val inter1Name = "INTERMEDIATE_FAIL_ZONE"
+        val inter2Name = "INTERMEDIATE_FAIL_AISLE"
+        val targetName = "ABORT_FAIL_SHELF"
+
+        try {
+            // تفعيل زناد مؤقت لتعطيل إدراج الموقع النهائي
+            conn.prepare("""
+                CREATE TEMP TRIGGER IF NOT EXISTS trigger_abort_intermediates 
+                BEFORE INSERT ON stock_locations 
+                WHEN NEW.name = '$targetName'
+                BEGIN 
+                    SELECT RAISE(ABORT, 'Simulated failure on target shelf insert'); 
+                END;
+            """.trimIndent()).use { it.step() }
+
+            val targetShelf = StockLocation(
+                name = targetName,
+                locationType = "SHELF",
+                parentId = rootWh.id
+            )
+
+            val intermediates = listOf(
+                IntermediateNodeSpec(locationType = "ZONE", name = inter1Name),
+                IntermediateNodeSpec(locationType = "AISLE", name = inter2Name)
+            )
+
+            // محاولة إنشاء السلسلة الهرمية مع الفشل المتعمد عند الموقع النهائي
+            assertFailsWith<Throwable> {
+                repo.addLocationWithIntermediates(targetShelf, intermediates)
+            }
+
+            // التحقق من التراجع التام: لا توجد أي عقد وسيطة متبقية في قاعدة البيانات
+            val allLocs = repo.getLocations()
+            assertNull(allLocs.find { it.name == inter1Name }, "الطبقة الوسيطة 1 يجب أن تتراجع تماماً")
+            assertNull(allLocs.find { it.name == inter2Name }, "الطبقة الوسيطة 2 يجب أن تتراجع تماماً")
+            assertNull(allLocs.find { it.name == targetName }, "الموقع النهائي يجب ألا يتم إنشاؤه")
+        } finally {
+            runCatching {
+                conn.prepare("DROP TRIGGER IF EXISTS trigger_abort_intermediates;").use { it.step() }
+            }
+            repo.deleteLocationInternal(rootWh.id)
         }
     }
 }

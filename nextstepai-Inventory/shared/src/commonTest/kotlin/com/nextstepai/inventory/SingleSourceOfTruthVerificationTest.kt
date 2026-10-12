@@ -1206,5 +1206,65 @@ class SingleSourceOfTruthVerificationTest {
         val finalParentStock = stockRepo.getStockItems().find { it.id == initialStock.id }!!
         assertEquals(75.0, finalParentStock.quantity, "قاعدة البيانات تستمر في العمل طبيعياً وتنفذ العمليات اللاحقة بنجاح")
     }
+
+    @Test
+    fun testPartCategoryNonNumericUuidUsesStoredId() {
+        val dao = PartCategoryDao()
+        val repo = com.nextstepai.inventory.repository.PartCategoryRepository(categoryDao = dao)
+
+        dao.insertOrUpdate(
+            uuid = "01912345-6789-7000-8000-000000000001",
+            id = 555L,
+            name = "تصنيف بمعرف نصي غير رقمي",
+            parentId = 111L,
+            parentUuid = "01912345-6789-7000-8000-000000000002",
+            description = "فحص استرجاع المعرف الرقمي المخزن دون اللجوء لرقم الفهرس"
+        )
+
+        val categories = repo.getCategories()
+        val category = categories.find { it.name == "تصنيف بمعرف نصي غير رقمي" }
+        assertNotNull(category)
+        assertEquals(555L, category.id, "يجب استخدام المعرف الرقمي المخزن (id) بدلاً من رقم الفهرس index-based fallback")
+        assertEquals(111L, category.parentId, "يجب استرجاع معرف الأب المخزن (parentId)")
+    }
+
+    @Test
+    fun testPartCategoryPaddedUuidAndStoredLookupsAndDeletion() {
+        val dao = PartCategoryDao()
+        val repo = com.nextstepai.inventory.repository.PartCategoryRepository(categoryDao = dao)
+
+        // 1. إنشاء تصنيف جديد والتحقق من حفظه بصيغة cat-00X المبطنة
+        val parent = repo.addCategory(name = "تصنيف أب مبطن", description = "فحص التبطين")
+        val parentEntity = dao.getCategoryById(parent.id)
+        assertNotNull(parentEntity)
+        assertEquals("cat-${parent.id.toString().padStart(3, '0')}", parentEntity.uuid)
+
+        // 2. إنشاء تصنيف فرعي والتحقق من استخدام المعرف المخزن للأب
+        val child = repo.addCategory(name = "تصنيف ابن", parentId = parent.id)
+        val childEntity = dao.getCategoryById(child.id)
+        assertNotNull(childEntity)
+        assertEquals(parentEntity.uuid, childEntity.parentUuid)
+
+        // 3. التحقق من دعم البحث عن سجل قديم غير مبطن (unpadded)
+        dao.insertOrUpdate(
+            uuid = "cat-88",
+            id = 88L,
+            name = "تصنيف قديم غير مبطن",
+            description = "فحص التوافقية العكسية"
+        )
+        val unpaddedLookup = repo.getCategoryById(88L)
+        assertNotNull(unpaddedLookup)
+        assertEquals(88L, unpaddedLookup.id)
+        assertEquals("تصنيف قديم غير مبطن", unpaddedLookup.name)
+
+        // 4. حذف التصنيف المبطن والتصنيف القديم غير المبطن بنجاح عبر المعرف المخزن
+        val deletedPadded = repo.deleteCategory(parent.id)
+        assertTrue(deletedPadded, "حذف التصنيف المبطن يجب أن ينجح باستخدام UUID المخزن")
+        assertNull(repo.getCategoryById(parent.id))
+
+        val deletedUnpadded = repo.deleteCategory(88L)
+        assertTrue(deletedUnpadded, "حذف التصنيف غير المبطن يجب أن ينجح بالتوافقية العكسية")
+        assertNull(repo.getCategoryById(88L))
+    }
 }
 

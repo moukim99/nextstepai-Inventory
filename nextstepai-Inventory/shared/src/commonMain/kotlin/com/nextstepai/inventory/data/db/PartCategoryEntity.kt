@@ -14,10 +14,13 @@ import kotlin.time.Clock
 data class PartCategoryEntity(
     @PrimaryKey
     override val uuid: String = AppUuid.generate(),
+    val id: Long = 0L,
     val name: String,
+    val parentId: Long? = null,
     val parentUuid: String? = null,
     val description: String = "",
     val structural: Boolean = false,
+    val defaultLocationId: Long? = null,
     val defaultLocationUuid: String? = null,
     val version: Int = 1,
     override val syncStatus: SyncStatus = SyncStatus.PENDING,

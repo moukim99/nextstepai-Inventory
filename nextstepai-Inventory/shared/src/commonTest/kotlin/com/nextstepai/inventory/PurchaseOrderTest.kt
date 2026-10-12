@@ -22,6 +22,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
@@ -465,5 +466,47 @@ class PurchaseOrderTest {
         val resolvedLoc = locationDao.getLocationByUuid(locUuid)
         assertNotNull(resolvedLoc)
         assertTrue(!resolvedLoc.structural, "الموقع المختار بالـ fallback يجب أن يكون غير هيكلي وصالح للتخزين")
+    }
+
+    @Test
+    fun testUpdateOrderStatusOutcomeAndMissingOrderHandling() {
+        val repository = PurchaseOrderRepository()
+        val poDao = PurchaseOrderDao()
+
+        // 1. أمر شراء غير موجود نهائياً يجب أن يعيد false
+        val missingResult = repository.updateOrderStatus(99999999L, POStatus.PLACED)
+        assertFalse(missingResult, "تحديث حالة أمر شراء مفقود يجب أن يعيد false")
+
+        // 2. أمر شراء موجود بمعرف قياسي
+        val order = repository.addOrder(
+            PurchaseOrder(
+                reference = "PO-UPDATE-STATUS-TEST",
+                supplierId = 18L,
+                status = POStatus.PENDING
+            )
+        )
+        val updateOk = repository.updateOrderStatus(order.id, POStatus.PLACED)
+        assertTrue(updateOk, "تحديث حالة أمر شراء موجود يجب أن ينجح ويعيد true")
+        val updated = poDao.getOrderById(order.id)
+        assertNotNull(updated)
+        assertEquals(POStatus.PLACED.code, updated.statusCode)
+
+        // 3. أمر شراء مدخل بمعرف غير قياسي / UUID-formatted ID
+        val customId = 7711L
+        poDao.insertOrUpdateOrder(
+            PurchaseOrderEntity(
+                uuid = "custom-order-$customId",
+                reference = "PO-CUSTOM-UUID-7711",
+                supplierId = 18L,
+                supplierName = "مورد اختبار",
+                statusCode = POStatus.PENDING.code,
+                totalCost = 50.0
+            )
+        )
+        val customUpdateOk = repository.updateOrderStatus(customId, POStatus.COMPLETE)
+        assertTrue(customUpdateOk, "تحديث حالة أمر الشراء بمعرف UUID-formatted ID يجب أن ينجح ويعيد true")
+        val updatedCustom = poDao.getOrderByUuid("custom-order-$customId")
+        assertNotNull(updatedCustom)
+        assertEquals(POStatus.COMPLETE.code, updatedCustom.statusCode)
     }
 }

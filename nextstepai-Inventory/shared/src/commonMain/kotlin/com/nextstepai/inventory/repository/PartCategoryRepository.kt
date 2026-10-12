@@ -18,9 +18,9 @@ class PartCategoryRepository(
      */
     fun getCategories(): List<PartCategory> {
         val entities = categoryDao.getAllCategories()
-        return entities.mapIndexed { index, entity ->
-            val numericId = entity.uuid.removePrefix("cat-").toLongOrNull() ?: (index + 1L)
-            val parentNumericId = entity.parentUuid?.removePrefix("cat-")?.toLongOrNull()
+        return entities.map { entity ->
+            val numericId = entity.uuid.removePrefix("cat-").toLongOrNull() ?: entity.id
+            val parentNumericId = entity.parentId ?: entity.parentUuid?.removePrefix("cat-")?.toLongOrNull()
             PartCategory(
                 id = numericId,
                 name = entity.name,
@@ -31,12 +31,29 @@ class PartCategoryRepository(
     }
 
     /**
+     * جلب تصنيف محدد بواسطة المعرف الرقمي مع دعم المعرفات المبطنة وغير المبطنة.
+     */
+    fun getCategoryById(categoryId: Long): PartCategory? {
+        val entity = categoryDao.getCategoryById(categoryId) ?: return null
+        val numericId = entity.uuid.removePrefix("cat-").toLongOrNull() ?: entity.id
+        val parentNumericId = entity.parentId ?: entity.parentUuid?.removePrefix("cat-")?.toLongOrNull()
+        return PartCategory(
+            id = numericId,
+            name = entity.name,
+            parentId = parentNumericId,
+            description = entity.description
+        )
+    }
+
+    /**
      * إنشاء تصنيف جديد وإضافته لجدول التصنيفات الدائم.
      */
     fun addCategory(name: String, description: String = "", parentId: Long? = null): PartCategory {
         val numericId = SqliteNumericIdAllocator.nextId("part_categories", "cat-")
-        val uuid = "cat-$numericId"
-        val parentUuid = parentId?.let { "cat-$it" }
+        val uuid = "cat-${numericId.toString().padStart(3, '0')}"
+        val parentUuid = parentId?.let { pid ->
+            categoryDao.getCategoryById(pid)?.uuid ?: "cat-${pid.toString().padStart(3, '0')}"
+        }
         categoryDao.insertOrUpdate(
             uuid = uuid,
             id = numericId,
@@ -57,7 +74,14 @@ class PartCategoryRepository(
      * حذف تصنيف محدد بواسطة المعرف الفريد.
      */
     fun deleteCategory(categoryId: Long): Boolean {
-        return categoryDao.deleteCategory("cat-$categoryId")
+        val category = categoryDao.getCategoryById(categoryId)
+        val targetUuid = category?.uuid ?: "cat-${categoryId.toString().padStart(3, '0')}"
+        val deleted = categoryDao.deleteCategory(targetUuid)
+        return if (!deleted && category == null) {
+            categoryDao.deleteCategory("cat-$categoryId")
+        } else {
+            deleted
+        }
     }
 
     /**

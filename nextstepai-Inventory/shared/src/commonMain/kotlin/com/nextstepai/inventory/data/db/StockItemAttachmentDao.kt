@@ -63,7 +63,7 @@ class StockItemAttachmentDao {
 
     fun deleteAttachment(uuid: String): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
-        conn.prepare("UPDATE stock_item_attachments SET isDeleted = 1 WHERE uuid = ?").use { stmt ->
+        conn.prepare("UPDATE stock_item_attachments SET isDeleted = 1 WHERE uuid = ? AND isDeleted = 0").use { stmt ->
             stmt.bindText(1, uuid)
             stmt.step()
         }
