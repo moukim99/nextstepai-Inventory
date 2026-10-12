@@ -11,6 +11,8 @@ import com.nextstepai.inventory.ui.components.Code128Encoder
 import java.io.ByteArrayOutputStream
 
 actual object StaffLabelPdfGenerator {
+    actual val isPdfExportSupported: Boolean = true
+
     actual fun generatePdf(
         codeStr: String,
         labelTitle: String,
@@ -39,20 +41,29 @@ actual object StaffLabelPdfGenerator {
         canvas.drawRoundRect(borderRect, 8f, 8f, borderPaint)
 
         // Code Capsule
-        val codeBgPaint = Paint().apply {
-            color = Color.parseColor("#FEF3C7")
-            style = Paint.Style.FILL
-        }
-        val codeBox = RectF(12f, 10f, 130f, 26f)
-        canvas.drawRoundRect(codeBox, 4f, 4f, codeBgPaint)
-
+        val codeLabel = "كود التفعيل: $codeStr"
         val codeTextCapsulePaint = Paint().apply {
             color = Color.parseColor("#92400E")
             textSize = 8.5f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             isAntiAlias = true
         }
-        canvas.drawText("كود التفعيل: $codeStr".take(20), 16f, 21f, codeTextCapsulePaint)
+
+        val maxTextWidth = 250f
+        val textWidth = codeTextCapsulePaint.measureText(codeLabel)
+        if (textWidth > maxTextWidth) {
+            codeTextCapsulePaint.textSize = codeTextCapsulePaint.textSize * (maxTextWidth / textWidth)
+        }
+        val finalWidth = codeTextCapsulePaint.measureText(codeLabel)
+
+        val codeBgPaint = Paint().apply {
+            color = Color.parseColor("#FEF3C7")
+            style = Paint.Style.FILL
+        }
+        val codeBox = RectF(12f, 10f, (16f + finalWidth + 5f).coerceAtMost(271f), 26f)
+        canvas.drawRoundRect(codeBox, 4f, 4f, codeBgPaint)
+
+        canvas.drawText(codeLabel, 16f, 21f, codeTextCapsulePaint)
 
         // Title (Job Title / Label)
         val titlePaint = Paint().apply {

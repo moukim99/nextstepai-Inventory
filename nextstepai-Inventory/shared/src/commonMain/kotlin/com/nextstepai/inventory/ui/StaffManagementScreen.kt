@@ -60,7 +60,7 @@ fun StaffManagementScreen(
     var codeToDelete by remember { mutableStateOf<ActivationCodeEntity?>(null) }
     var editingCode by remember { mutableStateOf<ActivationCodeEntity?>(null) }
     var editingUser by remember { mutableStateOf<AppUserEntity?>(null) }
-    var qrCodeToShow by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var qrCodeToShow by remember { mutableStateOf<Triple<String, String, String>?>(null) }
 
     val clipboardManager = LocalClipboardManager.current
 
@@ -340,7 +340,7 @@ fun StaffManagementScreen(
                                 ) {
                                     // 1. Barcode/QR Circle Button (Purple)
                                     Surface(
-                                        onClick = { qrCodeToShow = Pair(displayCode, user.name) },
+                                        onClick = { qrCodeToShow = Triple(displayCode, user.name, user.role.ifBlank { linkedCode?.assignedRole ?: "OPERATOR" }) },
                                         shape = CircleShape,
                                         color = Color(0xFFF3E8FF),
                                         modifier = Modifier.size(40.dp)
@@ -635,7 +635,13 @@ fun StaffManagementScreen(
                                                 ) {
                                                     // 1. Barcode/QR Circle Button (Purple)
                                                     Surface(
-                                                        onClick = { qrCodeToShow = Pair(codeEntity.code, codeEntity.label.ifBlank { linkedUser?.name ?: codeEntity.code }) },
+                                                        onClick = {
+                                                            qrCodeToShow = Triple(
+                                                                codeEntity.code,
+                                                                codeEntity.label.ifBlank { linkedUser?.name ?: codeEntity.code },
+                                                                codeEntity.assignedRole.ifBlank { linkedUser?.role ?: "OPERATOR" }
+                                                            )
+                                                        },
                                                         shape = CircleShape,
                                                         color = Color(0xFFF3E8FF),
                                                         modifier = Modifier.size(40.dp)
@@ -1369,11 +1375,11 @@ fun StaffManagementScreen(
         }
 
         // 5. الصفحة المنبثقة لإظهار ملصق باركود الموظف وتوليد الـ PDF والمشاركة
-        qrCodeToShow?.let { (codeVal, titleLabel) ->
+        qrCodeToShow?.let { (codeVal, titleLabel, roleVal) ->
             PrintableStaffLabelBottomSheet(
                 codeStr = codeVal,
                 labelTitle = titleLabel,
-                assignedRole = uiState.activeInvitationCodes.find { it.code == codeVal }?.assignedRole ?: "OPERATOR",
+                assignedRole = roleVal,
                 onDismiss = { qrCodeToShow = null }
             )
         }

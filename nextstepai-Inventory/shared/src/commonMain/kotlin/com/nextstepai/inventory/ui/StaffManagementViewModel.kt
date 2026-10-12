@@ -139,22 +139,49 @@ class StaffManagementViewModel(
         }
     }
 
+    private fun parsePermissionsJson(json: String, baseMatrix: List<ModulePermissionState>): List<ModulePermissionState> {
+        if (json.isBlank() || json.trim() == "{}") return baseMatrix
+
+        return baseMatrix.map { item ->
+            val moduleRegex = Regex(""""${item.moduleKey}"\s*:\s*\{([^}]*)\}""", RegexOption.IGNORE_CASE)
+            val match = moduleRegex.find(json)
+            if (match != null) {
+                val block = match.groupValues[1]
+                item.copy(
+                    canRead = Regex(""""read"\s*:\s*true""", RegexOption.IGNORE_CASE).containsMatchIn(block),
+                    canCreate = Regex(""""create"\s*:\s*true""", RegexOption.IGNORE_CASE).containsMatchIn(block),
+                    canUpdate = Regex(""""update"\s*:\s*true""", RegexOption.IGNORE_CASE).containsMatchIn(block),
+                    canDelete = Regex(""""delete"\s*:\s*true""", RegexOption.IGNORE_CASE).containsMatchIn(block)
+                )
+            } else {
+                item.copy(canRead = false, canCreate = false, canUpdate = false, canDelete = false)
+            }
+        }
+    }
+
     fun prepareEditCode(codeEntity: ActivationCodeEntity) {
+        val defaultState = StaffManagementUiState()
+        val loadedMatrix = parsePermissionsJson(codeEntity.permissionsJson, defaultState.permissionMatrix)
         _uiState.update {
             it.copy(
                 editingCodeCode = codeEntity.code,
                 newStaffLabel = codeEntity.label,
-                newStaffRole = codeEntity.assignedRole
+                newStaffRole = codeEntity.assignedRole,
+                permissionMatrix = loadedMatrix,
+                selectedPreset = "CUSTOM"
             )
         }
     }
 
     fun prepareAddNewStaff() {
+        val defaultState = StaffManagementUiState()
         _uiState.update {
             it.copy(
                 editingCodeCode = null,
                 newStaffLabel = "",
-                newStaffRole = "OPERATOR"
+                newStaffRole = defaultState.newStaffRole,
+                selectedPreset = defaultState.selectedPreset,
+                permissionMatrix = defaultState.permissionMatrix
             )
         }
     }
@@ -187,32 +214,50 @@ class StaffManagementViewModel(
                 )
             }
         } else {
-            val randomNum = Random.nextInt(1000, 9999)
-            val codeStr = "STF-$randomNum"
+            val maxRetries = 10
+            var inserted = false
+            var createdEntity: ActivationCodeEntity? = null
 
-            val newCodeEntity = ActivationCodeEntity(
-                code = codeStr,
-                ownerId = ownerId,
-                assignedRole = role,
-                permissionsJson = jsonBuilder.toString(),
-                label = label.ifBlank { "كود موظف جديد" },
-                isUsed = false,
-                usedByUuid = "",
-                expiresAt = 0L,
-                version = 1,
-                syncStatus = "PENDING_PUSH",
-                createdAt = now,
-                updatedAt = now
-            )
+            for (attempt in 1..maxRetries) {
+                val randomNum = Random.nextInt(1000, 9999)
+                val codeStr = "STF-$randomNum"
 
-            staffDao.insertActivationCode(newCodeEntity)
-
-            _uiState.update {
-                it.copy(
-                    generatedCodeDialog = newCodeEntity,
-                    newStaffLabel = "",
-                    message = "تم توليد كود التفعيل المخصص بنجاح"
+                val newCodeEntity = ActivationCodeEntity(
+                    code = codeStr,
+                    ownerId = ownerId,
+                    assignedRole = role,
+                    permissionsJson = jsonBuilder.toString(),
+                    label = label.ifBlank { "كود موظف جديد" },
+                    isUsed = false,
+                    usedByUuid = "",
+                    expiresAt = 0L,
+                    version = 1,
+                    syncStatus = "PENDING_PUSH",
+                    createdAt = now,
+                    updatedAt = now
                 )
+
+                if (staffDao.insertActivationCode(newCodeEntity)) {
+                    inserted = true
+                    createdEntity = newCodeEntity
+                    break
+                }
+            }
+
+            if (inserted && createdEntity != null) {
+                _uiState.update {
+                    it.copy(
+                        generatedCodeDialog = createdEntity,
+                        newStaffLabel = "",
+                        message = "تم توليد كود التفعيل المخصص بنجاح"
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        message = "فشل توليد كود التفعيل بسبب تكرار الأكواد، يرجى المحاولة مرة أخرى"
+                    )
+                }
             }
         }
         loadData()

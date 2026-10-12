@@ -1,6 +1,8 @@
 package com.nextstepai.inventory.util
 
 expect object StaffLabelPdfGenerator {
+    val isPdfExportSupported: Boolean
+
     fun generatePdf(
         codeStr: String,
         labelTitle: String = "",

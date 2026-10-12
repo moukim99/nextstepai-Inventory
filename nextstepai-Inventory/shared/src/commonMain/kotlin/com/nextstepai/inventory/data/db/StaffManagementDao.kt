@@ -132,31 +132,47 @@ class StaffManagementDao {
 
     /**
      * إدراج كود دعوة/تفعيل جديد للموظف.
+     * يرجع true إذا تم الإدراج بنجاح، أو false إذا كان الكود مكرراً أو تعذر الإدراج.
      */
-    fun insertActivationCode(code: ActivationCodeEntity) {
+    fun insertActivationCode(code: ActivationCodeEntity): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
         val sql = """
-            INSERT OR REPLACE INTO activation_codes (code, ownerId, assignedRole, permissionsJson, label, isUsed, usedByUuid, expiresAt, version, syncStatus, lastModifiedByDeviceUuid, createdAt, updatedAt, isDeleted)
+            INSERT INTO activation_codes (code, ownerId, assignedRole, permissionsJson, label, isUsed, usedByUuid, expiresAt, version, syncStatus, lastModifiedByDeviceUuid, createdAt, updatedAt, isDeleted)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()
 
-        conn.prepare(sql).use { stmt ->
-            stmt.bindText(1, code.code)
-            stmt.bindText(2, code.ownerId)
-            stmt.bindText(3, code.assignedRole)
-            stmt.bindText(4, code.permissionsJson)
-            stmt.bindText(5, code.label)
-            stmt.bindLong(6, if (code.isUsed) 1L else 0L)
-            stmt.bindText(7, code.usedByUuid)
-            stmt.bindLong(8, code.expiresAt)
-            stmt.bindLong(9, code.version.toLong())
-            stmt.bindText(10, code.syncStatus)
-            if (code.lastModifiedByDeviceUuid != null) stmt.bindText(11, code.lastModifiedByDeviceUuid) else stmt.bindNull(11)
-            stmt.bindLong(12, code.createdAt)
-            stmt.bindLong(13, code.updatedAt)
-            stmt.bindLong(14, if (code.isDeleted) 1L else 0L)
-            stmt.step()
+        val inserted = try {
+            conn.prepare(sql).use { stmt ->
+                stmt.bindText(1, code.code)
+                stmt.bindText(2, code.ownerId)
+                stmt.bindText(3, code.assignedRole)
+                stmt.bindText(4, code.permissionsJson)
+                stmt.bindText(5, code.label)
+                stmt.bindLong(6, if (code.isUsed) 1L else 0L)
+                stmt.bindText(7, code.usedByUuid)
+                stmt.bindLong(8, code.expiresAt)
+                stmt.bindLong(9, code.version.toLong())
+                stmt.bindText(10, code.syncStatus)
+                if (code.lastModifiedByDeviceUuid != null) stmt.bindText(11, code.lastModifiedByDeviceUuid) else stmt.bindNull(11)
+                stmt.bindLong(12, code.createdAt)
+                stmt.bindLong(13, code.updatedAt)
+                stmt.bindLong(14, if (code.isDeleted) 1L else 0L)
+                stmt.step()
+            }
+            true
+        } catch (_: Throwable) {
+            false
         }
+
+        if (!inserted) return false
+
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 
     /**
@@ -202,9 +218,11 @@ class StaffManagementDao {
      */
     fun deleteActivationCode(code: String) {
         val conn = SqliteDatabaseManager.getConnection()
-        val sql = "UPDATE activation_codes SET isDeleted = 1, syncStatus = 'PENDING_PUSH' WHERE code = ?"
+        val sql = "UPDATE activation_codes SET isDeleted = 1, syncStatus = 'PENDING_PUSH', updatedAt = ? WHERE code = ?"
+        val now = Clock.System.now().toEpochMilliseconds()
         conn.prepare(sql).use { stmt ->
-            stmt.bindText(1, code)
+            stmt.bindLong(1, now)
+            stmt.bindText(2, code)
             stmt.step()
         }
     }
@@ -228,9 +246,11 @@ class StaffManagementDao {
      */
     fun deleteUser(userUuid: String) {
         val conn = SqliteDatabaseManager.getConnection()
-        val sql = "UPDATE app_users SET isDeleted = 1, syncStatus = 'PENDING_PUSH' WHERE uuid = ?"
+        val sql = "UPDATE app_users SET isDeleted = 1, syncStatus = 'PENDING_PUSH', updatedAt = ? WHERE uuid = ?"
+        val now = Clock.System.now().toEpochMilliseconds()
         conn.prepare(sql).use { stmt ->
-            stmt.bindText(1, userUuid)
+            stmt.bindLong(1, now)
+            stmt.bindText(2, userUuid)
             stmt.step()
         }
     }

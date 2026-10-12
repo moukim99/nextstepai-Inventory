@@ -324,6 +324,7 @@ fun PrintableStaffLabelBottomSheet(
                         )
                         onPrintClick?.invoke()
                     },
+                    enabled = StaffLabelPdfGenerator.isPdfExportSupported,
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF4F46E5),
@@ -337,7 +338,11 @@ fun PrintableStaffLabelBottomSheet(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("مشاركة", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text(
+                        text = if (StaffLabelPdfGenerator.isPdfExportSupported) "مشاركة" else "غير مدعوم على النظام",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
                 }
             }
         }

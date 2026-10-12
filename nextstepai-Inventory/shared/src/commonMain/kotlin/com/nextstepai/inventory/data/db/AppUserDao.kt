@@ -155,19 +155,29 @@ class AppUserDao {
     /**
      * تعليم كود التفعيل كمستخدم بربطه مع معرف المستخدم الجديد.
      */
-    fun markActivationCodeUsed(code: String, userUuid: String) {
+    fun markActivationCodeUsed(code: String, userUuid: String): Boolean {
         val conn = SqliteDatabaseManager.getConnection()
+        val now = Clock.System.now().toEpochMilliseconds()
         val sql = """
             UPDATE activation_codes
             SET isUsed = 1, usedByUuid = ?, updatedAt = ?, syncStatus = 'PENDING_PUSH'
-            WHERE code = ?
+            WHERE code = ? AND isUsed = 0 AND isDeleted = 0 AND (expiresAt = 0 OR expiresAt > ?)
         """.trimIndent()
 
         conn.prepare(sql).use { stmt ->
             stmt.bindText(1, userUuid)
-            stmt.bindLong(2, Clock.System.now().toEpochMilliseconds())
+            stmt.bindLong(2, now)
             stmt.bindText(3, code.trim().uppercase())
+            stmt.bindLong(4, now)
             stmt.step()
         }
+
+        var changed = 0
+        conn.prepare("SELECT changes()").use { stmt ->
+            if (stmt.step()) {
+                changed = stmt.getLong(0).toInt()
+            }
+        }
+        return changed > 0
     }
 }

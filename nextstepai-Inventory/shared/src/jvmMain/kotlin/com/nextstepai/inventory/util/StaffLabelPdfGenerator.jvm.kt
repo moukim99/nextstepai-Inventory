@@ -1,22 +1,15 @@
 package com.nextstepai.inventory.util
 
 actual object StaffLabelPdfGenerator {
+    actual val isPdfExportSupported: Boolean = false
+
     actual fun generatePdf(
         codeStr: String,
         labelTitle: String,
         assignedRole: String,
         issueDate: String
     ): ByteArray {
-        val content = """
-            ==============================================
-            ملصق موظف / كود تفعيل - $issueDate
-            ==============================================
-            المسمى الوظيفي: ${labelTitle.ifBlank { "موظف" }}
-            كود التفعيل / الموظف: $codeStr
-            الدور والمهام: ${assignedRole.ifBlank { "OPERATOR" }}
-            ==============================================
-        """.trimIndent()
-        return content.encodeToByteArray()
+        throw UnsupportedOperationException("JVM PDF generation for staff labels is not yet implemented.")
     }
 
     actual fun generatePngPreview(

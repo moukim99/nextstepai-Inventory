@@ -1054,8 +1054,18 @@ internal object SqliteDatabaseSchema {
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_triggered_schedule ON notifications_history(isTriggered, scheduledDate);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications_history(isRead);").use { it.step() } }
         runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_app_users_sync ON app_users(syncStatus, isDeleted, updatedAt);").use { it.step() } }
-        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_activation_codes_owner ON activation_codes(ownerId, isUsed);").use { it.step() } }
-        runCatching { conn.prepare("CREATE INDEX IF NOT EXISTS idx_user_permissions_user ON user_permissions(userUuid, module);").use { it.step() } }
+        runCatching {
+            conn.prepare("""
+                DELETE FROM user_permissions
+                WHERE rowid NOT IN (
+                    SELECT MIN(rowid)
+                    FROM user_permissions
+                    GROUP BY userUuid, module
+                )
+            """.trimIndent()).use { it.step() }
+        }
+        runCatching { conn.prepare("DROP INDEX IF EXISTS idx_user_permissions_user;").use { it.step() } }
+        runCatching { conn.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_permissions_user ON user_permissions(userUuid, module);").use { it.step() } }
 
         // 9. Centralized schema migrations and column additions
         SqliteDatabaseMigrations.applyMigrations(conn)
