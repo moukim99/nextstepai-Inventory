@@ -192,6 +192,30 @@ class StaffManagementVerificationTest {
     }
 
     @Test
+    fun testActiveInvitationCodesAreScopedToOwner() {
+        val staffDao = StaffManagementDao()
+        val firstCode = ActivationCodeEntity(code = "OWNER-A-OLD", ownerId = "OWNER-A", createdAt = 1L)
+        val invitations = listOf(
+            firstCode,
+            firstCode.copy(code = "OWNER-A-NEW", createdAt = 2L),
+            firstCode.copy(code = "OWNER-B-INVITE", ownerId = "OWNER-B"),
+            firstCode.copy(code = "OWNER-A-USED", isUsed = true),
+            firstCode.copy(code = "OWNER-A-DELETED", isDeleted = true)
+        )
+        invitations.forEach { assertTrue(staffDao.insertActivationCode(it)) }
+
+        assertEquals(
+            listOf("OWNER-A-NEW", "OWNER-A-OLD"),
+            staffDao.getActiveInvitationCodes("OWNER-A").map { it.code }
+        )
+        assertEquals(
+            listOf("OWNER-B-INVITE"),
+            staffDao.getActiveInvitationCodes("OWNER-B").map { it.code }
+        )
+        assertTrue(staffDao.getActiveInvitationCodes("UNKNOWN-OWNER").isEmpty())
+    }
+
+    @Test
     fun testStaffManagementViewModelPrepareEditAndAddNewStaff() {
         val staffDao = StaffManagementDao()
         val ownerId = "OWNER-TEST"

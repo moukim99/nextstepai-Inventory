@@ -184,11 +184,12 @@ class StaffManagementDao {
         val sql = """
             SELECT code, ownerId, assignedRole, permissionsJson, label, isUsed, usedByUuid, expiresAt, version, syncStatus, lastModifiedByDeviceUuid, createdAt, updatedAt, isDeleted
             FROM activation_codes
-            WHERE isUsed = 0 AND isDeleted = 0
+            WHERE ownerId = ? AND isUsed = 0 AND isDeleted = 0
             ORDER BY createdAt DESC
         """.trimIndent()
 
         conn.prepare(sql).use { stmt ->
+            stmt.bindText(1, ownerId)
             while (stmt.step()) {
                 results.add(
                     ActivationCodeEntity(
