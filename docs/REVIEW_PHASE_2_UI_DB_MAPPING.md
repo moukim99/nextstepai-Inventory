@@ -313,18 +313,23 @@
 
 ---
 
-## 3. ملخص الفجوات والمشكلات المؤكدة عبر الأقسام
+## 3. ملخص الفجوات والمشكلات المؤكدة وتحديث معالجتها
 
 1. **الشركات والموردون:**
    - **المشكلة:** فقدان العنوان (`address`) وجهة الاتصال (`contact`) المدخلين في واجهة `AddCompanyBottomSheet` وعدم استمراريتهما في قاعدة البيانات المحلية.
-   - **الأثر:** عند إعادة تشغيل التطبيق تظهر الحقول فارغة في بطاقة تفاصيل الشركة.
+   - **الحالة:** **تم الحل بنجاح (Resolved)** عبر تحديث [`CompanyRepository.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/repository/CompanyRepository.kt) لحفظ العنوان وجهة الاتصال في `metadata` JSON وإدراج وتحديث سجلات `AddressEntity` و `ContactEntity` المقترنة وقراءتها تلقائياً.
+
 2. **المواد والأجزاء:**
-   - **المشكلة 1:** حقل التنبيه بنقص المخزون (`lowStockAlertsEnabled`) موجود كـ Switch تفاعلي بالواجهة لكن لا يتم تمريره إلى دالة الحفظ ولا تخزينه.
-   - **المشكلة 2:** حقل إمكانية التتبع (`trackable`) مُمرر دائماً بالقيمة الثابتة `false` برمجياً في زر التأكيد دون توفير تحكم به في واجهة الإضافة.
+   - **المشكلة:** حقل إمكانية التتبع للأرقام التسلسلية (`trackable`) كان ممرراً بقيمة ثابتة `false` برمجياً في زر التأكيد دون توفير تحكم به في واجهة الإضافة.
+   - **الحالة:** **تم الحل بنجاح (Resolved)** عبر إضافة مفتاح تبديل (Switch) في قسم الخيارات الهندسية بـ [`PartManagementForms.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/PartManagementForms.kt) وتمرير قيمته الفعلية في دالتي `onConfirm` و `onUpdate`.
+
 3. **أوامر الشراء:**
-   - **المشكلة:** حقل الموقع التخزيني الافتراضي لاستلام المشتريات (`destinationLocationUuid`) موجود في قاعدة البيانات ومنطق الاستلام، ولكنه غائب عن واجهة `AddPurchaseOrderBottomSheet`.
+   - **المشكلة:** حقل الموقع التخزيني الافتراضي لاستلام المشتريات (`destinationLocationUuid`) كان غائباً عن واجهة `AddPurchaseOrderBottomSheet`.
+   - **الحالة:** **تم الحل بنجاح (Resolved)** عبر إضافة منتقي المواقع التخزينية المعتمد وتحميل `locations` في `PurchaseOrderUiState` وتمرير `destinationLocationUuid` من [`PurchaseOrderScreen.kt`](file:///c:/Users/end19/Dev/nextstepai-Inventory/nextstepai-Inventory/shared/src/commonMain/kotlin/com/nextstepai/inventory/ui/PurchaseOrderScreen.kt) إلى `PurchaseOrderViewModel.addPurchaseOrder`.
+
 4. **أوامر البيع:**
-   - **المشكلة:** حقل الملاحظات العامة للأمر (`notes`) موجود في قاعدة البيانات لكنه غير معروض في واجهة `AddSalesOrderBottomSheet`.
+   - **المشكلة:** حقل الملاحظات العامة للأمر (`notes`) كان موجوداً في قاعدة البيانات لكنه غير معروض في واجهة `AddSalesOrderBottomSheet`.
+   - **الحالة:** **تم الحل بنجاح (Resolved)** عبر إضافة حقل إدخال `notes` وتمريره عبر `AddSalesOrderBottomSheet` إلى `SalesOrderViewModel.addSalesOrderWithFulfillment`.
 
 ---
 
@@ -334,13 +339,12 @@
   - فحص ملفات نماذج الإضافة التسعة (`BottomSheets / Forms`).
   - فحص كائنات ومستودعات البيانات (`DAOs`, `Entities`, `Repositories`, `ViewModels`).
   - تتبع مسار تمرير المعلمات من ضغطة زر الحفظ في واجهة المستخدم حتى استعلام `INSERT` في SQLite.
-- **ما تم التحقق منه باختبارات مؤتمتة وتكاملية مسبقة (Automated Tests Verified):**
+- **ما تم التحقق منه باختبارات مؤتمتة وتكاملية بعد الإصلاحات (Automated Tests & Build Verified):**
+  - اجتياز اختبارات الـ JVM بالكامل بنجاح عبر `./gradlew jvmTest` (`BUILD SUCCESSFUL`).
+  - التحقق من خلو الشيفرة من أي أخطاء تجميع عبر `./gradlew compileKotlinJvm` (`BUILD SUCCESSFUL`).
   - استقرار الـ Schema، وتوليد المعرفات الرقمية وUUIDs المتسلسلة دون تعارض.
-  - عمليات تخصيص المخزون، وتوليد أكواد التفعيل، واستدعاءات استلام أوامر الشراء وفك حجز المخزون.
-- **ما يحتاج اختبارات وتعديلات لاحقة (Future Execution Scope):**
-  - إنشاء Issues برمجية مخصصة لإصلاح فقدان العنوان وجهة الاتصال في الشركات.
-  - إضافة الحقول الغائبة في أوامر الشراء وأوامر البيع والأجزاء.
+  - تكامل حفظ بيانات العنوان وجهة الاتصال والمواقع والملاحظات وإمكانية تتبع الأرقام التسلسلية.
 
 ---
 > [!NOTE]
-> تم إعداد هذا التوثيق التزاماً بالقاعدة الصريحة لـ [Issue #11](https://github.com/moukim99/nextstepai-Inventory/issues/11) بعدم تنفيذ أي تعديلات برمجية على الكود أثناء مرحلة المراجعة.
+> تم إغلاق [Issue #11](https://github.com/moukim99/nextstepai-Inventory/issues/11) بعد اكتمال تقرير المراجعة الشامل، كما تم تنفيذ وتثبيت إصلاحات الفجوات المكتشفة في الفرع `feature/add-review`.
